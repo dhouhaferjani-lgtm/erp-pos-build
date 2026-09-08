@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { entityRoutes } from './entityRoutes'
+import { entityRoutes, movementSourceLinkTypeFromSource } from './entityRoutes'
 
 describe('entityRoutes', () => {
   it('builds product and variant routes through product detail pages', () => {
@@ -40,5 +40,16 @@ describe('entityRoutes', () => {
     expect(entityRoutes.goodsReceipt('receipt-1', { purchaseOrderId: 'po-1' })).toBe('/purchases/orders/po-1')
     expect(entityRoutes.batch('batch-1')).toBe('/inventory/batches/batch-1')
     expect(entityRoutes.journalEntry('entry-1')).toBe('/finance/journal-entries/entry-1')
+    expect(entityRoutes.inventoryCounting('counting-1')).toBe('/inventory/counting/counting-1')
+  })
+
+  // QA-BUG-09: ONE helper, used by BOTH movement surfaces (house rule 22).
+  it('maps a movement source_document_type to a link target', () => {
+    expect(movementSourceLinkTypeFromSource('inventory_counting')).toEqual({ kind: 'inventoryCounting' })
+    expect(movementSourceLinkTypeFromSource('invoice')).toEqual({ kind: 'document', documentType: 'invoice' })
+    expect(movementSourceLinkTypeFromSource('purchase_order')).toEqual({ kind: 'document', documentType: 'purchase_order' })
+    expect(movementSourceLinkTypeFromSource(null)).toBeNull()
+    expect(movementSourceLinkTypeFromSource(undefined)).toBeNull()
+    expect(movementSourceLinkTypeFromSource('stock_adjustment')).toBeNull()
   })
 })

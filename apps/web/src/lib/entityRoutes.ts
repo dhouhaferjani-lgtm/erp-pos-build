@@ -118,7 +118,45 @@ export const entityRoutes = {
   batch: (id: string): string => `/inventory/batches/${id}`,
 
   journalEntry: (id: string): string => `/finance/journal-entries/${id}`,
+
+  /**
+   * An inventory counting's detail page. Reached from a count movement's
+   * reference in either movements surface (QA-BUG-09) — the counting is the
+   * movement's source document even though it does not live in `documents`.
+   */
+  inventoryCounting: (id: string): string => `/inventory/counting/${id}`,
 } as const
+
+/**
+ * Where a stock movement's `source_document_type` points. ONE definition for
+ * BOTH movements surfaces (StockMovementsPage and ProductMovementsTab) — house
+ * rule 22, one surface per concept: the previous duplicate `documentRouteTypeFromSource`
+ * call in each of them is exactly how the counting case was added to neither.
+ */
+export type MovementSourceLinkType =
+  | { kind: 'document'; documentType: DocumentRouteType }
+  | { kind: 'inventoryCounting' }
+
+/**
+ * Resolve a movement's `source_document_type` to a link target, or null when the
+ * server resolved no source document for that row.
+ *
+ * Only the nine `documents`-table types and `inventory_counting` resolve today;
+ * the remaining StockMovementReferenceType values (pos_receipt_return_scrap,
+ * stock_adjustment, supplier_goods_return_note, batch_ledger_repair) have no
+ * server-side source resolution yet and correctly fall through to null.
+ */
+export function movementSourceLinkTypeFromSource(
+  sourceType: string | null | undefined,
+): MovementSourceLinkType | null {
+  if (sourceType === 'inventory_counting') {
+    return { kind: 'inventoryCounting' }
+  }
+
+  const documentType = documentRouteTypeFromSource(sourceType)
+
+  return documentType === null ? null : { kind: 'document', documentType }
+}
 
 export function documentRouteTypeFromSource(sourceType: string | null | undefined): DocumentRouteType | null {
   switch (sourceType) {

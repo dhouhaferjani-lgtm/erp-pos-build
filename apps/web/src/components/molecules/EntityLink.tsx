@@ -14,7 +14,7 @@ type BaseEntityLinkProps = {
 }
 
 type EntityLinkProps =
-  | (BaseEntityLinkProps & { type: 'product' | 'customer' | 'supplier' | 'payment' | 'expense' | 'stockTransfer' | 'batch' | 'journalEntry' })
+  | (BaseEntityLinkProps & { type: 'product' | 'customer' | 'supplier' | 'payment' | 'expense' | 'stockTransfer' | 'batch' | 'journalEntry' | 'inventoryCounting' })
   | (BaseEntityLinkProps & { type: 'variant'; productId: string | null | undefined })
   | (BaseEntityLinkProps & { type: 'partner'; partnerType?: PartnerRouteType })
   | (BaseEntityLinkProps & { type: 'document'; documentType: DocumentRouteType })
@@ -48,6 +48,8 @@ function resolveEntityHref(props: EntityLinkProps): string | null {
       return entityRoutes.batch(props.id)
     case 'journalEntry':
       return entityRoutes.journalEntry(props.id)
+    case 'inventoryCounting':
+      return entityRoutes.inventoryCounting(props.id)
   }
 }
 

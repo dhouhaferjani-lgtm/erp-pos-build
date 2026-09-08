@@ -19,7 +19,7 @@ import { FilterTabs } from '../../components/molecules/FilterTabs'
 import { useViewScope } from '../locations/hooks/useViewScope'
 import { StatusBadge, type StatusTone } from '../../components/atoms/StatusBadge/StatusBadge'
 import { EntityLink } from '../../components/molecules/EntityLink'
-import { documentRouteTypeFromSource } from '../../lib/entityRoutes'
+import { movementSourceLinkTypeFromSource } from '../../lib/entityRoutes'
 import { PageHeader } from '../../components/molecules/PageHeader'
 import { DataTable, type DataTableColumn } from '../../components/molecules/DataTable/DataTable'
 import { OffsetPagination } from '../../components/ui/OffsetPagination'
@@ -55,6 +55,8 @@ export interface StockMovement {
   reference: string
   /** Document-linkage morph type (StockMovementReferenceType value) or null. */
   reference_type: string | null
+  /** Raw linkage FK — the counting/document UUID this movement points at, or null. */
+  reference_id: string | null
   source_document_id: string | null
   source_document_type: string | null
   notes: string | null
@@ -357,18 +359,24 @@ export function StockMovementsPage() {
       header: t('products.movementsTab.columns.reference'),
       cellClassName: cn('text-sm max-w-xs truncate', textColors.tertiary),
       render: (movement) => {
-        const documentType = documentRouteTypeFromSource(movement.source_document_type)
+        const sourceLink = movementSourceLinkTypeFromSource(movement.source_document_type)
         return (
           <span title={movement.reference}>
-            {documentType ? (
+            {sourceLink === null && movement.reference}
+            {sourceLink?.kind === 'document' && (
               <EntityLink
                 type="document"
                 id={movement.source_document_id}
-                documentType={documentType}
+                documentType={sourceLink.documentType}
                 label={movement.reference}
               />
-            ) : (
-              movement.reference
+            )}
+            {sourceLink?.kind === 'inventoryCounting' && (
+              <EntityLink
+                type="inventoryCounting"
+                id={movement.source_document_id}
+                label={movement.reference}
+              />
             )}
           </span>
         )

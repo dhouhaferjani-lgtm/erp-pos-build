@@ -22,35 +22,15 @@ import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge'
 import { Button } from '@/components/atoms/Button'
 import { EntityLink } from '@/components/molecules/EntityLink'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
-import { documentRouteTypeFromSource } from '@/lib/entityRoutes'
+import { movementSourceLinkTypeFromSource } from '@/lib/entityRoutes'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { useViewScope } from '../../locations/hooks/useViewScope'
-import type { OffsetPaginationMeta } from '@/types/pagination'
-
-interface StockMovement {
-  id: string
-  product_id: string
-  product_name: string
-  location_id: string
-  location_name: string
-  movement_type: string
-  quantity: string
-  quantity_decimals: number
-  quantity_before: string
-  quantity_after: string
-  reference: string
-  source_document_id: string | null
-  source_document_type: string | null
-  notes: string | null
-  user_id: string
-  user_name: string | null
-  created_at: string
-}
-
-interface StockMovementsResponse {
-  data: StockMovement[]
-  meta?: OffsetPaginationMeta
-}
+// House rule 22 (one surface per concept): this tab reads the SAME
+// `GET /api/v1/stock-movements` rows as StockMovementsPage, so it binds to that
+// page's exported row type instead of keeping a narrower hand-rolled copy — the
+// copy is how `reason` / `reference_type` / `reference_id` reached one surface
+// and not the other. Type-only import: nothing of the page module is bundled.
+import type { StockMovementsResponse } from '../StockMovementsPage'
 
 interface ProductMovementsTabProps {
   productId: string
@@ -252,7 +232,7 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
                 const config = getMovementConfig(movement.movement_type)
                 const Icon = config.icon
                 const isPositive = bccomp(movement.quantity, '0') >= 0
-                const documentType = documentRouteTypeFromSource(movement.source_document_type)
+                const sourceLink = movementSourceLinkTypeFromSource(movement.source_document_type)
 
                 return (
                   <tr key={movement.id} className={tokens.table.rowHover}>
@@ -290,15 +270,21 @@ export function ProductMovementsTab({ productId }: ProductMovementsTabProps) {
                       className={`max-w-xs truncate px-6 py-4 text-sm ${textColors.tertiary}`}
                       title={movement.reference}
                     >
-                      {documentType ? (
+                      {sourceLink === null && movement.reference}
+                      {sourceLink?.kind === 'document' && (
                         <EntityLink
                           type="document"
                           id={movement.source_document_id}
-                          documentType={documentType}
+                          documentType={sourceLink.documentType}
                           label={movement.reference}
                         />
-                      ) : (
-                        movement.reference
+                      )}
+                      {sourceLink?.kind === 'inventoryCounting' && (
+                        <EntityLink
+                          type="inventoryCounting"
+                          id={movement.source_document_id}
+                          label={movement.reference}
+                        />
                       )}
                     </td>
                   </tr>
