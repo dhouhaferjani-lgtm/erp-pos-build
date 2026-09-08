@@ -730,6 +730,8 @@
       "locationSelectionHelper": "Recherchez et sélectionnez les emplacements à inclure dans le comptage",
       "zoneLocationLabel": "Emplacement",
       "zoneLocationHelper": "Les nœuds de rangement appartiennent à un seul emplacement — choisissez d'abord l'emplacement à compter",
+      "productLocationLabel": "Emplacement",
+      "productLocationHelper": "Sélectionnez l'emplacement où compter ces produits",
       "zoneSelectLabel": "Nœuds / Zones",
       "zoneLoadingZones": "Chargement des nœuds de rangement…",
       "noZonesForLocation": "Cet emplacement n'a pas encore de nœuds de rangement. Définissez sa hiérarchie avant de créer le comptage.",

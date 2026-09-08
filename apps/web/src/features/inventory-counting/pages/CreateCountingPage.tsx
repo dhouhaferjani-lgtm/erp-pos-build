@@ -75,8 +75,16 @@ export function CreateCountingPage() {
         return !!formData.scope_type
       case 'selection':
         // Validate selection based on scope type
-        if (formData.scope_type === 'product' || formData.scope_type === 'product_location') {
+        if (formData.scope_type === 'product') {
           return (formData.scope_filters?.product_ids?.length ?? 0) > 0
+        }
+        if (formData.scope_type === 'product_location') {
+          // product_location additionally requires the single location the
+          // products are counted at — the backend 422s without location_id.
+          return (
+            (formData.scope_filters?.product_ids?.length ?? 0) > 0 &&
+            !!formData.scope_filters?.location_id
+          )
         }
         if (formData.scope_type === 'location') {
           return (formData.scope_filters?.location_ids?.length ?? 0) > 0
@@ -212,7 +220,16 @@ export function CreateCountingPage() {
         {currentStep === 'scope' && (
           <ScopeStep
             scopeType={formData.scope_type || 'full_inventory'}
-            onChange={(scope_type) => { setFormData({ ...formData, scope_type }); }}
+            // Reset the filters on scope change so a stale location_id / zone /
+            // category selection from a previous scope never leaks into the payload.
+            // Re-clicking the already-active tile is a no-op, not a scope change —
+            // it must not wipe the operator's in-progress selection.
+            onChange={(scope_type) => {
+              if (scope_type === formData.scope_type) {
+                return
+              }
+              setFormData({ ...formData, scope_type, scope_filters: {} })
+            }}
           />
         )}
 
@@ -361,6 +378,19 @@ function ProductSelectionStep({ scopeType, data, onChange }: ProductSelectionSte
     })
   }
 
+  // product_location scope pins the products to a single location. Mirror the
+  // zone scope's single-location pattern (LocationSelectorMulti maxSelection=1):
+  // the payload carries scope_filters.location_id — clear it on deselection so a
+  // stale id never leaks into the create request the backend 422s without it.
+  const handleProductLocationChange = (locationIds: string[]) => {
+    onChange({
+      scope_filters: {
+        ...data.scope_filters,
+        location_id: locationIds[0],
+      },
+    })
+  }
+
   // Determine title and description based on scope type
   const getTitle = () => {
     switch (scopeType) {
@@ -439,6 +469,19 @@ function ProductSelectionStep({ scopeType, data, onChange }: ProductSelectionSte
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Product + Location Selection: a single location the products are counted at */}
+      {scopeType === 'product_location' && (
+        <div className="mt-6">
+          <LocationSelectorMulti
+            value={data.scope_filters?.location_id ? [data.scope_filters.location_id] : []}
+            onChange={handleProductLocationChange}
+            maxSelection={1}
+            label={t('counting.create.productLocationLabel')}
+            helperText={t('counting.create.productLocationHelper')}
+          />
         </div>
       )}
 

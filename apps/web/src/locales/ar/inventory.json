@@ -135,6 +135,8 @@
       "locationSelectionHelper": "ابحث عن المواقع المراد إدراجها في الجرد واخترها",
       "zoneLocationLabel": "الموقع",
       "zoneLocationHelper": "تنتمي عقد التخزين إلى موقع واحد؛ اختر الموقع المراد عدّه أولًا",
+      "productLocationLabel": "الموقع",
+      "productLocationHelper": "اختر الموقع الذي سيتم عدّ هذه المنتجات فيه",
       "zoneSelectLabel": "العقد / المناطق",
       "zoneLoadingZones": "جار تحميل عقد التخزين…",
       "noZonesForLocation": "لا يحتوي هذا الموقع على عقد تخزين بعد. حدّد تسلسل التخزين قبل إنشاء عملية العدّ.",

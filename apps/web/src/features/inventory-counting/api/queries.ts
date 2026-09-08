@@ -108,8 +108,13 @@ export function useCreateCounting() {
       ])
       toast.success(t('counting.messages.created'))
     },
-    onError: (error: Error) => {
-      toast.error(t('counting.messages.createFailed', { error: error.message }))
+    onError: (error: unknown) => {
+      // Same reason as the activate/finalize handlers below: `error` is the RAW
+      // AxiosError (the response interceptor re-rejects unchanged), so `.message`
+      // is always "Request failed with status code 422". `getErrorMessage()`
+      // reads the envelope, which is where the backend-localised refusal (e.g.
+      // the product_location "location is required" 422) actually lives.
+      toast.error(t('counting.messages.createFailed', { error: getErrorMessage(error) }))
     },
   })
 }
