@@ -121,6 +121,9 @@ final class StockTransferEdgeCasesTest extends TestCase
         self::assertSame(TransferStatus::Completed, $transfer->refresh()->status);
         self::assertTrue($batch->refresh()->is_recalled);
         self::assertSame('4.0000', BatchStock::query()->where('batch_id', $batch->id)->where('location_id', $this->destination->id)->sole()->quantity);
+        $sourceLot = BatchStock::query()->where('batch_id', $batch->id)->where('location_id', $this->source->id)->sole();
+        self::assertSame('6.0000', $sourceLot->quantity);
+        self::assertSame(StockLevel::query()->where('product_id', $this->product->id)->where('location_id', $this->source->id)->sole()->quantity, $sourceLot->quantity);
     }
 
     /** Current behaviour, ticket T1-4: docs/superpowers/tickets/2026-09-09-t1-recalled-in-transit.md. */
@@ -132,6 +135,9 @@ final class StockTransferEdgeCasesTest extends TestCase
         $this->travel(3)->days();
         $this->postJson("/api/v1/stock-transfers/{$transfer->id}/complete")->assertOk();
         self::assertSame('4.0000', BatchStock::query()->where('batch_id', $batch->id)->where('location_id', $this->destination->id)->sole()->quantity);
+        $sourceLot = BatchStock::query()->where('batch_id', $batch->id)->where('location_id', $this->source->id)->sole();
+        self::assertSame('6.0000', $sourceLot->quantity);
+        self::assertSame(StockLevel::query()->where('product_id', $this->product->id)->where('location_id', $this->source->id)->sole()->quantity, $sourceLot->quantity);
         $expiryDate = $batch->refresh()->expiry_date;
         self::assertNotNull($expiryDate);
         self::assertTrue($expiryDate->isPast());
