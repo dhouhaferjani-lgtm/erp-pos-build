@@ -185,7 +185,10 @@ final class ReplenishmentEdgeCasesTest extends TestCase
     {
         $request = $this->capture('2.0000');
         UserCompanyMembership::query()->where('user_id', $this->user->id)->update(['allowed_location_ids' => [$this->destination->id]]);
-        $this->postJson('/api/v1/replenishment-requests/actions/create-transfer', ['source_location_id' => $this->source->id, 'lines' => [['request_id' => $request->id, 'quantity' => '2.0000']]])->assertUnprocessable();
+        $this->postJson('/api/v1/replenishment-requests/actions/create-transfer', ['source_location_id' => $this->source->id, 'lines' => [['request_id' => $request->id, 'quantity' => '2.0000']]])->assertForbidden()
+            ->assertJsonPath('error.code', 'LOCATION_ACCESS_DENIED')
+            ->assertJsonPath('error.details.location_id', $this->source->id)
+            ->assertJsonPath('error.details.user_id', $this->user->id);
         self::assertSame(ReplenishmentStatus::Pending, $request->refresh()->status);
         self::assertNull($request->fulfillment_id);
         self::assertSame(0, StockTransfer::query()->count());
