@@ -15,6 +15,8 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\TransferStatus;
 use App\Modules\Inventory\Domain\Events\StockTransferInitiated;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
+use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Inventory\Domain\StockTransfer;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
@@ -192,6 +194,39 @@ final class ReplenishmentEdgeCasesTest extends TestCase
         self::assertSame(ReplenishmentStatus::Pending, $request->refresh()->status);
         self::assertNull($request->fulfillment_id);
         self::assertSame(0, StockTransfer::query()->count());
+    }
+
+    public function test_foreign_company_source_is_refused_then_own_source_can_fulfill_request(): void
+    {
+        $request = $this->capture('2.0000');
+        $companyB = Company::factory()->for($this->tenant)->create(['currency' => 'TND']);
+        $sourceB = Location::factory()->create(['company_id' => $companyB->id]);
+        $productB = Product::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $companyB->id, 'requires_batch_tracking' => false]);
+        app(StockAdjustmentService::class)->receive($productB->id, $sourceB->id, '10.0000', 'T1-SECOND-COMPANY', $this->user->id, expectedCompanyId: $companyB->id);
+        $movementsBefore = StockMovement::query()->count();
+        $payload = ['source_location_id' => $sourceB->id, 'lines' => [['request_id' => $request->id, 'quantity' => '2.0000']]];
+        // Unrestricted within A: this must exercise the company guard, not a location restriction.
+        $this->postJson('/api/v1/replenishment-requests/actions/create-transfer', $payload)
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonPath('error.errors.source_location_id.0', 'Location does not belong to the active company.');
+        self::assertSame(0, StockTransfer::query()->count());
+        self::assertSame($movementsBefore, StockMovement::query()->count());
+        self::assertSame(ReplenishmentStatus::Pending, $request->refresh()->status);
+        self::assertNull($request->fulfillment_id);
+        self::assertSame('10.0000', StockLevel::query()->where('product_id', $this->product->id)->where('location_id', $this->source->id)->sole()->quantity);
+        // Positive control on the same request, actor and endpoint, changing only the source.
+        $payload['source_location_id'] = $this->source->id;
+        $id = $this->postJson('/api/v1/replenishment-requests/actions/create-transfer', $payload)->assertOk()->json('data.transfer_ids.0');
+        $transfer = StockTransfer::query()->sole();
+        self::assertSame($id, $transfer->id);
+        self::assertSame($this->company->id, $transfer->company_id);
+        self::assertSame($this->source->id, $transfer->source_location_id);
+        self::assertSame($this->destination->id, $transfer->destination_location_id);
+        self::assertSame(ReplenishmentStatus::Fulfilled, $request->refresh()->status);
+        self::assertSame($id, $request->fulfillment_id);
+        self::assertSame('8.0000', StockLevel::query()->where('product_id', $this->product->id)->where('location_id', $this->source->id)->sole()->quantity);
+        self::assertSame('10.0000', StockLevel::query()->where('product_id', $productB->id)->where('location_id', $sourceB->id)->sole()->quantity);
     }
 
     private function capture(string $qty, ?string $note = null, ?string $uuid = null): ReplenishmentRequest
