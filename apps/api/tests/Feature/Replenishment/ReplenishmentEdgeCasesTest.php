@@ -167,6 +167,20 @@ final class ReplenishmentEdgeCasesTest extends TestCase
         self::assertSame(ReplenishmentStatus::Cancelled, $request->refresh()->status);
     }
 
+    /** Current behaviour, ticket T1-14: docs/superpowers/tickets/2026-09-09-t1-cancel-in-progress.md. */
+    public function test_requester_cancel_in_progress_pins_current_behaviour_until_ticket_t1_14(): void
+    {
+        $request = $this->capture('2.0000');
+        $supplier = Partner::factory()->supplier()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->company->id]);
+        $this->postJson('/api/v1/replenishment-requests/actions/create-po', ['supplier_id' => $supplier->id, 'destination_location_id' => $this->source->id, 'lines' => [['request_id' => $request->id, 'quantity' => '2.0000']]])->assertOk();
+        self::assertSame(ReplenishmentStatus::InProgress, $request->refresh()->status);
+        self::assertTrue($request->status->isOpen());
+        $this->user->revokePermissionTo('replenishment.process');
+        $this->postJson("/api/v1/replenishment-requests/{$request->id}/cancel")->assertUnprocessable();
+        self::assertSame(ReplenishmentStatus::InProgress, $request->refresh()->status);
+        self::assertNotNull($request->sourcing_document_id);
+    }
+
     public function test_restricted_processor_cannot_source_transfer_from_hidden_location(): void
     {
         $request = $this->capture('2.0000');

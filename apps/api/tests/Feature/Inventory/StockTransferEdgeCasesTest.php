@@ -110,7 +110,21 @@ final class StockTransferEdgeCasesTest extends TestCase
         self::assertSame(0, BatchStock::query()->where('batch_id', $batch->id)->where('location_id', $this->destination->id)->count());
     }
 
-    public function test_expired_after_dispatch_preserves_allocated_lot_on_completion(): void
+    /** Current behaviour, ticket T1-4: docs/superpowers/tickets/2026-09-09-t1-recalled-in-transit.md. */
+    public function test_recalled_lot_receipt_pins_current_behaviour_until_ticket_t1_4(): void
+    {
+        $batch = $this->batch();
+        $this->seedStock(batchId: (int) $batch->id);
+        $transfer = app(StockTransferService::class)->initiate($this->data(autoAllocate: true));
+        $batch->recall('T1 supplier recall during transit');
+        $this->postJson("/api/v1/stock-transfers/{$transfer->id}/complete")->assertOk();
+        self::assertSame(TransferStatus::Completed, $transfer->refresh()->status);
+        self::assertTrue($batch->refresh()->is_recalled);
+        self::assertSame('4.0000', BatchStock::query()->where('batch_id', $batch->id)->where('location_id', $this->destination->id)->sole()->quantity);
+    }
+
+    /** Current behaviour, ticket T1-4: docs/superpowers/tickets/2026-09-09-t1-recalled-in-transit.md. */
+    public function test_expired_lot_receipt_pins_current_behaviour_until_ticket_t1_4(): void
     {
         $batch = $this->batch();
         $this->seedStock(batchId: (int) $batch->id);
