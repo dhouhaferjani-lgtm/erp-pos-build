@@ -91,6 +91,11 @@ trait PaymentApplicabilityScaffold
         ]);
         $this->user->givePermissionTo([
             'payments.create',
+            // F-W2-14 residual (a): the AP branch of POST /payments now carries
+            // its own gate (SupplierPaymentAuthorizer). These scaffolds settle
+            // supplier invoices, so the fixture actor holds it; a cashier does
+            // NOT, which is the point of the permission.
+            'payments.pay-supplier',
             'payments.view',
             'accounts.view',
             'accounts.manage',

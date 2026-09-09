@@ -16,6 +16,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
@@ -315,7 +316,11 @@ final class SupplierInvoiceApiTest extends TestCase
             'company_id' => $this->company->id,
             'role' => 'accountant',
         ]);
+        // F-W2-14: the supplier-invoice mutation routes require the dedicated
+        // supplier-invoices.manage gate; this poster exists to exercise the finer
+        // invoice-first approval check that layers on top of it.
         $poster->givePermissionTo('documents.update');
+        $poster->givePermissionTo('supplier-invoices.manage');
 
         return $poster;
     }
@@ -336,7 +341,40 @@ final class SupplierInvoiceApiTest extends TestCase
             'role' => 'accountant',
         ]);
 
+        // F-W2-14: reach the supplier-invoice mutation routes via the dedicated
+        // gate; the tests using this helper then probe the finer create-pending /
+        // standalone / approval permissions that layer on top.
         $user->givePermissionTo('documents.update');
+        $user->givePermissionTo('supplier-invoices.manage');
+
+        return $user;
+    }
+
+    /**
+     * Create a user carrying a seeded Spatie role (its full role-granted
+     * permission set), used by the F-W2-14 authorization tests below.
+     */
+    private function createUserWithRole(string $role, string $email): User
+    {
+        $user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => ucfirst($role).' User',
+            'email' => $email,
+            'password' => bcrypt('secret'),
+            'status' => UserStatus::Active,
+        ]);
+        $user->assignRole($role);
+
+        // The Spatie role drives the `can:` authorization we are testing. The
+        // company-membership role is a separate enum (MembershipRole) that has no
+        // 'operator' case, so fall back to Viewer when there is no 1:1 mapping —
+        // it is irrelevant to the permission gate under test.
+        $membershipRole = MembershipRole::tryFrom($role) ?? MembershipRole::Viewer;
+        UserCompanyMembership::create([
+            'user_id' => $user->id,
+            'company_id' => $this->company->id,
+            'role' => $membershipRole->value,
+        ]);
 
         return $user;
     }
@@ -1854,12 +1892,13 @@ final class SupplierInvoiceApiTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
-    // 7. authz: missing documents.update → 403 on write operations
+    // 7. authz: missing supplier-invoices.manage → 403 on write operations
     // -------------------------------------------------------------------------
 
-    public function test_store_requires_documents_update_permission(): void
+    public function test_store_requires_supplier_invoices_manage_permission(): void
     {
-        // Use the 'viewer' role which has documents.view but NOT documents.update.
+        // Use the 'viewer' role which has documents.view but neither
+        // documents.update nor the dedicated supplier-invoices.manage gate.
         $viewer = User::create([
             'tenant_id' => $this->tenant->id,
             'name' => 'Viewer',
@@ -1883,7 +1922,7 @@ final class SupplierInvoiceApiTest extends TestCase
         $response->assertForbidden();
     }
 
-    public function test_post_requires_documents_update_permission(): void
+    public function test_post_requires_supplier_invoices_manage_permission(): void
     {
         [$po, $poLine] = $this->createPoWithReceipt('10.0000', '50.000');
 
@@ -1893,7 +1932,7 @@ final class SupplierInvoiceApiTest extends TestCase
         $storeResponse->assertCreated();
         $siId = $storeResponse->json('data.id');
 
-        // Create a viewer-only user (documents.view only, no documents.update).
+        // Create a viewer-only user (documents.view only, no supplier-invoices.manage).
         $viewer = User::create([
             'tenant_id' => $this->tenant->id,
             'name' => 'Viewer2',
@@ -1913,6 +1952,176 @@ final class SupplierInvoiceApiTest extends TestCase
             ->postJson("/api/v1/supplier-invoices/{$siId}/post");
 
         $postResponse->assertForbidden();
+    }
+
+    // -------------------------------------------------------------------------
+    // 7b. authz F-W2-14 / DEV-QA-027-028: supplier-invoice mutation routes are
+    //     gated on the dedicated supplier-invoices.manage permission, NOT the
+    //     generic documents.update a cashier holds. A cashier (documents.view +
+    //     documents.update) must be refused at the API even though the Purchases
+    //     UI already hides the module.
+    // -------------------------------------------------------------------------
+
+    public function test_cashier_cannot_store_supplier_invoice(): void
+    {
+        $cashier = $this->createUserWithRole('cashier', 'cashier-store@test.example');
+        $this->assertTrue($cashier->can('documents.update'), 'Precondition: cashier holds the generic documents.update.');
+
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '50.000');
+
+        $this->actingAs($cashier, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '5.0000', '50.000'))
+            ->assertForbidden();
+    }
+
+    public function test_cashier_cannot_match_supplier_invoice(): void
+    {
+        $cashier = $this->createUserWithRole('cashier', 'cashier-match@test.example');
+
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '50.000');
+        $siId = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '5.0000', '50.000'))
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->actingAs($cashier, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/match")
+            ->assertForbidden();
+    }
+
+    public function test_cashier_cannot_post_supplier_invoice(): void
+    {
+        $cashier = $this->createUserWithRole('cashier', 'cashier-post@test.example');
+
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '50.000');
+        $siId = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '5.0000', '50.000'))
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->actingAs($cashier, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post")
+            ->assertForbidden();
+    }
+
+    public function test_manager_can_store_and_post_supplier_invoice(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $manager = $this->createUserWithRole('manager', 'manager-si@test.example');
+
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '100.000');
+        app(GeneralLedgerService::class)->createGoodsReceiptGrIrEntry(
+            $this->company->id,
+            Str::uuid()->toString(),
+            '10.0000',
+            '100.000',
+            'TND',
+        );
+
+        $siId = $this->actingAs($manager, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '10.0000', '100.000', '19.00'))
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->actingAs($manager, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post")
+            ->assertOk()
+            ->assertJsonPath('data.status', DocumentStatus::Posted->value);
+    }
+
+    public function test_accountant_can_store_supplier_invoice(): void
+    {
+        $accountant = $this->createUserWithRole('accountant', 'accountant-si@test.example');
+
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '50.000');
+
+        $this->actingAs($accountant, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '5.0000', '50.000'))
+            ->assertCreated();
+    }
+
+    public function test_operator_cannot_post_supplier_invoice_under_secure_default(): void
+    {
+        // SECURE DEFAULT — OWNER RULING 2026-09-07, option (a), BINDING: the
+        // `operator` role does NOT get `supplier-invoices.manage` by default; only
+        // admin/manager/accountant hold it. The ability stays GRANTABLE — see
+        // test_operator_granted_supplier_invoices_manage_directly_can_post() for
+        // the other half of the ruling. Do not "fix" this test by widening the
+        // seeder.
+        $operator = $this->createUserWithRole('operator', 'operator-si@test.example');
+        $this->assertTrue($operator->can('documents.update'), 'Precondition: operator holds the generic documents.update.');
+
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '50.000');
+        $siId = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '5.0000', '50.000'))
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->actingAs($operator, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post")
+            ->assertForbidden();
+    }
+
+    /**
+     * OWNER RULING 2026-09-07 (second half): the secure default is a DEFAULT,
+     * never a hard-coded role check. Whoever manages roles/permissions can grant
+     * `supplier-invoices.manage` to a specific operator — through the same
+     * permissions surface that lists the whole catalogue
+     * (`GET /api/v1/permissions` → `Permission::all()`, and
+     * `PATCH /api/v1/roles/{id}` → `syncPermissions`) — and the API must then
+     * let that user post.
+     *
+     * Pinned end-to-end on the real route (`can:supplier-invoices.manage`
+     * middleware), with the SAME operator role whose default is a deny in the
+     * test above, so a future refactor that swapped the permission check for a
+     * role check would fail here.
+     */
+    public function test_operator_granted_supplier_invoices_manage_directly_can_post(): void
+    {
+        app(ChartOfAccountsService::class)->seedForCompany($this->company);
+        $operator = $this->createUserWithRole('operator', 'operator-granted-si@test.example');
+        $this->assertFalse($operator->can('supplier-invoices.manage'), 'Precondition: the role default is a deny.');
+
+        $operator->givePermissionTo('supplier-invoices.manage');
+        $operator = $operator->fresh();
+        $this->assertNotNull($operator);
+        $this->assertTrue($operator->can('supplier-invoices.manage'));
+
+        [$po, $poLine] = $this->createPoWithReceipt('10.0000', '100.000');
+        app(GeneralLedgerService::class)->createGoodsReceiptGrIrEntry(
+            $this->company->id,
+            Str::uuid()->toString(),
+            '10.0000',
+            '100.000',
+            'TND',
+        );
+
+        $siId = $this->actingAs($operator, 'sanctum')
+            ->postJson('/api/v1/supplier-invoices', $this->siPayload($po, $poLine, '10.0000', '100.000', '19.00'))
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->actingAs($operator, 'sanctum')
+            ->postJson("/api/v1/supplier-invoices/{$siId}/post")
+            ->assertOk()
+            ->assertJsonPath('data.status', DocumentStatus::Posted->value);
+    }
+
+    public function test_seeded_roles_grant_supplier_invoice_manage_only_to_authorized_roles(): void
+    {
+        // Acceptance: after the seeders run, cashier lacks the new permission and
+        // the authorized roles (admin/manager/accountant) hold it.
+        $cashier = $this->createUserWithRole('cashier', 'cashier-perm@test.example');
+        $operator = $this->createUserWithRole('operator', 'operator-perm@test.example');
+        $manager = $this->createUserWithRole('manager', 'manager-perm@test.example');
+        $accountant = $this->createUserWithRole('accountant', 'accountant-perm@test.example');
+        $admin = $this->createUserWithRole('admin', 'admin-perm@test.example');
+
+        $this->assertFalse($cashier->can('supplier-invoices.manage'));
+        $this->assertFalse($operator->can('supplier-invoices.manage'));
+        $this->assertTrue($manager->can('supplier-invoices.manage'));
+        $this->assertTrue($accountant->can('supplier-invoices.manage'));
+        $this->assertTrue($admin->can('supplier-invoices.manage'));
     }
 
     // -------------------------------------------------------------------------

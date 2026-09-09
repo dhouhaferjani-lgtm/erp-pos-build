@@ -42,10 +42,12 @@ final readonly class SupplierInvoiceCommitter implements IngestionCommitterInter
         if ($pendingReceipt) {
             Gate::forUser($actor)->authorize('supplier-invoices.create-pending');
         } else {
-            // Symmetry with POST /supplier-invoices (can:documents.update):
-            // the ingestion commit must not become a privilege bypass for
-            // receipt-mapped supplier-invoice creation.
-            Gate::forUser($actor)->authorize('documents.update');
+            // Symmetry with POST /supplier-invoices (can:supplier-invoices.manage,
+            // F-W2-14): the ingestion commit must not become a privilege bypass for
+            // receipt-mapped supplier-invoice creation — a holder of the generic
+            // document-ingestions.commit must still carry the dedicated
+            // supplier-invoice mutation gate.
+            Gate::forUser($actor)->authorize('supplier-invoices.manage');
         }
 
         Partner::query()

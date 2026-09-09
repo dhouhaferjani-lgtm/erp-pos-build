@@ -17,6 +17,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Support\Traits\PaginatesResults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 
 /**
  * Generic Document Controller for cross-cutting operations.
@@ -229,6 +230,15 @@ class DocumentController extends Controller
                 ],
             ], 404);
         }
+
+        // F-W2-14 residual (a): the route's `can:documents.update` is the coarse
+        // gate; the per-TYPE verdict is DocumentPolicy::revert(), which can only
+        // be taken once the row (and therefore its type) is loaded. Reverting a
+        // confirmed PURCHASE ORDER needs `purchase-orders.confirm`; every other
+        // revertable type keeps `documents.update`. Placed AFTER the 404 so an
+        // id from another company still reads as "not found", never as "you may
+        // not revert THAT" (existing cross-company test).
+        Gate::forUser($request->user())->authorize('revert', $documentModel);
 
         try {
             $reverted = $this->documentPostingService->revert(

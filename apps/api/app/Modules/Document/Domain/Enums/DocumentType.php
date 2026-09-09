@@ -116,6 +116,33 @@ enum DocumentType: string
     }
 
     /**
+     * Whether SETTLING this document type is a supplier-side (AP) act — i.e.
+     * the payment it takes part in is money the company owes to, or has
+     * advanced to, a SUPPLIER rather than money a customer owes the company.
+     *
+     * F-W2-14 residual (a). Deliberately broader than
+     * {@see canTransitionToPaid()}: a purchase order and a purchase RFQ never
+     * become Paid, but a payment allocated to one is still an outbound supplier
+     * settlement and must carry `payments.pay-supplier`. A supplier CREDIT note
+     * moves money the other way (the supplier refunds us) and is listed for the
+     * same reason — the counterparty is a supplier, which is what the permission
+     * is about.
+     *
+     * The AR twin is {@see affectsReceivable()}; the two are not complements —
+     * delivery notes, return notes and expenses are neither.
+     */
+    public function isSupplierSettlement(): bool
+    {
+        return match ($this) {
+            self::SupplierInvoice,
+            self::SupplierCreditNote,
+            self::PurchaseOrder,
+            self::PurchaseQuoteRequest => true,
+            default => false,
+        };
+    }
+
+    /**
      * Whether this document type should transition to Paid status when fully paid.
      * Sales orders / purchase orders retain their workflow status (confirmed)
      * because they still need to go through conversion (to invoice, delivery note, etc.).

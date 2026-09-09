@@ -112,6 +112,85 @@ final class DocumentRevertEndpointTest extends TestCase
         ]);
     }
 
+    /**
+     * F-W2-14 residual (a). `cashier` holds `documents.update` (seeder) and no
+     * `purchase-orders.*` at all, yet the type-agnostic revert route let it
+     * un-confirm a PURCHASE ORDER (measured 200 on the wave-2 browser run,
+     * W2-PERM-6..11). DocumentPolicy::revert() now takes the per-type verdict.
+     */
+    public function test_cashier_cannot_revert_a_confirmed_purchase_order(): void
+    {
+        $cashier = $this->makeUser('cashier-revert@example.com');
+        $cashier->assignRole('cashier');
+        $purchaseOrder = $this->makePurchaseOrder();
+
+        $response = $this->actingAs($cashier, 'sanctum')
+            ->postJson("/api/v1/documents/{$purchaseOrder->id}/revert");
+
+        $response->assertForbidden();
+        $this->assertDatabaseHas('documents', [
+            'id' => $purchaseOrder->id,
+            'status' => DocumentStatus::Confirmed->value,
+        ]);
+    }
+
+    /**
+     * The positive half: a role that governs purchase-order confirmation may
+     * still un-confirm one. Nothing about the manager path changes.
+     */
+    public function test_manager_can_revert_a_confirmed_purchase_order(): void
+    {
+        $manager = $this->makeUser('manager-revert@example.com');
+        $manager->assignRole('manager');
+        $purchaseOrder = $this->makePurchaseOrder();
+
+        $response = $this->actingAs($manager, 'sanctum')
+            ->postJson("/api/v1/documents/{$purchaseOrder->id}/revert");
+
+        $response->assertOk()
+            ->assertJsonPath('data.status', DocumentStatus::Draft->value);
+        $this->assertDatabaseHas('documents', [
+            'id' => $purchaseOrder->id,
+            'status' => DocumentStatus::Draft->value,
+        ]);
+    }
+
+    /**
+     * Grantability (owner ruling 2026-09-07): the secure default is a DEFAULT,
+     * not a hard-coded role check. A user who is granted the governing
+     * permission directly — no `manager` role anywhere — may revert.
+     */
+    public function test_directly_granted_purchase_order_confirm_permission_allows_revert(): void
+    {
+        $operator = $this->makeUser('operator-revert@example.com');
+        $operator->assignRole('operator');
+        $operator->givePermissionTo('purchase-orders.confirm');
+        $purchaseOrder = $this->makePurchaseOrder();
+
+        $response = $this->actingAs($operator, 'sanctum')
+            ->postJson("/api/v1/documents/{$purchaseOrder->id}/revert");
+
+        $response->assertOk()
+            ->assertJsonPath('data.status', DocumentStatus::Draft->value);
+    }
+
+    /**
+     * Non-PO revert behaviour is deliberately untouched: `documents.update`
+     * alone still reverts a confirmed quote (the setUp user holds exactly that
+     * and no role).
+     */
+    public function test_quote_revert_still_needs_only_documents_update(): void
+    {
+        $quote = $this->makeDocument(DocumentType::Quote, DocumentStatus::Confirmed);
+
+        $this->assertFalse($this->user->can('purchase-orders.confirm'));
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/documents/{$quote->id}/revert")
+            ->assertOk()
+            ->assertJsonPath('data.status', DocumentStatus::Draft->value);
+    }
+
     public function test_revert_endpoint_rejects_unsupported_invoice(): void
     {
         $invoice = $this->makeDocument(DocumentType::Invoice, DocumentStatus::Confirmed);
@@ -180,6 +259,37 @@ final class DocumentRevertEndpointTest extends TestCase
         ]);
 
         return $user;
+    }
+
+    /**
+     * A confirmed purchase order with no lines, no receipts and no source
+     * document — the shape `DocumentPostingService::revertPurchaseOrder()`
+     * accepts, so the only thing under test is the authorization verdict.
+     */
+    private function makePurchaseOrder(): Document
+    {
+        $supplier = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Document Revert Supplier '.uniqid(),
+            'type' => PartnerType::Supplier,
+        ]);
+
+        return Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $supplier->id,
+            'type' => DocumentType::PurchaseOrder,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'PO-REV-'.uniqid(),
+            'document_date' => now()->toDateString(),
+            'confirmed_at' => now(),
+            'confirmed_by' => $this->user->id,
+            'currency' => 'TND',
+            'subtotal' => '100.000',
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+        ]);
     }
 
     private function makeDocument(DocumentType $type, DocumentStatus $status): Document

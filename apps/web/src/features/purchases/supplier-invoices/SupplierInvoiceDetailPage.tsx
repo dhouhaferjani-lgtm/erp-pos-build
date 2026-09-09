@@ -86,7 +86,15 @@ export function SupplierInvoiceDetailPage() {
   const [paymentNotes, setPaymentNotes] = useState('')
   const [paymentError, setPaymentError] = useState<string | null>(null)
   const canLinkReceipts = hasPermission('supplier-invoices.link-receipts')
-  const canCreatePayments = hasPermission('payments.create')
+  // F-W2-14 residual (a), both-layer gating (rule 12): paying a SUPPLIER invoice
+  // needs `payments.pay-supplier` on top of `payments.create` — POST /payments
+  // enforces exactly that pair on its AP branch (SupplierPaymentAuthorizer), and
+  // `payments.create` alone is held by cashier/operator so a till can take a
+  // CUSTOMER payment.
+  const canCreatePayments = hasPermission('payments.create') && hasPermission('payments.pay-supplier')
+  // F-W2-14: Post / Rematch mutate the supplier invoice and are gated on the
+  // dedicated supplier-invoices.manage permission (both-layer gating, rule 12).
+  const canManageSupplierInvoice = hasPermission('supplier-invoices.manage')
   const openPurchaseOrdersQuery = useOpenPurchaseOrdersForSupplier(invoice?.partner.id ?? '')
   const supplierReceiptLinesQuery = usePurchaseOrderReceiptLinesForSupplierInvoice(
     (openPurchaseOrdersQuery.data ?? []).map((po) => po.id),
@@ -368,7 +376,7 @@ export function SupplierInvoiceDetailPage() {
 
           {/* Actions */}
           <div className="flex items-center gap-2">
-            {!isPosted && (
+            {!isPosted && canManageSupplierInvoice && (
               <Button
                 type="button"
                 data-testid="btn-post"
@@ -384,7 +392,7 @@ export function SupplierInvoiceDetailPage() {
                 a posted invoice's match_status is the authoritative post-time value
                 the GL was booked against), so on a posted invoice this button was a
                 live control whose only possible outcome was an error toast. */}
-            {!isPosted && (
+            {!isPosted && canManageSupplierInvoice && (
               <Button
                 type="button"
                 data-testid="btn-rematch"

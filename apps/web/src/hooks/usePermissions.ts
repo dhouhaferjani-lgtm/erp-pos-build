@@ -7,6 +7,30 @@ export { UI_ALIAS_PERMISSIONS } from './uiAliasPermissions'
 
 export type Permission = GeneratedPermission | UiAliasPermission
 
+/**
+ * Permissions whose ONLY authority is the server's answer: when the server does
+ * not list one for this user, `hasPermission` returns false instead of falling
+ * back to the static role map.
+ *
+ * Two reasons a permission belongs here, both live for the F-W2-14 entries:
+ *
+ *  1. FAIL CLOSED ON A STALE TENANT (gate r1 finding 2). These are NEW
+ *     permissions. Under database-per-tenant they do not exist in an
+ *     already-provisioned tenant DB until `tenants:seed
+ *     --class=RolesAndPermissionsSeeder` has run there. Without this list a
+ *     manager would match the role map, render the Post / New / Pay controls,
+ *     and collect a 403 from the API.
+ *  2. GRANTABLE PER USER OR PER CUSTOM ROLE (owner ruling 2026-09-07). The
+ *     secure default stands — `operator` does NOT get
+ *     `supplier-invoices.manage` — but an administrator may grant it to a
+ *     specific user or a custom role through the permissions surface
+ *     (`GET /api/v1/permissions` lists the whole catalogue,
+ *     `PATCH /api/v1/roles/{id}` syncs a role's permissions). The role map
+ *     cannot express that, so the server list must be the only authority in
+ *     BOTH directions. `AuthUserData` builds it from
+ *     `User::getAllPermissions()`, which already unions role-derived and
+ *     directly-assigned permissions.
+ */
 const SERVER_AUTHORITATIVE_PERMISSIONS = new Set<Permission>([
   'pricing.view_cost_prices',
   'bank-statements.view',
@@ -15,6 +39,8 @@ const SERVER_AUTHORITATIVE_PERMISSIONS = new Set<Permission>([
   'bank-statements.reopen',
   'support-access.view',
   'support-access.manage',
+  'supplier-invoices.manage',
+  'payments.pay-supplier',
 ])
 
 /**
@@ -29,6 +55,15 @@ const SERVER_AUTHORITATIVE_PERMISSIONS = new Set<Permission>([
 export const MODULE_PERMISSIONS = {
   dashboard: ['dashboard.view'],
   sales: ['sales.view'],
+  // Gate r3 finding N1: this key is SHARED — it is also the sole guard on
+  // seven unrelated purchase-order/quote-request routes
+  // (routes/index.tsx:896,906,916,926,938,958,982, all `moduleKey="purchases"`
+  // with no `permission`). Gate r2 finding 1 widened it to admit
+  // `supplier-invoices.manage` holders so the Sidebar Purchases GROUP would
+  // open for the accountant, but that also let an accountant deep-link those
+  // seven routes and reach a page whose API 403s. Restored to its merge-base
+  // value; the Sidebar group now gates on its own `nav.purchasesGroup` key
+  // below instead of this one.
   purchases: ['purchases.view'],
   'document-ingestions': ['document-ingestions.view'],
   inventory: ['inventory.view'],
@@ -96,6 +131,36 @@ export const MODULE_PERMISSIONS = {
   'deliveries.view': ['deliveries.view'],
   // UI-01 row 2: same shape, for the "stockByLocation" nav item.
   'inventory.view': ['inventory.view'],
+  // Gate r2 finding 1 — NAV-ONLY keys for the Purchases group's children.
+  //
+  // Each is a UNION of the REAL backend permission that child's own API checks
+  // (`can:purchase-orders.view` Document routes.php:275,
+  //  `can:purchase-quote-requests.view` Procurement routes.php:45,
+  //  `can:supplier-invoices.manage` Procurement routes.php:104)
+  // with the legacy `purchases.view` alias, so that widening the GROUP gate
+  // above for `supplier-invoices.manage` holders offers them only the entries
+  // their permissions actually work on, while every role that could already see
+  // these entries — including a role that holds nothing but the alias — keeps
+  // all of them. Purely additive.
+  //
+  // `nav.supplierInvoices` carries no alias arm on purpose: the alias is exactly
+  // what used to hide this entry from the accountant this PR grants.
+  'nav.purchaseOrders': ['purchase-orders.view', 'purchases.view'],
+  'nav.purchaseQuoteRequests': ['purchase-quote-requests.view', 'purchases.view'],
+  'nav.supplierInvoices': ['supplier-invoices.manage'],
+  // Gate r3 finding N1 — NAV-ONLY key for the Sidebar Purchases GROUP itself.
+  //
+  // The group's own gate used to be the SHARED `purchases` module key above,
+  // which is also the sole guard on seven unrelated purchase-order/quote-
+  // request ROUTES. Widening that shared key (gate r2 finding 1) opened the
+  // group for `supplier-invoices.manage` holders but also let them deep-link
+  // those seven routes into a page whose API 403s. This key carries the exact
+  // same union `purchases` briefly did, but ONLY the group nav item reads it
+  // (Sidebar.tsx) — the routes stay gated on the narrow `purchases` key, so an
+  // accountant sees the group (and, inside it, only the children their own
+  // real permission opens per the nav-child keys above) without gaining
+  // reachability to a page the server refuses.
+  'nav.purchasesGroup': ['purchases.view', 'supplier-invoices.manage'],
 } as const satisfies Record<string, readonly Permission[]>
 
 /**

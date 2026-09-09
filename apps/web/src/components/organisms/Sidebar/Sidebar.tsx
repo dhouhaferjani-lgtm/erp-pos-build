@@ -173,16 +173,37 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
     {
       key: 'purchases',
       icon: Truck,
-      permission: 'purchases',
+      // Gate r3 finding N1: the group's own gate is its OWN nav key
+      // (`nav.purchasesGroup`), not the shared `purchases` module key — that
+      // shared key is also the sole guard on seven purchase-order/quote-
+      // request ROUTES (routes/index.tsx), so widening it (gate r2 finding 1)
+      // let an accountant deep-link those routes into a page the API 403s.
+      // `nav.purchasesGroup` admits `supplier-invoices.manage` holders
+      // (accountant, and anyone granted it) as well as the legacy
+      // `purchases.view` alias. Because the group's gate short-circuits its
+      // children, every child an accountant CANNOT use is gated on the real
+      // permission its own API checks, so the widening offers nobody a page
+      // the server will refuse.
+      permission: 'nav.purchasesGroup',
       children: [
-        { key: 'suppliers', href: '/purchases/suppliers', icon: Users },
-        { key: 'quoteRequests', href: '/purchases/quote-requests', icon: FileQuestion },
-        { key: 'purchaseOrders', href: '/purchases/orders', icon: ClipboardList },
-        { key: 'goodsReceipts', href: '/purchases/receipts', icon: Package },
+        // `/purchases/suppliers` is `moduleKey="purchases" permission="partners.view"`
+        // at the route — the group's shared gate is the narrow `purchases` key
+        // (`purchases.view` only), not every role holding this group, so this
+        // child needs its own `permission: 'purchases'` to stay in step with the
+        // route's `moduleKey` (gate r4 finding 4).
+        { key: 'suppliers', href: '/purchases/suppliers', icon: Users, permission: 'purchases' },
+        { key: 'quoteRequests', href: '/purchases/quote-requests', icon: FileQuestion, permission: 'nav.purchaseQuoteRequests' },
+        { key: 'purchaseOrders', href: '/purchases/orders', icon: ClipboardList, permission: 'nav.purchaseOrders' },
+        // The goods-receipt list reads `/purchase-orders` (GoodsReceiptListPage),
+        // so it needs the PO read permission, not a receipt-specific one.
+        { key: 'goodsReceipts', href: '/purchases/receipts', icon: Package, permission: 'nav.purchaseOrders' },
         { key: 'newGoodsReceipt', href: '/purchases/receipts/new', icon: Package2, permission: 'goods-receipt.create-standalone' },
         { key: 'scans', href: '/purchases/scans', icon: FileText, permission: 'document-ingestions' },
-        { key: 'supplierInvoices', href: '/purchases/supplier-invoices', icon: Receipt },
-        { key: 'returnNotes', href: '/inventory/return-notes', icon: RotateCcw },
+        { key: 'supplierInvoices', href: '/purchases/supplier-invoices', icon: Receipt, permission: 'nav.supplierInvoices' },
+        // `/inventory/return-notes` is `moduleKey="inventory"` at the route
+        // (gate r4 finding 4) — needs `inventory.view`, which this group's
+        // members do not all hold.
+        { key: 'returnNotes', href: '/inventory/return-notes', icon: RotateCcw, permission: 'inventory.view' },
       ],
     },
     // Catalog — "what you sell": product definitions, categorisation, pricing.

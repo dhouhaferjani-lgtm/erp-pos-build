@@ -77,3 +77,51 @@ describe('MODULE_PERMISSIONS covers the keys the navigation actually uses', () =
     expect(Object.keys(MODULE_PERMISSIONS)).not.toContain('partners')
   })
 })
+
+/**
+ * Gate r3 finding N1: the Sidebar Purchases GROUP gate must be split from the
+ * SHARED `purchases` module key, because that shared key is also the sole
+ * guard on seven unrelated purchase-order/quote-request ROUTES
+ * (routes/index.tsx:896,906,916,926,938,958,982, all `moduleKey="purchases"`
+ * with no `permission`). An accountant granted `supplier-invoices.manage`
+ * (and `documents.view`, but no `purchases.view`) must see the Sidebar's
+ * "Purchases" group (and, inside it, the Supplier-invoices entry) without
+ * that also opening the seven purchase-order routes whose only guard is the
+ * shared `purchases` key — those still fail closed for them.
+ */
+describe('Purchases group nav key is split from the shared purchases module key (gate r3 N1)', () => {
+  function renderWithPermissions(roles: string[], permissions: string[]) {
+    act(() => {
+      useAuthStore.getState().setUser({ ...baseUser, roles, permissions })
+    })
+
+    return renderHook(() => usePermissions())
+  }
+
+  it('MODULE_PERMISSIONS.purchases is NOT widened — it stays the narrow route guard', () => {
+    expect(MODULE_PERMISSIONS.purchases).toEqual(['purchases.view'])
+  })
+
+  it('nav.purchasesGroup admits supplier-invoices.manage holders', () => {
+    expect(MODULE_PERMISSIONS['nav.purchasesGroup']).toEqual([
+      'purchases.view',
+      'supplier-invoices.manage',
+    ])
+  })
+
+  it('an accountant with supplier-invoices.manage + documents.view (no purchases.view) sees the Purchases nav group and the Supplier-invoices entry, but does NOT get the seven purchase-order routes', () => {
+    const { result } = renderWithPermissions(
+      ['accountant'],
+      ['documents.view', 'supplier-invoices.manage']
+    )
+
+    // Nav: the group itself, and the Supplier-invoices child, both open.
+    expect(result.current.canAccessModule('nav.purchasesGroup')).toBe(true)
+    expect(result.current.canAccessModule('nav.supplierInvoices')).toBe(true)
+
+    // Routes: the seven purchase-order/quote-request routes gate on the
+    // SHARED `purchases` key alone (routes/index.tsx:896,906,916,926,938,958,982)
+    // — this accountant must NOT reach them.
+    expect(result.current.canAccessModule('purchases')).toBe(false)
+  })
+})

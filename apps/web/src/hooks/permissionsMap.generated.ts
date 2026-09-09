@@ -1,6 +1,6 @@
 // This file is generated. Do not edit it by hand.
 // Source: apps/api/database/seeders/RolesAndPermissionsSeeder.php
-// Source hash: sha256:5f14a08684f121ef803e2e76f9a0a59dd0b74c7ec5f91bb2c9daf0d593cc2ea2
+// Source hash: sha256:a00c4e9ddf1ba329a62305e233c386bda4120d120c4b0fc9b018f9502ed53f6b
 
 export const PERMISSIONS = {
   'accounts.manage': ['accountant', 'admin', 'manager'],
@@ -153,6 +153,7 @@ export const PERMISSIONS = {
   'partners.view': ['accountant', 'admin', 'cashier', 'manager', 'operator', 'technician', 'viewer'],
   'payments.allocate': ['accountant', 'admin', 'manager'],
   'payments.create': ['accountant', 'admin', 'cashier', 'manager', 'operator'],
+  'payments.pay-supplier': ['accountant', 'admin', 'manager'],
   'payments.refund': ['accountant', 'admin', 'manager'],
   'payments.reverse': ['admin'],
   'payments.view': ['accountant', 'admin', 'cashier', 'manager', 'operator', 'viewer'],
@@ -254,6 +255,7 @@ export const PERMISSIONS = {
   'supplier-invoices.approve-invoice-first': ['accountant', 'admin', 'manager'],
   'supplier-invoices.create-pending': ['accountant', 'admin', 'manager'],
   'supplier-invoices.link-receipts': ['accountant', 'admin', 'manager'],
+  'supplier-invoices.manage': ['accountant', 'admin', 'manager'],
   'support-access.manage': ['admin'],
   'support-access.view': ['admin'],
   'taxation.tax_configurations.manage': ['accountant', 'admin'],

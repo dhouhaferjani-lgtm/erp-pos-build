@@ -27,6 +27,7 @@ use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
 use App\Modules\Treasury\Application\Services\OutboundInstrumentIssuer;
 use App\Modules\Treasury\Application\Services\OutboundRepositoryValidator;
 use App\Modules\Treasury\Application\Services\PaymentAllocationService;
+use App\Modules\Treasury\Application\Services\SupplierPaymentAuthorizer;
 use App\Modules\Treasury\Domain\Enums\AllocationMethod;
 use App\Modules\Treasury\Domain\Enums\AllocationTreatment;
 use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
@@ -75,11 +76,60 @@ class PaymentController extends Controller
         private readonly DocumentAllocationStateGuard $allocationStateGuard,
         private readonly DocumentAllocationClassifier $allocationClassifier,
         private readonly DocumentStatusService $documentStatus,
+        private readonly SupplierPaymentAuthorizer $supplierPaymentAuthorizer,
     ) {}
 
     private function scale(): int
     {
         return $this->scaleResolver->getScale();
+    }
+
+    /**
+     * The documents a PERSISTED payment (or multi-payment batch) is allocated
+     * to — the replay-path input for {@see SupplierPaymentAuthorizer}
+     * (gate r2 finding 4). `findPaymentByIdempotencyKey()` and
+     * `findMultiPaymentBatchByIdempotencyKey()` both eager-load `allocations`.
+     *
+     * @param  array<int, Payment>  $payments
+     * @return list<string>
+     */
+    private function allocatedDocumentIdsOf(array $payments): array
+    {
+        $ids = [];
+        foreach ($payments as $payment) {
+            foreach ($payment->allocations as $allocation) {
+                $ids[] = $allocation->document_id;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * Pull the document ids out of a validated allocation array.
+     *
+     * F-W2-14 residual (a) helper for {@see SupplierPaymentAuthorizer}. The
+     * shape is already validated (`allocations.*.document_id` /
+     * `excess_allocations.*.document_id` are `uuid` + ScopedExists), so this
+     * only narrows the static type; anything unexpected is skipped rather than
+     * cast, because a silently coerced id would weaken the gate.
+     *
+     * @return list<string>
+     */
+    private function allocationDocumentIds(mixed $allocations): array
+    {
+        if (! is_array($allocations)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($allocations as $allocation) {
+            if (is_array($allocation) && isset($allocation['document_id']) && is_string($allocation['document_id'])) {
+                $ids[] = $allocation['document_id'];
+            }
+        }
+
+        return $ids;
     }
 
     /**
@@ -361,6 +411,20 @@ class PaymentController extends Controller
         if ($idempotencyKey !== null) {
             $existingPayment = $this->findPaymentByIdempotencyKey($tenantId, $companyId, $idempotencyKey);
             if ($existingPayment instanceof Payment) {
+                // Gate r2 finding 4: the replay is a READ, but it hands back a
+                // full supplier-payment payload, so it must not become the one
+                // path around the gate the AP branch just gained. Re-taken
+                // against the PERSISTED payment (its partner and its allocated
+                // documents) rather than the request body, because a replay
+                // carries nothing but the key.
+                $this->supplierPaymentAuthorizer->assertMayPay(
+                    $user,
+                    $tenantId,
+                    $companyId,
+                    $existingPayment->partner_id,
+                    $this->allocatedDocumentIdsOf([$existingPayment]),
+                );
+
                 return response()->json([
                     'data' => $this->formatPayment($existingPayment),
                 ], 200);
@@ -419,6 +483,20 @@ class PaymentController extends Controller
             'allocations.*.amount.regex' => 'Allocation amount must have at most 3 decimal places.',
             'withholding_rate.regex' => 'Withholding rate must have at most 4 decimal places.',
         ]);
+
+        // F-W2-14 residual (a): `payments.create` (which a cashier holds so a
+        // till can take a customer payment) is NOT authority to send money to a
+        // supplier. Taken here — after validation proved the ids are real and
+        // tenant/company-scoped, before the first write — so a refusal leaves no
+        // payment row and no repository movement. Customer-side payments are
+        // untouched. See SupplierPaymentAuthorizer.
+        $this->supplierPaymentAuthorizer->assertMayPay(
+            $user,
+            $tenantId,
+            $companyId,
+            isset($validated['partner_id']) ? (string) $validated['partner_id'] : null,
+            $this->allocationDocumentIds($validated['allocations'] ?? null),
+        );
 
         $paymentMethodId = (string) $validated['payment_method_id'];
         $paymentMethod = PaymentMethod::query()
@@ -1430,6 +1508,17 @@ class PaymentController extends Controller
         if ($idempotencyKey !== null) {
             $existingBatch = $this->findMultiPaymentBatchByIdempotencyKey($tenantId, $companyId, $idempotencyKey);
             if ($existingBatch !== null) {
+                // Gate r2 finding 4 — same gate as store()'s replay arm, over
+                // every row of the batch (they share a partner; the union of the
+                // allocated documents is what decides supplier-side).
+                $this->supplierPaymentAuthorizer->assertMayPay(
+                    $user,
+                    $tenantId,
+                    $companyId,
+                    isset($existingBatch[0]) ? $existingBatch[0]->partner_id : null,
+                    $this->allocatedDocumentIdsOf($existingBatch),
+                );
+
                 return $this->formatMultiPaymentReplay($existingBatch, $request);
             }
         }
@@ -1476,6 +1565,21 @@ class PaymentController extends Controller
             'payments.*.amount.regex' => 'Payment amount must have at most 3 decimal places.',
             'excess_allocations.*.amount.regex' => 'Excess allocation amount must have at most 3 decimal places.',
         ]);
+
+        // F-W2-14 residual (a) — same gate as store(), on the multi-tender arm.
+        // A multi-payment names ONE settled `document_id` plus optional excess
+        // allocations; any of them being a supplier settlement makes the whole
+        // batch supplier-side.
+        $this->supplierPaymentAuthorizer->assertMayPay(
+            $user,
+            $tenantId,
+            $companyId,
+            isset($validated['partner_id']) ? (string) $validated['partner_id'] : null,
+            array_merge(
+                isset($validated['document_id']) ? [(string) $validated['document_id']] : [],
+                $this->allocationDocumentIds($validated['excess_allocations'] ?? null),
+            ),
+        );
 
         $methodIds = [];
         foreach ($validated['payments'] as $paymentLine) {

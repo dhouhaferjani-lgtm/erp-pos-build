@@ -413,6 +413,101 @@ final class DocumentAttachmentApiContractTest extends TestCase
     // -----------------------------------------------------------------------
 
     /**
+     * Gate r1 finding 5 (F-W2-14 residual attachment surface).
+     *
+     * `POST|DELETE documents/{document}/attachments` carry the type-agnostic
+     * `can:documents.update`, which `cashier` holds — so a cashier could attach
+     * to, and delete attachments from, a SUPPLIER INVOICE, whose attachment IS
+     * the legal supporting piece of an AP document. `DocumentPolicy::attach()`
+     * now takes the per-TYPE verdict.
+     */
+    public function test_cashier_cannot_attach_to_a_supplier_invoice(): void
+    {
+        Storage::fake('s3');
+        Queue::fake();
+
+        [, $document] = $this->seedUserWithDocument(DocumentType::SupplierInvoice);
+        $cashier = $this->makeRoleUser($document->tenant_id, $document->company_id, 'cashier');
+        $this->assertTrue($cashier->can('documents.update'), 'Precondition: cashier holds the coarse gate.');
+
+        $this->actingAs($cashier, 'sanctum')
+            ->postJson(
+                "/api/v1/documents/{$document->id}/attachments",
+                ['file' => UploadedFile::fake()->create('source-invoice.pdf', 50, 'application/pdf')],
+            )
+            ->assertForbidden();
+    }
+
+    /**
+     * The other half of finding 5: every non-supplier-invoice type keeps the
+     * pre-existing `documents.update` behaviour, so a cashier still attaches to
+     * a customer invoice.
+     */
+    public function test_cashier_can_still_attach_to_a_customer_invoice(): void
+    {
+        Storage::fake('s3');
+        Queue::fake();
+
+        [, $document] = $this->seedUserWithDocument(DocumentType::Invoice);
+        $cashier = $this->makeRoleUser($document->tenant_id, $document->company_id, 'cashier');
+
+        $this->actingAs($cashier, 'sanctum')
+            ->postJson(
+                "/api/v1/documents/{$document->id}/attachments",
+                ['file' => UploadedFile::fake()->create('customer-invoice.pdf', 50, 'application/pdf')],
+            )
+            ->assertCreated();
+    }
+
+    /**
+     * Gate r2 finding 5: `documents.id` is a PostgreSQL `uuid` column and the
+     * Media routes carry no `whereUuid('document')`, so a malformed id used to
+     * reach the query and raise SQLSTATE 22P02 -> 500 on PG. It is a 404 now.
+     */
+    public function test_malformed_document_id_is_a_404_not_a_database_error(): void
+    {
+        Storage::fake('s3');
+        Queue::fake();
+
+        [$user] = $this->seedUserWithDocument(DocumentType::Invoice);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/documents/not-a-uuid/attachments')
+            ->assertNotFound();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson(
+                '/api/v1/documents/not-a-uuid/attachments',
+                ['file' => UploadedFile::fake()->create('x.pdf', 10, 'application/pdf')],
+            )
+            ->assertNotFound();
+    }
+
+    private function makeRoleUser(string $tenantId, string $companyId, string $role): User
+    {
+        app(PermissionRegistrar::class)->setPermissionsTeamId($tenantId);
+
+        $user = User::create([
+            'tenant_id' => $tenantId,
+            'name' => 'Role User '.$role,
+            'email' => 'user-'.$role.'-'.Str::random(6).'@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+
+        $user->assignRole($role);
+
+        UserCompanyMembership::create([
+            'user_id' => $user->id,
+            'company_id' => $companyId,
+            'role' => 'admin',
+            'status' => MembershipStatus::Active,
+        ]);
+
+        return $user;
+    }
+
+    /**
      * @test
      *
      * Stage E: uploading a PDF to a supplier_invoice Document with role=SOURCE_DOCUMENT

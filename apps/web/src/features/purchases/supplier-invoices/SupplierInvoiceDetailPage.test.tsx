@@ -302,6 +302,21 @@ describe('SupplierInvoiceDetailPage — Post action', () => {
     })
   })
 
+  // F-W2-14 / rule 12 (both-layer gating): the Post and Re-match mutations are
+  // gated on supplier-invoices.manage on the FE too, so a user without it (e.g. a
+  // cashier who only holds documents.update) never sees the controls.
+  it('Post and Re-match buttons are hidden without supplier-invoices.manage', async () => {
+    mockHasPermission.mockImplementation((permission: string) => permission !== 'supplier-invoices.manage')
+    mockApiGet.mockResolvedValue(makeDetail({ status: 'draft', match_status: 'matched' }))
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    // Wait for the loaded page (the invoice number heading renders regardless of perms).
+    await screen.findByText('SI-2026-001')
+
+    expect(screen.queryByTestId('btn-post')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-rematch')).not.toBeInTheDocument()
+  })
+
   it('Re-match button is not shown when status=posted', async () => {
     mockApiGet.mockResolvedValue(
       makeDetail({ status: 'posted', match_status: 'matched', posted_at: '2026-06-01T10:00:00Z' })
@@ -546,6 +561,26 @@ describe('SupplierInvoiceDetailPage — Record Payment', () => {
 
   it('hides supplier payment actions without payments.create permission', async () => {
     mockHasPermission.mockImplementation((permission: string) => permission !== 'payments.create')
+    mockApiGet.mockResolvedValue(
+      makeDetail({ status: 'posted', match_status: 'matched', posted_at: '2026-06-01T10:00:00Z' })
+    )
+
+    renderWithProviders(<SupplierInvoiceDetailPage />)
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('btn-record-payment')).not.toBeInTheDocument()
+    })
+    expect(screen.queryByRole('link', {
+      name: 'purchases:supplierInvoices.actions.payInTreasury',
+    })).not.toBeInTheDocument()
+  })
+
+  // F-W2-14 residual (a): POST /payments requires `payments.pay-supplier` on its
+  // supplier branch (SupplierPaymentAuthorizer). `payments.create` alone is held
+  // by cashier/operator so a till can take a CUSTOMER payment — it is not
+  // authority to send money to a supplier, so the FE must not offer the control.
+  it('hides supplier payment actions without payments.pay-supplier permission', async () => {
+    mockHasPermission.mockImplementation((permission: string) => permission !== 'payments.pay-supplier')
     mockApiGet.mockResolvedValue(
       makeDetail({ status: 'posted', match_status: 'matched', posted_at: '2026-06-01T10:00:00Z' })
     )
