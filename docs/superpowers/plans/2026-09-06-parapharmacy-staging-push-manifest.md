@@ -20,6 +20,8 @@ distinct Dokploy application with its own id and `autoDeploy=false`
 (`docs/factory/WORKFLOW.md:206-208`). This matters for exactly one thing: **how a new env var
 reaches a container** (§1 row E). Treat both paths as live until §6 U-1 is closed.
 
+> **RESOLVED 2026-09-09 — `separate_applications`.** Read-only Dokploy inspection: nine Dokploy applications (API `x5wfthp8-7cVbiUfI6Hq7`, worker `KKYDsAvk4UpYfJXVmsDj2`, scheduler `HSXqHvmo_vq7NAYIjrE3T`, web `mY6P_PHb4pw-2LdG1Y7Ml`, …) and zero compose services. Env vars reach a container ONLY through each application's own Dokploy `env` field followed by a redeploy of that application. Full facts, IDs and the `SYNC_PERMISSIONS_ON_BOOT=true` finding: [`2026-09-09-parapharmacy-staging-topology-U1-resolution.md`](2026-09-09-parapharmacy-staging-topology-U1-resolution.md). The compose path below is retained for history only.
+
 ---
 
 ## 1. Facts table — mechanisms, triggers, evidence, pitfalls
@@ -311,7 +313,7 @@ Then supply exactly these per-slice variables:
 
 | id | Claim | Why unverified | What would verify it |
 |---|---|---|---|
-| U-1 | Staging deploys from `docker-compose.staging.yml` (compose stack) vs. separate Dokploy applications | The repo holds the compose file, but `WORKFLOW.md:206-208` describes an independent web *application* with its own id and `autoDeploy=false` — application-shaped, not compose-shaped | Dokploy `project-all` / `application-one` on the staging project; read the app type and its Environment tab |
+| U-1 **(RESOLVED 2026-09-09: separate Dokploy applications — see `2026-09-09-parapharmacy-staging-topology-U1-resolution.md`)** | Staging deploys from `docker-compose.staging.yml` (compose stack) vs. separate Dokploy applications | The repo holds the compose file, but `WORKFLOW.md:206-208` describes an independent web *application* with its own id and `autoDeploy=false` — application-shaped, not compose-shaped | Dokploy `project-all` / `application-one` on the staging project; read the app type and its Environment tab |
 | U-2 | `TENANCY_DB_PER_TENANT=true` is set on staging | **Absent** from `docker-compose.staging.yml`; `config/tenancy_resolver.php:30` defaults to `false`, and with it false the boot `tenants:migrate-rolling` is a documented no-op (`RollingTenantMigrationCommand.php:57-62`) | In the staging API container: `php artisan tinker --execute="var_dump(config('tenancy_resolver.db_per_tenant'));"` |
 | U-3 | Staging API Dokploy application id `x5wfthp8-7cVbiUfI6Hq7` | Appears only inside a sibling 2026-09-06 plan file; no runbook or handoff records it | Dokploy `project-all`; then pin it in `docs/factory/WORKFLOW.md` beside the web id |
 | ~~U-4~~ | ~~A `/build-fingerprint.json` endpoint carrying `build_sha`~~ | **CLOSED 2026-09-07 — implemented.** Emitter `apps/web/tools/write-build-fingerprint.mjs`, tests `apps/web/tools/__tests__/write-build-fingerprint.test.mjs`, wired into `pnpm build` (`apps/web/package.json:8`), sha passed via `ARG BUILD_SHA` (`apps/web/Dockerfile:63-74` + the manifest COPY at `:53`), served `no-store` at `location = /build-fingerprint.json` (`apps/web/docker/entrypoint.sh:171-186`) | Done — the §3 fingerprint block replaces this row. The remaining risk is whether the sha actually arrives: see U-9 |
