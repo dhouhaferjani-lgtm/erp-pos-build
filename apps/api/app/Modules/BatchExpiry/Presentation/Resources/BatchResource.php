@@ -6,6 +6,7 @@ namespace App\Modules\BatchExpiry\Presentation\Resources;
 
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Domain\QuantityScale;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -36,8 +37,8 @@ class BatchResource extends JsonResource
             'notes' => $this->notes,
             'expiry_status' => strtoupper($this->expiryStatus()->value),
             'can_be_sold' => $this->canBeSold(),
-            'total_quantity' => $this->total_quantity ?? 0,
-            'available_quantity' => $this->available_quantity ?? 0,
+            'total_quantity' => $this->scopedTotalQuantity(),
+            'available_quantity' => $this->scopedAvailableQuantity(),
             'product' => $this->whenLoaded('product', function () {
                 /** @var Product $product */
                 $product = $this->product;
@@ -56,11 +57,35 @@ class BatchResource extends JsonResource
                 'location_id' => $stock->location_id,
                 'quantity' => $stock->quantity,
                 'reserved_quantity' => $stock->reserved_quantity,
-                'available_quantity' => $stock->available_quantity,
+                'available_quantity' => bcsub($stock->quantity, $stock->reserved_quantity, QuantityScale::SCALE),
             ])
             ),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];
+    }
+
+    private function scopedTotalQuantity(): string
+    {
+        $total = bcadd('0', '0', QuantityScale::SCALE);
+        if ($this->relationLoaded('batchStock')) {
+            foreach ($this->batchStock as $stock) {
+                $total = bcadd($total, $stock->quantity, QuantityScale::SCALE);
+            }
+        }
+
+        return $total;
+    }
+
+    private function scopedAvailableQuantity(): string
+    {
+        $total = bcadd('0', '0', QuantityScale::SCALE);
+        if ($this->relationLoaded('batchStock')) {
+            foreach ($this->batchStock as $stock) {
+                $total = bcadd($total, bcsub($stock->quantity, $stock->reserved_quantity, QuantityScale::SCALE), QuantityScale::SCALE);
+            }
+        }
+
+        return $total;
     }
 }

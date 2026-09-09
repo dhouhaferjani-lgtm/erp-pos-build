@@ -834,12 +834,13 @@ class FEFOInventoryService
     /**
      * Get products expiring within threshold.
      *
+     * @param  string|list<string>|null  $locationId
      * @return Collection<int, Batch>
      */
     public function getExpiringProducts(
         string $companyId,
         int $daysThreshold = 30,
-        ?string $locationId = null
+        string|array|null $locationId = null
     ): Collection {
         $query = Batch::query()
             ->where('company_id', $companyId)
@@ -851,11 +852,15 @@ class FEFOInventoryService
             ])
             ->whereHas('batchStock', function (Builder $q) use ($locationId): void {
                 $q->whereRaw('available_quantity > 0');
-                if ($locationId) {
-                    $q->whereRaw('location_id = ?', [$locationId]);
+                if ($locationId !== null) {
+                    $q->whereIn('location_id', is_array($locationId) ? $locationId : [$locationId]);
                 }
             })
-            ->with(['product.unitOfMeasure', 'batchStock'])
+            ->with(['product.unitOfMeasure', 'batchStock' => function (Relation $stock) use ($locationId): void {
+                if ($locationId !== null) {
+                    $stock->whereIn('location_id', is_array($locationId) ? $locationId : [$locationId]);
+                }
+            }])
             ->orderBy('expiry_date', 'asc');
 
         return $query->get();
@@ -914,12 +919,14 @@ class FEFOInventoryService
     /**
      * Get batch stock allocation for a specific batch.
      *
+     * @param  list<string>|null  $locationIds
      * @return Collection<int, BatchStock>
      */
-    public function getBatchStockByLocation(string $batchId): Collection
+    public function getBatchStockByLocation(string $batchId, ?array $locationIds = null): Collection
     {
         return BatchStock::query()
             ->where('batch_id', $batchId)
+            ->when($locationIds !== null, fn (Builder $stock) => $stock->whereIn('location_id', $locationIds ?? []))
             ->with('location')
             ->get();
     }

@@ -1,0 +1,222 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\BatchExpiry;
+
+use App\Enums\Vertical;
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\MembershipRole;
+use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Identity\Domain\Enums\UserStatus;
+use App\Modules\Identity\Domain\User;
+use App\Modules\Product\Domain\Product;
+use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
+use App\Modules\Tenant\Domain\Enums\TenantStatus;
+use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Spatie\Permission\PermissionRegistrar;
+use Tests\TestCase;
+
+abstract class BatchPermissionFixture extends TestCase
+{
+    use RefreshDatabase;
+
+    protected Tenant $tenant;
+
+    protected Company $company;
+
+    protected User $user;
+
+    protected Location $location;
+
+    protected Product $product;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->tenant = Tenant::create([
+            'name' => 'Expired Route Test Tenant',
+            'slug' => 'expired-route-test',
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+            'vertical' => Vertical::Pharmacy,
+        ]);
+
+        $this->company = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Expired Route Test Company',
+            'legal_name' => 'Expired Route Test Company LLC',
+            'tax_id' => 'TAXEXPIREDROUTE',
+            'country_code' => 'FR',
+            'locale' => 'fr_FR',
+            'timezone' => 'Europe/Paris',
+            'currency' => 'EUR',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        $this->seed(RolesAndPermissionsSeeder::class);
+
+        $this->user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Expired Route Test User',
+            'email' => 'user@expired-route-test.test',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+        $this->user->assignRole('admin');
+
+        UserCompanyMembership::create([
+            'user_id' => $this->user->id,
+            'company_id' => $this->company->id,
+            'role' => MembershipRole::Admin,
+        ]);
+
+        app(CompanyContext::class)->setCompanyId($this->company->id);
+
+        $this->location = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+    }
+
+    protected function restrict(?array $locations): void
+    {
+        UserCompanyMembership::where('user_id', $this->user->id)->where('company_id', $this->company->id)
+            ->update(['allowed_location_ids' => $locations]);
+        $this->user->unsetRelations();
+        config(['lot_action_permissions.enforce' => true]);
+        $this->actingAs($this->user, 'sanctum');
+    }
+
+    protected function lot(): Batch
+    {
+        return Batch::create([
+            'tenant_id' => $this->tenant->id, 'company_id' => $this->company->id,
+            'product_id' => $this->product->id, 'uuid' => (string) Str::uuid(),
+            'batch_number' => 'LOT-WLOTA1A', 'expiry_date' => now()->addDays(5), 'is_active' => true,
+        ]);
+    }
+
+    protected function stockAt(Batch $batch, Location $location, string $quantity, string $reserved = '0.0000'): void
+    {
+        BatchStock::create(['tenant_id' => $this->tenant->id, 'batch_id' => $batch->id,
+            'location_id' => $location->id, 'quantity' => $quantity, 'reserved_quantity' => $reserved]);
+    }
+}
+
+final class BatchReadLocationScopeTest extends BatchPermissionFixture
+{
+    public function test_detail_excludes_other_branch_stock(): void
+    {
+        $batch = $this->lot();
+        $other = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->stockAt($batch, $other, '91.0000');
+        $this->stockAt($batch, $this->location, '2.1234', '0.1000');
+        $this->restrict([$this->location->id]);
+        $response = $this->getJson('/api/v1/batches/'.$batch->uuid)->assertOk();
+        self::assertNotContains($other->id, array_column($response->json('data.batch_stock'), 'location_id'));
+        $response->assertJsonPath('data.total_quantity', '2.1234')->assertJsonPath('data.available_quantity', '2.0234');
+    }
+
+    public function test_every_read_filters_other_branch_and_empty_scope(): void
+    {
+        $batch = $this->lot();
+        $this->stockAt($batch, $this->location, '3.0000');
+        $this->restrict([]);
+        foreach (['/batches', '/batches/expiring', '/batches/expired', '/products/'.$this->product->id.'/batch-stock'] as $path) {
+            $this->getJson('/api/v1'.$path)->assertOk()->assertJsonPath('data', []);
+        }
+        $this->getJson('/api/v1/batches/'.$batch->uuid)->assertNotFound();
+        $this->getJson('/api/v1/batches/'.$batch->uuid.'/stock')->assertNotFound();
+        $this->getJson('/api/v1/batches/'.$batch->uuid.'/traceability')->assertNotFound();
+    }
+
+    public function test_zero_stock_company_lot_is_visible_only_to_unrestricted_actor(): void
+    {
+        $batch = $this->lot();
+        $this->restrict(null);
+        $this->getJson('/api/v1/batches/'.$batch->uuid)->assertOk();
+        $this->restrict([$this->location->id]);
+        $this->getJson('/api/v1/batches/'.$batch->uuid)->assertNotFound();
+    }
+
+    public function test_depleted_lot_is_visible_only_through_attributable_history(): void
+    {
+        $batch = $this->lot();
+        $document = Document::factory()->create([
+            'tenant_id' => $this->tenant->id, 'company_id' => $this->company->id, 'location_id' => $this->location->id,
+        ]);
+        DocumentLine::create([
+            'document_id' => $document->id, 'product_id' => $this->product->id, 'batch_id' => $batch->id,
+            'line_number' => 1, 'description' => 'History at selected location', 'quantity' => '1.0000',
+            'unit_price' => '10.000', 'line_total' => '10.000', 'location_id' => null,
+        ]);
+        $this->restrict([$this->location->id]);
+        $this->getJson('/api/v1/batches/'.$batch->uuid)->assertOk()->assertJsonPath('data.total_quantity', '0.0000');
+        $other = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->restrict([$other->id]);
+        $this->getJson('/api/v1/batches/'.$batch->uuid)->assertNotFound();
+    }
+
+    public function test_second_company_selected_second_location_and_duplicate_create_are_isolated(): void
+    {
+        $this->restrict(null);
+        $second = $this->postJson('/api/v1/companies', ['name' => 'Company B', 'legal_name' => 'Company B SARL',
+            'country_code' => 'FR', 'currency' => 'EUR', 'locale' => 'fr_FR', 'timezone' => 'Europe/Paris'])->assertCreated()->json('data.id');
+        $locations = [];
+        foreach ([$this->company->id, $second] as $companyId) {
+            $this->withHeader('X-Company-ID', $companyId);
+            foreach ([1, 2] as $number) {
+                $locations[$companyId][] = $this->postJson('/api/v1/locations', ['name' => 'Shop '.$number,
+                    'type' => 'shop', 'pos_enabled' => $number === 2])->assertCreated()->json('data.id');
+            }
+        }
+        $productB = Product::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $second, 'sku' => $this->product->sku]);
+        $payload = ['product_id' => $productB->id, 'batch_number' => 'LOT-WLOTA1A', 'expiry_date' => now()->addDays(5)->toDateString()];
+        $foreign = $this->postJson('/api/v1/batches', $payload)->assertCreated()->json('data.uuid');
+        $this->withHeader('X-Company-ID', $this->company->id);
+        $payload['product_id'] = $this->product->id;
+        $uuid = $this->postJson('/api/v1/batches', $payload)->assertCreated()->json('data.uuid');
+        $batch = Batch::where('uuid', $uuid)->firstOrFail();
+        $this->stockAt($batch, Location::findOrFail($locations[$this->company->id][0]), '99.0000');
+        $this->stockAt($batch, Location::findOrFail($locations[$this->company->id][1]), '3.1234');
+        $traceNumbers = [];
+        foreach ([[$this->company->id, $batch, $this->product->id, 0], [$this->company->id, $batch, $this->product->id, 1], [$second, Batch::where('uuid', $foreign)->firstOrFail(), $productB->id, 1]] as [$traceCompanyId, $traceBatch, $traceProductId, $index]) {
+            $document = Document::factory()->create([
+                'tenant_id' => $this->tenant->id, 'company_id' => $traceCompanyId,
+                'location_id' => $locations[$traceCompanyId][$index],
+            ]);
+            DocumentLine::create([
+                'document_id' => $document->id, 'product_id' => $traceProductId, 'batch_id' => $traceBatch->id,
+                'line_number' => 1, 'description' => 'Selected location trace', 'quantity' => '1.0000',
+                'unit_price' => '10.000', 'line_total' => '10.000', 'location_id' => $locations[$traceCompanyId][$index],
+            ]);
+            $traceNumbers[$traceCompanyId][$index] = $document->document_number;
+        }
+        $this->restrict([$locations[$this->company->id][1]]);
+        $this->getJson('/api/v1/batches/'.$uuid)->assertOk()->assertJsonPath('data.total_quantity', '3.1234')
+            ->assertJsonPath('data.batch_stock.0.location_id', $locations[$this->company->id][1]);
+        $this->getJson('/api/v1/batches/'.$foreign)->assertNotFound();
+        $trace = $this->getJson('/api/v1/batches/'.$uuid.'/traceability')->assertOk()->json('data.document_sales');
+        self::assertSame([$traceNumbers[$this->company->id][1]], array_column($trace, 'document_number'));
+        $snapshot = static fn (): array => array_map(static fn (string $table): array => DB::table($table)->orderBy('id')->get()->map(static fn ($row): array => (array) $row)->all(), ['product_batches', 'inventory_batch_stock', 'stock_reservations', 'document_lines', 'pos_receipt_line_batch_allocations', 'journal_entries', 'journal_lines']);
+        $before = $snapshot();
+        $this->postJson('/api/v1/batches', $payload)->assertStatus(422)->assertJsonPath('meta.outcome', 'already_exists');
+        self::assertSame(1, Batch::where('company_id', $this->company->id)->where('batch_number', 'LOT-WLOTA1A')->count());
+        self::assertSame($before, $snapshot());
+    }
+}

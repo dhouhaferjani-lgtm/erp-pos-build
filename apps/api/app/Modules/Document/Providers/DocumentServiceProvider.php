@@ -19,8 +19,10 @@ use App\Modules\Document\Domain\Services\Conversion\Converters\SalesOrderToDeliv
 use App\Modules\Document\Domain\Services\Conversion\Converters\SalesOrderToInvoiceConverter;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
+use App\Modules\Document\Infrastructure\BatchTraceability\DocumentBatchTraceReaderAdapter;
 use App\Modules\Document\Infrastructure\Persistence\EloquentDocumentVehicleContextWriter;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
+use App\Shared\Contracts\BatchTraceability\DocumentBatchTraceReader;
 use App\Shared\Contracts\Document\OperationResolverInterface;
 use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use Illuminate\Support\ServiceProvider;
@@ -29,6 +31,7 @@ class DocumentServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(DocumentBatchTraceReader::class, DocumentBatchTraceReaderAdapter::class);
         // Partner delete guard (lane R2-S): this module answers for its own
         // partner-referencing tables. Consumed by
         // `PartnerReferenceCounter` via

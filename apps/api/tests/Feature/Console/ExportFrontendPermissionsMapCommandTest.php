@@ -50,11 +50,11 @@ final class ExportFrontendPermissionsMapCommandTest extends TestCase
         self::assertIsString($firstExport);
 
         self::assertStringContainsString(
-            "  'accounts.manage': ['accountant', 'admin', 'manager'],",
+            "  'accounts.manage': ['accountant', 'admin', 'general_manager', 'manager'],",
             $firstExport,
         );
         self::assertStringContainsString(
-            "  'replenishment.create': ['admin', 'manager', 'operator'],",
+            "  'replenishment.create': ['admin', 'general_manager', 'manager', 'operator'],",
             $firstExport,
         );
         self::assertStringContainsString(

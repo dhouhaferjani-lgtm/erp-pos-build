@@ -6,6 +6,7 @@ namespace App\Modules\BatchExpiry\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\BatchExpiry\Application\Services\BatchStockService;
+use App\Modules\BatchExpiry\Application\Services\LotActionPermissionActivation;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Exceptions\WriteOffAlreadyReversedException;
 use App\Modules\BatchExpiry\Domain\Repositories\BatchRepositoryInterface;
@@ -19,9 +20,13 @@ use App\Modules\BatchExpiry\Presentation\Requests\UpdateBatchRequest;
 use App\Modules\BatchExpiry\Presentation\Requests\WriteOffBatchRequest;
 use App\Modules\BatchExpiry\Presentation\Resources\BatchResource;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Company\Services\LocationScopeResolver;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Shared\Contracts\BatchTraceability\DocumentBatchTraceReader;
+use App\Shared\Contracts\BatchTraceability\PosBatchTraceReader;
+use App\Shared\Domain\QuantityScale;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -38,7 +43,59 @@ class BatchController extends Controller
         private readonly BatchWriteOffService $batchWriteOffService,
         private readonly ReverseWriteOffService $reverseWriteOffService,
         private readonly LocationScopeResolver $locationScopeResolver,
+        private readonly LocationContext $locationContext,
+        private readonly LotActionPermissionActivation $activation,
+        private readonly DocumentBatchTraceReader $documentTraceReader,
+        private readonly PosBatchTraceReader $posTraceReader,
     ) {}
+
+    /**
+     * @param  list<string>  $requestedLocationIds
+     * @return list<string>|null
+     */
+    private function resolvedReadLocationIds(Request $request, array $requestedLocationIds = []): ?array
+    {
+        if (! $this->activation->enforced()) {
+            return null;
+        }
+        $validated = $request->validate([
+            'location_id' => ['sometimes', 'nullable', 'uuid'],
+            'location_ids' => ['sometimes', 'array', 'list'], 'location_ids.*' => ['uuid'],
+        ]);
+        $requested = $requestedLocationIds !== [] ? $requestedLocationIds : ($validated['location_ids'] ?? (isset($validated['location_id']) ? [$validated['location_id']] : []));
+        /** @var User $user */
+        $user = $request->user();
+        if ($requested === [] && $this->locationContext->getAllowedLocationIds($this->companyContext->requireCompanyId(), $user) === null) {
+            return null;
+        }
+
+        return $this->locationScopeResolver->resolve($user, $requested);
+    }
+
+    /**
+     * @param  list<string>  $locationIds
+     * @return list<int>
+     */
+    private function historicallyVisibleBatchIds(string $tenantId, string $companyId, array $locationIds): array
+    {
+        return array_values(array_unique(array_merge(
+            $this->documentTraceReader->batchIdsVisibleAtLocations($tenantId, $companyId, $locationIds),
+            $this->posTraceReader->batchIdsVisibleAtLocations($tenantId, $companyId, $locationIds),
+        )));
+    }
+
+    private function findVisibleBatchOrFail(Request $request, string $uuid): Batch|JsonResponse
+    {
+        if (! $this->activation->enforced()) {
+            return $this->findBatchOrFail($uuid);
+        }
+        $company = $this->companyContext->requireCompany();
+        $locations = $this->resolvedReadLocationIds($request);
+        $history = $locations === null ? [] : $this->historicallyVisibleBatchIds($company->tenant_id, $company->id, $locations);
+        $batch = Str::isUuid($uuid) ? $this->batchRepository->findVisibleByUuid($uuid, $company->id, $locations, $history) : null;
+
+        return $batch ?? response()->json(['error' => ['code' => 'BATCH_NOT_FOUND', 'message' => 'Batch not found']], 404);
+    }
 
     /**
      * Find a batch by UUID and verify it belongs to the current company.
@@ -94,7 +151,10 @@ class BatchController extends Controller
 
         $filters = array_filter($filters, fn ($value) => $value !== null);
 
-        $batches = $this->batchRepository->getByCompany($companyId, $filters);
+        $locations = $this->resolvedReadLocationIds($request);
+        $company = $this->companyContext->requireCompany();
+        $history = $locations === null ? [] : $this->historicallyVisibleBatchIds($company->tenant_id, $companyId, $locations);
+        $batches = $this->batchRepository->getByCompany($companyId, $filters, $locations, $history);
 
         return BatchResource::collection($batches);
     }
@@ -102,14 +162,16 @@ class BatchController extends Controller
     /**
      * Get single batch details.
      */
-    public function show(string $uuid): JsonResponse
+    public function show(Request $request, string $uuid): JsonResponse
     {
-        $result = $this->findBatchOrFail($uuid);
+        $result = $this->findVisibleBatchOrFail($request, $uuid);
         if ($result instanceof JsonResponse) {
             return $result;
         }
 
-        $result->load(['product', 'batchStock.location']);
+        if (! $this->activation->enforced()) {
+            $result->load(['product', 'batchStock.location']);
+        }
 
         return response()->json([
             'data' => new BatchResource($result),
@@ -141,6 +203,7 @@ class BatchController extends Controller
                     'code' => 'DUPLICATE_BATCH_NUMBER',
                     'message' => 'A batch with this number already exists for this product',
                 ],
+                ...($this->activation->enforced() ? ['meta' => ['outcome' => 'already_exists']] : []),
             ], 422);
         }
 
@@ -218,6 +281,9 @@ class BatchController extends Controller
         $daysThreshold = (int) $request->input('days', 30);
         $locationId = $request->input('location_id') !== null ? (string) $request->input('location_id') : null;
 
+        if ($this->activation->enforced()) {
+            $locationId = $this->resolvedReadLocationIds($request);
+        }
         $batches = $this->fefoService->getExpiringProducts($companyId, $daysThreshold, $locationId);
 
         return response()->json([
@@ -261,14 +327,14 @@ class BatchController extends Controller
     /**
      * Get batch stock levels by location.
      */
-    public function stock(string $uuid): JsonResponse
+    public function stock(Request $request, string $uuid): JsonResponse
     {
-        $result = $this->findBatchOrFail($uuid);
+        $result = $this->findVisibleBatchOrFail($request, $uuid);
         if ($result instanceof JsonResponse) {
             return $result;
         }
 
-        $stockLevels = $this->fefoService->getBatchStockByLocation((string) $result->id);
+        $stockLevels = $this->fefoService->getBatchStockByLocation((string) $result->id, $this->resolvedReadLocationIds($request));
 
         return response()->json([
             'data' => $stockLevels->map(fn ($stock) => [
@@ -276,7 +342,7 @@ class BatchController extends Controller
                 'location_name' => $stock->location !== null ? $stock->location->name : 'Unknown',
                 'quantity' => $stock->quantity,
                 'reserved_quantity' => $stock->reserved_quantity,
-                'available_quantity' => $stock->available_quantity,
+                'available_quantity' => bcsub($stock->quantity, $stock->reserved_quantity, QuantityScale::SCALE),
             ]),
         ]);
     }
@@ -293,7 +359,7 @@ class BatchController extends Controller
         // satisfy the FK validator.
         $companyId = $this->companyContext->requireCompanyId();
         $request->validate([
-            'location_id' => ['required', ScopedExists::company('locations', $companyId)],
+            'location_id' => ['required', 'uuid', ScopedExists::company('locations', $companyId)],
             'quantity' => [
                 'required',
                 'numeric',
@@ -306,6 +372,9 @@ class BatchController extends Controller
         ]);
 
         $locationId = (string) $request->input('location_id');
+        if ($this->activation->enforced()) {
+            $this->resolvedReadLocationIds($request, [$locationId]);
+        }
 
         // Quantity stays a decimal string all the way into the FEFO service —
         // a (float) cast here reintroduced ~1e-16 false shortfalls downstream.
@@ -337,6 +406,7 @@ class BatchController extends Controller
             $company->id,
             $productId,
             activeOnly: true,
+            locationIds: $this->resolvedReadLocationIds($request),
         );
 
         // Variant-aware callers (e.g. the stock-transfer batch picker) pass

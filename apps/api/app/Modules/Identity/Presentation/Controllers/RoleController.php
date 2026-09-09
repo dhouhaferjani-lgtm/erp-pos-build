@@ -4,7 +4,13 @@ declare(strict_types=1);
 
 namespace App\Modules\Identity\Presentation\Controllers;
 
+use App\Modules\Company\Domain\Enums\MembershipStatus;
+use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Application\DTOs\RoleData;
+use App\Modules\Identity\Application\Services\GeneralManagerAssignmentGuard;
+use App\Modules\Identity\Domain\Enums\RoleProvisioningSource;
+use App\Modules\Identity\Domain\Enums\SystemRoleName;
 use App\Modules\Identity\Domain\Events\RoleAssigned;
 use App\Modules\Identity\Domain\Events\RoleRemoved;
 use App\Modules\Identity\Domain\User;
@@ -21,6 +27,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class RoleController extends Controller
 {
@@ -58,7 +65,36 @@ class RoleController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly CompanyConfigService $configService,
+        private readonly GeneralManagerAssignmentGuard $generalManagerAssignmentGuard,
+        private readonly PermissionRegistrar $permissionRegistrar,
     ) {}
+
+    private function isMarkedProvisionedRole(Role $role): bool
+    {
+        return $role->name === SystemRoleName::GeneralManager->value && $role->guard_name === 'sanctum'
+            && $role->getAttribute(config('permission.column_names.team_foreign_key')) !== null
+            && $role->getAttribute('provisioning_source') === RoleProvisioningSource::Wlota1a->value;
+    }
+
+    private function isProtectedSystemRole(Role $role): bool
+    {
+        return in_array($role->name, ['super-admin', 'admin', 'owner'], true) || $this->isMarkedProvisionedRole($role);
+    }
+
+    private function roleData(Role $role): RoleData
+    {
+        return new RoleData(
+            id: (int) $role->id, name: $role->name, guard_name: (string) $role->guard_name,
+            permissions: array_values($role->permissions->pluck('name')->map(static fn ($name): string => (string) $name)->all()), users_count: $this->countUsersForRole($role),
+            created_at: $role->created_at?->toIso8601String(), updated_at: $role->updated_at?->toIso8601String(),
+            is_provisioned_read_only: $this->isMarkedProvisionedRole($role),
+        );
+    }
+
+    private function provisionedRoleReadOnlyResponse(): JsonResponse
+    {
+        return response()->json(['error' => ['code' => 'PROVISIONED_ROLE_READ_ONLY', 'message' => 'Provisioned roles are read-only.']], 422);
+    }
 
     /**
      * Resolve the enabled modules for the caller's tenant, mirroring
@@ -136,15 +172,7 @@ class RoleController extends Controller
             })->values();
         }
 
-        $data = $roles->map(fn (Role $role) => [
-            'id' => $role->id,
-            'name' => $role->name,
-            'guard_name' => $role->guard_name,
-            'permissions' => $role->permissions->pluck('name'),
-            'users_count' => $this->countUsersForRole($role),
-            'created_at' => $role->created_at?->toIso8601String(),
-            'updated_at' => $role->updated_at?->toIso8601String(),
-        ]);
+        $data = $roles->map(fn (Role $role) => (array) $this->roleData($role));
 
         return response()->json([
             'data' => $data,
@@ -164,15 +192,7 @@ class RoleController extends Controller
         $role = Role::with('permissions')->findOrFail($id);
 
         return response()->json([
-            'data' => [
-                'id' => $role->id,
-                'name' => $role->name,
-                'guard_name' => $role->guard_name,
-                'permissions' => $role->permissions->pluck('name'),
-                'users_count' => $this->countUsersForRole($role),
-                'created_at' => $role->created_at?->toIso8601String(),
-                'updated_at' => $role->updated_at?->toIso8601String(),
-            ],
+            'data' => (array) $this->roleData($role),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
@@ -193,6 +213,8 @@ class RoleController extends Controller
             'guard_name' => 'sanctum',
         ]);
 
+        assert($role instanceof Role);
+
         if (! empty($validated['permissions'])) {
             $role->syncPermissions($validated['permissions']);
         }
@@ -200,15 +222,7 @@ class RoleController extends Controller
         $role->load('permissions');
 
         return response()->json([
-            'data' => [
-                'id' => $role->id,
-                'name' => $role->name,
-                'guard_name' => $role->guard_name,
-                'permissions' => $role->permissions->pluck('name'),
-                'users_count' => 0,
-                'created_at' => $role->created_at?->toIso8601String(),
-                'updated_at' => $role->updated_at?->toIso8601String(),
-            ],
+            'data' => (array) $this->roleData($role),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
@@ -224,9 +238,12 @@ class RoleController extends Controller
     {
         $role = Role::findOrFail($id);
 
+        if ($this->isMarkedProvisionedRole($role) && ($request->has('name') || $request->has('permissions'))) {
+            return $this->provisionedRoleReadOnlyResponse();
+        }
+
         // Prevent modifying system roles
-        $systemRoles = ['super-admin', 'admin', 'owner'];
-        if (in_array($role->name, $systemRoles, true) && $request->has('name') && $request->input('name') !== $role->name) {
+        if ($this->isProtectedSystemRole($role) && $request->has('name') && $request->input('name') !== $role->name) {
             return response()->json([
                 'error' => [
                     'code' => 'SYSTEM_ROLE_PROTECTED',
@@ -249,15 +266,7 @@ class RoleController extends Controller
         $role->load('permissions');
 
         return response()->json([
-            'data' => [
-                'id' => $role->id,
-                'name' => $role->name,
-                'guard_name' => $role->guard_name,
-                'permissions' => $role->permissions->pluck('name'),
-                'users_count' => $this->countUsersForRole($role),
-                'created_at' => $role->created_at?->toIso8601String(),
-                'updated_at' => $role->updated_at?->toIso8601String(),
-            ],
+            'data' => (array) $this->roleData($role),
             'meta' => [
                 'timestamp' => now()->toIso8601String(),
                 'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
@@ -273,9 +282,12 @@ class RoleController extends Controller
     {
         $role = Role::findOrFail($id);
 
+        if ($this->isMarkedProvisionedRole($role)) {
+            return $this->provisionedRoleReadOnlyResponse();
+        }
+
         // Prevent deleting system roles
-        $systemRoles = ['super-admin', 'admin', 'owner'];
-        if (in_array($role->name, $systemRoles, true)) {
+        if ($this->isProtectedSystemRole($role)) {
             return response()->json([
                 'error' => [
                     'code' => 'SYSTEM_ROLE_PROTECTED',
@@ -351,37 +363,55 @@ class RoleController extends Controller
     {
         $validated = $request->validated();
 
-        $user = $this->resolveTenantUser($userId);
-
-        /** @var string $roleName */
-        $roleName = $validated['role'];
-        $user->assignRole($roleName);
-
-        // Privileged action — leave an audit trail (actor + target + role +
-        // timestamp). The audit_events row is the only record of who granted
-        // whom which role; model_has_roles carries team_id alone.
         $actor = $request->user();
-        if ($actor instanceof User) {
-            event(new RoleAssigned(
-                targetUserId: $user->id,
-                roleName: $roleName,
-                companyId: $this->companyContext->requireCompany()->id,
-                actorUserId: $actor->id,
-                assignedAt: now()->toIso8601String(),
-            ));
-        }
+        abort_unless($actor instanceof User, 403);
+        $previousTeam = $this->permissionRegistrar->getPermissionsTeamId();
+        $this->permissionRegistrar->setPermissionsTeamId($actor->tenant_id);
+        try {
+            return DB::transaction(function () use ($request, $userId, $validated, $actor): JsonResponse {
+                $user = User::query()->where('tenant_id', $actor->tenant_id)->where('id', $userId)->lockForUpdate()->firstOrFail();
+                $companyId = $this->companyContext->requireCompanyId();
+                $memberships = UserCompanyMembership::query()->where('user_id', $userId)->where('status', MembershipStatus::Active)->orderBy('company_id')->lockForUpdate()->get();
+                $membership = $memberships->firstWhere('company_id', $companyId);
+                abort_if($membership === null, 422, 'Active company membership required.');
+                Role::query()->where(config('permission.column_names.team_foreign_key'), $actor->tenant_id)->where('name', $validated['role'])->lockForUpdate()->first();
+                $effectiveRoles = array_values(array_unique([...array_values($user->getRoleNames()->map(static fn ($name): string => (string) $name)->all()), $validated['role']]));
+                $this->generalManagerAssignmentGuard->assertAssignable($actor, $userId, $companyId, $effectiveRoles, $membership->allowed_location_ids);
 
-        return response()->json([
-            'data' => [
-                'message' => "Role '{$roleName}' assigned to user",
-                'user_id' => $user->id,
-                'roles' => $user->getRoleNames(),
-            ],
-            'meta' => [
-                'timestamp' => now()->toIso8601String(),
-                'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
-            ],
-        ]);
+                /** @var string $roleName */
+                $roleName = $validated['role'];
+                $user->assignRole($roleName);
+                $this->generalManagerAssignmentGuard->assertAssignable($actor, $userId, $companyId, array_values($user->getRoleNames()->map(static fn ($name): string => (string) $name)->all()), $membership->allowed_location_ids);
+
+                // Privileged action — leave an audit trail (actor + target + role +
+                // timestamp). The audit_events row is the only record of who granted
+                // whom which role; model_has_roles carries team_id alone.
+                $actor = $request->user();
+                if ($actor instanceof User) {
+                    event(new RoleAssigned(
+                        targetUserId: $user->id,
+                        roleName: $roleName,
+                        companyId: $this->companyContext->requireCompany()->id,
+                        actorUserId: $actor->id,
+                        assignedAt: now()->toIso8601String(),
+                    ));
+                }
+
+                return response()->json([
+                    'data' => [
+                        'message' => "Role '{$roleName}' assigned to user",
+                        'user_id' => $user->id,
+                        'roles' => $user->getRoleNames(),
+                    ],
+                    'meta' => [
+                        'timestamp' => now()->toIso8601String(),
+                        'request_id' => $request->header('X-Request-ID', (string) uuid_create()),
+                    ],
+                ]);
+            });
+        } finally {
+            $this->permissionRegistrar->setPermissionsTeamId($previousTeam);
+        }
     }
 
     /**
