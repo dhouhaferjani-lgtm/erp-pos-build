@@ -55,17 +55,16 @@ const SERVER_AUTHORITATIVE_PERMISSIONS = new Set<Permission>([
 export const MODULE_PERMISSIONS = {
   dashboard: ['dashboard.view'],
   sales: ['sales.view'],
-  // Gate r2 finding 1: `purchases.view` is a UI ROLE ALIAS
-  // (uiAliasPermissions.ts: ['admin','purchases','manager']) with no backend
-  // twin, so on its own it locked the seeded `accountant` — and any user
-  // granted `supplier-invoices.manage` through the permissions surface — out of
-  // the whole Purchases nav group, children included (Sidebar filters children
-  // only AFTER the group's own gate passes). The real permission is listed
-  // beside the alias so the group opens for the people the API already
-  // authorises; each child that an accountant cannot actually use is gated on
-  // its own real backend permission in Sidebar.tsx, so nobody is offered a page
-  // the API will refuse.
-  purchases: ['purchases.view', 'supplier-invoices.manage'],
+  // Gate r3 finding N1: this key is SHARED — it is also the sole guard on
+  // seven unrelated purchase-order/quote-request routes
+  // (routes/index.tsx:896,906,916,926,938,958,982, all `moduleKey="purchases"`
+  // with no `permission`). Gate r2 finding 1 widened it to admit
+  // `supplier-invoices.manage` holders so the Sidebar Purchases GROUP would
+  // open for the accountant, but that also let an accountant deep-link those
+  // seven routes and reach a page whose API 403s. Restored to its merge-base
+  // value; the Sidebar group now gates on its own `nav.purchasesGroup` key
+  // below instead of this one.
+  purchases: ['purchases.view'],
   'document-ingestions': ['document-ingestions.view'],
   inventory: ['inventory.view'],
   'inventory.transfers.view': ['inventory.transfers.view'],
@@ -149,6 +148,19 @@ export const MODULE_PERMISSIONS = {
   'nav.purchaseOrders': ['purchase-orders.view', 'purchases.view'],
   'nav.purchaseQuoteRequests': ['purchase-quote-requests.view', 'purchases.view'],
   'nav.supplierInvoices': ['supplier-invoices.manage'],
+  // Gate r3 finding N1 — NAV-ONLY key for the Sidebar Purchases GROUP itself.
+  //
+  // The group's own gate used to be the SHARED `purchases` module key above,
+  // which is also the sole guard on seven unrelated purchase-order/quote-
+  // request ROUTES. Widening that shared key (gate r2 finding 1) opened the
+  // group for `supplier-invoices.manage` holders but also let them deep-link
+  // those seven routes into a page whose API 403s. This key carries the exact
+  // same union `purchases` briefly did, but ONLY the group nav item reads it
+  // (Sidebar.tsx) — the routes stay gated on the narrow `purchases` key, so an
+  // accountant sees the group (and, inside it, only the children their own
+  // real permission opens per the nav-child keys above) without gaining
+  // reachability to a page the server refuses.
+  'nav.purchasesGroup': ['purchases.view', 'supplier-invoices.manage'],
 } as const satisfies Record<string, readonly Permission[]>
 
 /**

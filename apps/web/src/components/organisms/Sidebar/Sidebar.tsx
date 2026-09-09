@@ -173,13 +173,18 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
     {
       key: 'purchases',
       icon: Truck,
-      permission: 'purchases',
-      // Gate r2 finding 1: the group gate now admits `supplier-invoices.manage`
-      // holders (accountant, and anyone granted it) as well as the legacy
-      // `purchases.view` alias — see MODULE_PERMISSIONS.purchases. Because the
-      // group's gate short-circuits its children, every child an accountant
-      // CANNOT use is gated on the real permission its own API checks, so the
-      // widening offers nobody a page the server will refuse.
+      // Gate r3 finding N1: the group's own gate is its OWN nav key
+      // (`nav.purchasesGroup`), not the shared `purchases` module key — that
+      // shared key is also the sole guard on seven purchase-order/quote-
+      // request ROUTES (routes/index.tsx), so widening it (gate r2 finding 1)
+      // let an accountant deep-link those routes into a page the API 403s.
+      // `nav.purchasesGroup` admits `supplier-invoices.manage` holders
+      // (accountant, and anyone granted it) as well as the legacy
+      // `purchases.view` alias. Because the group's gate short-circuits its
+      // children, every child an accountant CANNOT use is gated on the real
+      // permission its own API checks, so the widening offers nobody a page
+      // the server will refuse.
+      permission: 'nav.purchasesGroup',
       children: [
         // `/purchases/suppliers` is `permission="partners.view"` at the route,
         // which every role holding this group already has — left ungated here.
