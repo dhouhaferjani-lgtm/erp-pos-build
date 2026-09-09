@@ -13,3 +13,5 @@ Proposed fix: canonicalize and persist/compare the initiate request identity (so
 Acceptance: identical replay is one transfer/one stock debit; changed quantity/source/destination/variant/allocations/cost refuses without additional stock mutation; equivalent decimal representations replay; second-company keys stay scoped; committed-winner concurrency tests remain green.
 
 Reproduction: `T1_RUN_KNOWN_REDS=1` with `tests/Feature/Inventory/StockTransferEdgeCasesTest.php --filter test_idempotency_key_replays_identical_payload_but_refuses_changed_quantity`. Default ticket-linked skip.
+
+Retirement acceptance: remove the `T1_RUN_KNOWN_REDS` skip from `StockTransferEdgeCasesTest::test_idempotency_key_replays_identical_payload_but_refuses_changed_quantity` when this ticket lands, run that method on PostgreSQL, and update or retire the identical-replay and changed-payload assertions in the same change; if the owner chooses a different policy, encode that approved assertion instead of retaining a permanent skip.

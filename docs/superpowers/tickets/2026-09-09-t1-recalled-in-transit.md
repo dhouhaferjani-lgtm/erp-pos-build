@@ -13,3 +13,7 @@ Proposed fix: T-2 defines refusal versus explicit quarantine receipt, checks the
 Acceptance: recalled-after-initiate cannot silently complete; no partial destination movements on refusal; lot identity and quantities remain traceable; second company and permitted expiry-only receipt stay independent.
 
 Reproduction: set `T1_RUN_KNOWN_REDS=1`, run `tests/Feature/Inventory/StockTransferEdgeCasesTest.php --filter test_recalled_after_dispatch_must_not_silently_land_at_destination`. Retained as a ticket-linked skip by default.
+
+Retirement acceptance: remove the `T1_RUN_KNOWN_REDS` skip from `StockTransferEdgeCasesTest::test_recalled_after_dispatch_must_not_silently_land_at_destination` when this ticket lands, run that method on PostgreSQL, and update or retire the current recall and expiry companions `test_recalled_lot_receipt_pins_current_behaviour_until_ticket_t1_4` and `test_expired_lot_receipt_pins_current_behaviour_until_ticket_t1_4` in the same change; if the owner chooses a different policy, encode that approved assertion instead of retaining a permanent skip.
+
+Valuation acceptance: an accepted recalled lot that is later scrapped requires a write-off movement plus GL posting through `InventoryGlPostingBuffer`; quarantine cannot be implemented as only a flag if stock is then written off. Today the transfer path itself books no GL, including freight (see `2026-09-09-t1-freight-capitalization-no-gl.md`). T-2 must define and test this valuation arm alongside the refusal/quarantine ruling.

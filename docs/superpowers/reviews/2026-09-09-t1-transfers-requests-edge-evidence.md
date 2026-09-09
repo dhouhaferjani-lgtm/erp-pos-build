@@ -2,7 +2,7 @@
 
 Status: review. Branch `lane/t1-transfers-edge`, worktree `.worktrees/t1-transfers`, base local dev `63e0e5e16`. Authority: [dispatch](../../handoff/CODEX-DISPATCH-T1-transfers-requests-edge-campaign-2026-09-09.md), [case brief](../../handoff/BRIEF-lane-T1-transfers-requests-edge-campaign-2026-09-08.md), [parent benchmark §0–§1](../../handoff/BRIEF-parallel-transfers-blind-receiving-2026-09-08.md).
 
-The only production change is the source-access validation rule in `apps/api/app/Modules/Replenishment/Presentation/Requests/CreateTransferFromRequestsRequest.php`: initial +12/−2 lines for constructor-injected ValidLocationAccess; fix round 1 adds 14 lines in the same FormRequest to match the sibling 403 envelope (within the round’s ≤20-line allowance). `StockTransferService.php` and all counting files are untouched.
+The only production change is the source-access validation rule in `apps/api/app/Modules/Replenishment/Presentation/Requests/CreateTransferFromRequestsRequest.php`: initial +12/−2 lines for constructor-injected ValidLocationAccess; fix round 1 adds 14 lines in the same FormRequest to match the sibling 403 envelope (whole-lane total +26/−2, explicitly ratified by the orchestrator in fix round 2). `StockTransferService.php` and all counting files are untouched.
 
 ## Case matrix
 
@@ -265,9 +265,11 @@ HTTP 200
 ```
 
 
-## Fix round 1 — final verification and cleanup
+## Fix round 1 — historical verification and cleanup
 
-All nine gate items addressed. The desired-behaviour skips remain linked to their four tickets; live companion pins now cover current recalled/expired receipt, requester cancellation refusal, and ordinary quantity-blind settlement. The T-2 spec contains an exact-method retirement checklist so these guards are not left skipped when their tickets land.
+The schema-wipe harness described below was rejected in gate r2 and replaced with bounded tenant-scoped cleanup. Its zero-table check is not evidence of current harness correctness.
+
+All nine gate items addressed. The desired-behaviour skips remain linked to their four tickets; live companion pins now cover current recalled/expired receipt, requester cancellation refusal, and ordinary quantity-blind settlement. Fix round 2 moves the exact-method retirement requirements into the four tickets; the superseded rev-1 spec is restored unchanged.
 
 | Explicit-file run / check | Result |
 |---|---|
@@ -283,6 +285,8 @@ All nine gate items addressed. The desired-behaviour skips remain linked to thei
 | feature-lane-manifest-check.php | PASS; no class-count change in this round |
 | git diff --check | PASS |
 
+The same 403 envelope applies only to the hidden-location case; cross-company input remains the controller’s 422. The new FormRequest has no `ScopedExists`; for an unrestricted membership `ValidLocationAccess` checks neither source existence nor company.
+
 M3 red-first: the updated hidden-source assertion initially failed (expected 403, actual 422), then passed with `LOCATION_ACCESS_DENIED` and exact location/user details after the 14-line fix-round change. The company-B source remains a distinct company validation refusal: 422 `VALIDATION_ERROR`, `error.errors.source_location_id[0] = "Location does not belong to the active company."`; the same request succeeds using company A's source.
 
 For m5, the first DatabaseMigrations attempt passed both business tests but its default rollback hit an existing counting-migration down() failure (missing foreign-key constraint). No counting file was changed. The final harness retains framework migrate:fresh setup and registers **whole-schema db:wipe cleanup**, then resets RefreshDatabaseState. The final two-process run passed and a subsequent information_schema query counted **0 public base tables**, proving cleanup is no longer a nine-table allowlist. Committed fixtures remain visible to the second OS process during the test.
@@ -290,3 +294,13 @@ For m5, the first DatabaseMigrations attempt passed both business tests but its 
 For m4, cleanup of the original demo fixture checked its exact product id, SKU, name, three transfer ids and expected row counts before deletion in one transaction. Post-cleanup checks: **products 0; stock_movements 0; stock_levels 0; stock_transfer_lines 0; replenishment_requests 0; the three stock_transfers 0**. No pre-existing product stock or shared company/user/location was deleted. The ignored empty `.env` and isolated API `.env.t1` remain documented in the resume recipe; neither propagates through Git.
 
 Logs: ignored local `docs/sessions/t1-r1/`. Full PHPUnit/Vitest suites were not run. Initial-round preflight above is historical; this round ran the specifically requested file-level checks. No push, merge, or observed CI execution is claimed.
+
+## Fix round 2 — final verification
+
+Tests/docs only; the unchanged whole-lane FormRequest delta **+26/−2** is explicitly ratified by the orchestrator. The concurrency harness restores bounded tenant/company/id cleanup from `691eacba2` and preserves the schema. It requires an exclusive per-session PostgreSQL database, never a shared/parallel database leg.
+
+Before each of three baseline class invocations, the strengthened class and the multi-class run, `pg_stat_activity` on `autoerp_test_t` returned **0 other clients**. Three consecutive baseline runs passed **2 tests / 15 assertions**; after three journal-count and two freight-race assertions were added, the final class passed **2 / 20 / no skips**. The authorized three-class filter passed **28 tests / 187 assertions / 4 ticket skips**, exit 0, with **339 PHPUnit deprecations** reported. Post-run: 0 clients, 277 public base tables. The schema-empty observation in the historical round-1 section is superseded.
+
+SQLite by file: transfer edges **17 / 89 / 2 ticket skips**; replenishment edges **9 / 58 / 3 skips** (one is PG-only); concurrency **2 PG-only skips / 0 assertions**. Pint and PHPStan level 8 on all three touched test files, the manifest checker and diff check pass. No full suite was run. Logs: ignored `docs/sessions/t1-r2/`.
+
+The final pins cover zero journals across capitalization, both ends of the recalled/expired lot ledger, exactly one freight capitalization after a completion race, zero stock-movement mutation on hidden-location denial, and available quantity after reserving one source unit. The GL gap remains an open ticket, not an implemented posting. Four original defect tickets now carry their exact-method retirement acceptance; the superseded rev-1 spec has no lane diff. See the handback’s Fix round 2 table for every finding and current source line.

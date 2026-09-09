@@ -13,3 +13,5 @@ Proposed fix: owner decides whether in-progress requests can be stopped independ
 Acceptance: explicit, documented cancellation behavior for both open states and terminal states; requester and processor cases; sourcing PO unchanged or consistently stopped according to the ruling; later settlement cannot resurrect cancelled demand.
 
 Reproduction: `T1_RUN_KNOWN_REDS=1` with `tests/Feature/Replenishment/ReplenishmentEdgeCasesTest.php --filter test_requester_can_cancel_in_progress_request_while_status_is_open`. Default ticket-linked skip; observed current behavior is 422, state remains in_progress.
+
+Retirement acceptance: remove the `T1_RUN_KNOWN_REDS` skip from `ReplenishmentEdgeCasesTest::test_requester_can_cancel_in_progress_request_while_status_is_open` when this ticket lands, run that method on PostgreSQL, and update or retire the current companion `test_requester_cancel_in_progress_pins_current_behaviour_until_ticket_t1_14` in the same change; if the owner chooses a different policy, encode that approved assertion instead of retaining a permanent skip.
