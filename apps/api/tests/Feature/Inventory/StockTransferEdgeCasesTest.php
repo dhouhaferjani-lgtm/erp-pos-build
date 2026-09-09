@@ -169,12 +169,14 @@ final class StockTransferEdgeCasesTest extends TestCase
     {
         $this->seedStock();
         $transfer = app(StockTransferService::class)->initiate($this->data());
+        // totalOnHand means available quantity: reserve one of the six physical source units.
+        StockLevel::query()->where('product_id', $this->product->id)->where('location_id', $this->source->id)->update(['reserved' => '1.0000']);
         $read = fn () => app(LocationStockQueryService::class)->stockDistributionForProduct($this->tenant->id, $this->company->id, $this->product->id, null, $this->destination->id);
         self::assertSame('4.0000', $read()->totalIncomingTransfer);
-        self::assertSame('6.0000', $read()->totalOnHand);
+        self::assertSame('5.0000', $read()->totalOnHand);
         app(StockTransferService::class)->{$action}($transfer->id, $this->user->id);
         self::assertSame('0.0000', $read()->totalIncomingTransfer);
-        self::assertSame('10.0000', $read()->totalOnHand);
+        self::assertSame('9.0000', $read()->totalOnHand);
         $this->assertTerminalStock($action);
     }
 

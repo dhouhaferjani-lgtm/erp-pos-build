@@ -208,6 +208,7 @@ final class ReplenishmentEdgeCasesTest extends TestCase
     {
         $request = $this->capture('2.0000');
         UserCompanyMembership::query()->where('user_id', $this->user->id)->update(['allowed_location_ids' => [$this->destination->id]]);
+        $movementsBefore = StockMovement::query()->count();
         $this->postJson('/api/v1/replenishment-requests/actions/create-transfer', ['source_location_id' => $this->source->id, 'lines' => [['request_id' => $request->id, 'quantity' => '2.0000']]])->assertForbidden()
             ->assertJsonPath('error.code', 'LOCATION_ACCESS_DENIED')
             ->assertJsonPath('error.details.location_id', $this->source->id)
@@ -215,6 +216,7 @@ final class ReplenishmentEdgeCasesTest extends TestCase
         self::assertSame(ReplenishmentStatus::Pending, $request->refresh()->status);
         self::assertNull($request->fulfillment_id);
         self::assertSame(0, StockTransfer::query()->count());
+        self::assertSame($movementsBefore, StockMovement::query()->count());
     }
 
     public function test_foreign_company_source_is_refused_then_own_source_can_fulfill_request(): void

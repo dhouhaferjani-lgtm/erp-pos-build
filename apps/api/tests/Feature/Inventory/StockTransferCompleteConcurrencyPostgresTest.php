@@ -88,7 +88,7 @@ final class StockTransferCompleteConcurrencyPostgresTest extends TestCase
 
     public function test_concurrent_complete_waits_for_row_lock_then_refuses_without_duplicate_stock(): void
     {
-        $transfer = $this->transfer();
+        $transfer = $this->transfer('10.000');
         DB::beginTransaction();
         // The winner has completed inside its still-uncommitted transaction.
         // The other process sees InTransit and must block on the row lock.
@@ -128,6 +128,8 @@ CHILD;
         self::assertSame('4.0000', StockLevel::query()->where('product_id', $this->product->id)->where('location_id', $this->destination->id)->sole()->quantity);
         self::assertSame('6.0000', StockLevel::query()->where('product_id', $this->product->id)->where('location_id', $this->source->id)->sole()->quantity);
         self::assertSame(1, StockMovement::query()->where('reference_id', $transfer->id)->where('movement_type', MovementType::TransferIn)->count());
+        self::assertSame('6.000000', $this->product->refresh()->cost_price);
+        self::assertSame(1, StockMovement::query()->where('reference_id', $transfer->id)->where('movement_type', MovementType::Adjustment)->count());
     }
 
     public function test_freight_capitalization_uses_ten_owned_units_not_fourteen_inside_transaction(): void
