@@ -87,6 +87,23 @@ final class ReplenishmentEdgeCasesTest extends TestCase
         self::assertSame(1, StockTransfer::query()->count());
     }
 
+    /** Current reachable behaviour, ticket T1-11: docs/superpowers/tickets/2026-09-09-t1-settlement-replay.md. */
+    public function test_small_ordinary_transfer_pins_current_behaviour_until_ticket_t1_11(): void
+    {
+        $request = $this->capture('5.0000');
+        $id = $this->postJson('/api/v1/stock-transfers', [
+            'source_location_id' => $this->source->id,
+            'destination_location_id' => $this->destination->id,
+            'lines' => [['product_id' => $this->product->id, 'quantity' => '2.0000']],
+        ])->assertCreated()->json('data.id');
+        self::assertIsString($id);
+        // Synchronous listener marks all five requested units fulfilled by a two-unit shipment.
+        self::assertSame(ReplenishmentStatus::Fulfilled, $request->refresh()->status);
+        self::assertSame('5.0000', $request->requested_qty);
+        self::assertSame($id, $request->fulfillment_id);
+        self::assertSame('2.0000', StockTransfer::query()->findOrFail($id)->lines()->sole()->quantity);
+    }
+
     public function test_replayed_initiated_event_must_not_settle_demand_captured_after_dispatch(): void
     {
         if (getenv('T1_RUN_KNOWN_REDS') !== '1') {
@@ -96,7 +113,9 @@ final class ReplenishmentEdgeCasesTest extends TestCase
         $transfer = $this->createTransfer($original);
         $new = $this->capture('3.0000');
         $this->capture('1.0000');
-        app(SettleRequestsOnTransferInitiated::class)->handle(new StockTransferInitiated($transfer->id, $this->tenant->id, $this->company->id, $transfer->transfer_number, $transfer->transfer_type->value, $this->source->id, $this->destination->id, $this->user->id, $transfer->created_at->toIso8601String()));
+        $createdAt = $transfer->created_at;
+        self::assertNotNull($createdAt);
+        app(SettleRequestsOnTransferInitiated::class)->handle(new StockTransferInitiated($transfer->id, $this->tenant->id, $this->company->id, $transfer->transfer_number, $transfer->transfer_type->value, $this->source->id, $this->destination->id, $this->user->id, $createdAt->toIso8601String()));
         self::assertSame(ReplenishmentStatus::Pending, $new->refresh()->status);
         self::assertNull($new->fulfillment_id);
         self::assertSame('4.0000', $new->requested_qty);
@@ -123,6 +142,7 @@ final class ReplenishmentEdgeCasesTest extends TestCase
         self::assertSame(ReplenishmentStatus::Pending, $new->refresh()->status);
         self::assertSame('5.0000', $new->requested_qty);
         self::assertSame(2, $new->request_count);
+        self::assertIsString($new->note);
         self::assertStringContainsString('Original demand', $new->note);
         self::assertStringContainsString('New POS demand', $new->note);
         self::assertNull($new->fulfillment_id);
@@ -147,6 +167,7 @@ final class ReplenishmentEdgeCasesTest extends TestCase
         $this->postJson('/api/v1/replenishment-requests/actions/create-po', [...$payload, 'existing_document_id' => $foreign->id])->assertUnprocessable();
         self::assertSame(ReplenishmentStatus::Pending, $request->refresh()->status);
         $id = $this->postJson('/api/v1/replenishment-requests/actions/create-po', $payload)->assertOk()->json('data.document_id');
+        self::assertIsString($id);
         self::assertNotSame($foreign->id, $id);
         self::assertSame($this->company->id, Document::query()->findOrFail($id)->company_id);
         self::assertSame($this->destination->id, Document::query()->findOrFail($id)->lines()->sole()->location_id);
@@ -229,6 +250,7 @@ final class ReplenishmentEdgeCasesTest extends TestCase
         self::assertSame('10.0000', StockLevel::query()->where('product_id', $productB->id)->where('location_id', $sourceB->id)->sole()->quantity);
     }
 
+    /** @param numeric-string $qty */
     private function capture(string $qty, ?string $note = null, ?string $uuid = null): ReplenishmentRequest
     {
         return app(ReplenishmentCaptureService::class)->capture(new CaptureRequestData($this->tenant->id, $this->company->id, $this->destination->id, $this->product->id, null, $qty, $note, $this->user->id, ReplenishmentChannel::Pos, clientRequestUuid: $uuid));
@@ -237,6 +259,8 @@ final class ReplenishmentEdgeCasesTest extends TestCase
     private function createTransfer(ReplenishmentRequest $request): StockTransfer
     {
         $id = $this->postJson('/api/v1/replenishment-requests/actions/create-transfer', ['source_location_id' => $this->source->id, 'lines' => [['request_id' => $request->id, 'quantity' => '2.0000']]])->assertOk()->json('data.transfer_ids.0');
+
+        self::assertIsString($id);
 
         return StockTransfer::query()->findOrFail($id);
     }

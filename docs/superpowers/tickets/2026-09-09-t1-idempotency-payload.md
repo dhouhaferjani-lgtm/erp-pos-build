@@ -2,7 +2,7 @@
 
 Status: open · severity: high · owner: transfer initiate/idempotency seam
 
-Symptom: create quantity 4.0000 with key T1-retry, replay unchanged, then replay quantity 5.0000 with the same key. The changed request returns 201 and the old transfer instead of a conflict/refusal. An operator can believe changed demand was dispatched.
+Symptom: create quantity 4.0000 with key T1-retry, replay unchanged, then replay quantity 5.0000 with the same key. The changed request returns 201 and the old transfer instead of a conflict/refusal. An operator can believe changed demand was dispatched. The existing transfer is replayed and there is no second stock decrement; this is payload/intent mismatch, not duplicate stock movement.
 
 Seam: `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php:111` returns any matching key without comparing payload; the unique-collision recovery at `:190` has the same omission.
 

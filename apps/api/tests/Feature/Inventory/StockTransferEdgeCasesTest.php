@@ -132,7 +132,9 @@ final class StockTransferEdgeCasesTest extends TestCase
         $this->travel(3)->days();
         $this->postJson("/api/v1/stock-transfers/{$transfer->id}/complete")->assertOk();
         self::assertSame('4.0000', BatchStock::query()->where('batch_id', $batch->id)->where('location_id', $this->destination->id)->sole()->quantity);
-        self::assertTrue($batch->refresh()->expiry_date->isPast());
+        $expiryDate = $batch->refresh()->expiry_date;
+        self::assertNotNull($expiryDate);
+        self::assertTrue($expiryDate->isPast());
     }
 
     /** @return iterable<string, array{string}> */
@@ -191,10 +193,10 @@ final class StockTransferEdgeCasesTest extends TestCase
         // Adding 10 to ten owned units must add 1/unit, even with four in transit.
         $adjust = fn () => app(WeightedAverageCostService::class)->recordCostAdjustment($this->product, '10.000', 'T1 ownership denominator', $this->tenant->id, $this->company->id);
         $adjust();
-        self::assertSame(0, bccomp('6.0000', $this->product->refresh()->cost_price, 4));
+        self::assertSame('6.000000', $this->product->refresh()->cost_price);
         app(StockTransferService::class)->{$action}($transfer->id, $this->user->id);
         $adjust();
-        self::assertSame(0, bccomp('7.0000', $this->product->refresh()->cost_price, 4));
+        self::assertSame('7.000000', $this->product->refresh()->cost_price);
         $this->assertTerminalStock($action);
     }
 
@@ -284,6 +286,6 @@ final class StockTransferEdgeCasesTest extends TestCase
     {
         self::assertSame($action === 'cancel' ? '10.0000' : '6.0000', StockLevel::query()->where('product_id', $this->product->id)->where('location_id', $this->source->id)->sole()->quantity);
         $destination = StockLevel::query()->where('product_id', $this->product->id)->where('location_id', $this->destination->id)->first();
-        self::assertSame($action === 'cancel' ? '0.0000' : '4.0000', $destination?->quantity ?? '0.0000');
+        self::assertSame($action === 'cancel' ? '0.0000' : '4.0000', $destination->quantity ?? '0.0000');
     }
 }

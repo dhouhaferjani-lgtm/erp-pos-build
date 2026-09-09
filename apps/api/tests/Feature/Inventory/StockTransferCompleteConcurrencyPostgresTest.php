@@ -19,17 +19,20 @@ use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Inventory\Domain\StockTransfer;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Component\Process\Process;
 use Tests\TestCase;
 
-/** Committed fixtures + independent writer, matching the idempotency collision harness. */
+/** DatabaseMigrations isolates every committed fixture while permitting a real second process. */
 #[Group('pg')]
 final class StockTransferCompleteConcurrencyPostgresTest extends TestCase
 {
+    use DatabaseMigrations;
+
     private Tenant $tenant;
 
     private Company $company;
@@ -47,13 +50,6 @@ final class StockTransferCompleteConcurrencyPostgresTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        if (DB::getDriverName() !== 'pgsql') {
-            $this->markTestSkipped('Completion row locks and committed writers require PostgreSQL.');
-        }
-        // No RefreshDatabase: the second process must see committed fixtures.
-        if (! Schema::connection('central')->hasTable('tenants')) {
-            Artisan::call('migrate', ['--force' => true]);
-        }
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->for($this->tenant)->create(['currency' => 'TND']);
         app(CompanyContext::class)->setCompanyId($this->company->id);
@@ -64,6 +60,29 @@ final class StockTransferCompleteConcurrencyPostgresTest extends TestCase
         app(StockAdjustmentService::class)->receive($this->product->id, $this->source->id, '10.0000', 'T1-PG', $this->user->id, expectedCompanyId: $this->company->id);
     }
 
+    public function runDatabaseMigrations(): void
+    {
+        $this->beforeRefreshingDatabase();
+        // Register cleanup before migrating so failed setup also cannot leave partial state.
+        $this->beforeApplicationDestroyed(function (): void {
+            try {
+                // Some legacy down() migrations are not reversible. Wipe the entire
+                // test schema instead; never maintain a partial list of fixture tables.
+                self::assertSame(0, Artisan::call('db:wipe', ['--drop-views' => true, '--force' => true]));
+            } finally {
+                RefreshDatabaseState::$migrated = false;
+            }
+        });
+        $this->refreshTestDatabase();
+    }
+
+    protected function beforeRefreshingDatabase(): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Completion row locks and committed writers require PostgreSQL.');
+        }
+    }
+
     protected function tearDown(): void
     {
         $this->contender?->stop(0);
@@ -71,14 +90,9 @@ final class StockTransferCompleteConcurrencyPostgresTest extends TestCase
             while (DB::transactionLevel() > 0) {
                 DB::rollBack();
             }
-            foreach (['stock_transfer_line_batch_allocations', 'stock_transfer_lines', 'stock_transfers', 'stock_movements', 'stock_levels', 'products'] as $table) {
-                DB::table($table)->where('tenant_id', $this->tenant->id)->delete();
-            }
-            DB::table('locations')->where('company_id', $this->company->id)->delete();
-            DB::table('users')->where('id', $this->user->id)->delete();
-            DB::table('companies')->where('id', $this->company->id)->delete();
-            DB::table('tenants')->where('id', $this->tenant->id)->delete();
         }
+        // The registered whole-schema wipe resets RefreshDatabaseState,
+        // so later allowlisted RefreshDatabase classes cannot inherit committed rows.
         parent::tearDown();
     }
 
@@ -126,7 +140,7 @@ CHILD;
         self::assertSame(1, StockMovement::query()->where('reference_id', $transfer->id)->where('movement_type', MovementType::TransferIn)->count());
     }
 
-    public function test_completed_status_precedes_freight_capitalization_inside_transaction(): void
+    public function test_freight_capitalization_uses_ten_owned_units_not_fourteen_inside_transaction(): void
     {
         $transfer = $this->transfer('10.000');
         DB::transaction(function () use ($transfer): void {
@@ -134,15 +148,16 @@ CHILD;
             self::assertGreaterThan(0, DB::transactionLevel());
             self::assertSame(TransferStatus::Completed, $transfer->refresh()->status);
             // 50 initial value + 10 freight / 10 owned units = 6, never 5.7142 (14 units).
-            self::assertSame(0, bccomp('6.0000', $this->product->refresh()->cost_price, 4));
+            self::assertSame('6.000000', $this->product->refresh()->cost_price);
             $cost = StockMovement::query()->where('reference_id', $transfer->id)->where('movement_type', MovementType::Adjustment)->sole();
             self::assertSame('10.0000', $cost->quantity_before);
             self::assertSame('10.0000', $cost->quantity_after);
-            self::assertSame(0, bccomp('6.0000', $cost->avg_cost_after, 4));
+            self::assertSame('6.000000', $cost->avg_cost_after);
         });
-        self::assertSame(0, bccomp('6.0000', $this->product->refresh()->cost_price, 4));
+        self::assertSame('6.000000', $this->product->refresh()->cost_price);
     }
 
+    /** @param numeric-string $cost */
     private function transfer(string $cost = '0.000'): StockTransfer
     {
         return app(StockTransferService::class)->initiate(new InitiateTransferData($this->tenant->id, $this->company->id, $this->source->id, $this->destination->id, $this->user->id, [new InitiateTransferLineData($this->product->id, '4.0000')], transferCost: $cost));
