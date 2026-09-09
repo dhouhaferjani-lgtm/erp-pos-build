@@ -133,8 +133,11 @@ CHILD;
     public function test_freight_capitalization_uses_ten_owned_units_not_fourteen_inside_transaction(): void
     {
         $transfer = $this->transfer('10.000');
-        DB::transaction(function () use ($transfer): void {
+        $journalsBefore = DB::table('journal_entries')->count();
+        self::assertSame(0, $journalsBefore);
+        DB::transaction(function () use ($transfer, $journalsBefore): void {
             app(StockTransferService::class)->complete($transfer->id, $this->user->id);
+            self::assertSame($journalsBefore, DB::table('journal_entries')->count());
             self::assertGreaterThan(0, DB::transactionLevel());
             self::assertSame(TransferStatus::Completed, $transfer->refresh()->status);
             // 50 initial value + 10 freight / 10 owned units = 6, never 5.7142 (14 units).
@@ -144,6 +147,7 @@ CHILD;
             self::assertSame('10.0000', $cost->quantity_after);
             self::assertSame('6.000000', $cost->avg_cost_after);
         });
+        self::assertSame($journalsBefore, DB::table('journal_entries')->count());
         self::assertSame('6.000000', $this->product->refresh()->cost_price);
     }
 

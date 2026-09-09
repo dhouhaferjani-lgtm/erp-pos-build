@@ -29,6 +29,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -196,12 +197,16 @@ final class StockTransferEdgeCasesTest extends TestCase
     {
         $this->seedStock();
         $transfer = app(StockTransferService::class)->initiate($this->data());
+        $journalsBefore = DB::table('journal_entries')->count();
+        self::assertSame(0, $journalsBefore);
         // Adding 10 to ten owned units must add 1/unit, even with four in transit.
         $adjust = fn () => app(WeightedAverageCostService::class)->recordCostAdjustment($this->product, '10.000', 'T1 ownership denominator', $this->tenant->id, $this->company->id);
         $adjust();
+        self::assertSame($journalsBefore, DB::table('journal_entries')->count());
         self::assertSame('6.000000', $this->product->refresh()->cost_price);
         app(StockTransferService::class)->{$action}($transfer->id, $this->user->id);
         $adjust();
+        self::assertSame($journalsBefore, DB::table('journal_entries')->count());
         self::assertSame('7.000000', $this->product->refresh()->cost_price);
         $this->assertTerminalStock($action);
     }
