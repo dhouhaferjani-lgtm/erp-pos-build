@@ -186,9 +186,12 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       // the server will refuse.
       permission: 'nav.purchasesGroup',
       children: [
-        // `/purchases/suppliers` is `permission="partners.view"` at the route,
-        // which every role holding this group already has — left ungated here.
-        { key: 'suppliers', href: '/purchases/suppliers', icon: Users },
+        // `/purchases/suppliers` is `moduleKey="purchases" permission="partners.view"`
+        // at the route — the group's shared gate is the narrow `purchases` key
+        // (`purchases.view` only), not every role holding this group, so this
+        // child needs its own `permission: 'purchases'` to stay in step with the
+        // route's `moduleKey` (gate r4 finding 4).
+        { key: 'suppliers', href: '/purchases/suppliers', icon: Users, permission: 'purchases' },
         { key: 'quoteRequests', href: '/purchases/quote-requests', icon: FileQuestion, permission: 'nav.purchaseQuoteRequests' },
         { key: 'purchaseOrders', href: '/purchases/orders', icon: ClipboardList, permission: 'nav.purchaseOrders' },
         // The goods-receipt list reads `/purchase-orders` (GoodsReceiptListPage),
@@ -197,7 +200,10 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         { key: 'newGoodsReceipt', href: '/purchases/receipts/new', icon: Package2, permission: 'goods-receipt.create-standalone' },
         { key: 'scans', href: '/purchases/scans', icon: FileText, permission: 'document-ingestions' },
         { key: 'supplierInvoices', href: '/purchases/supplier-invoices', icon: Receipt, permission: 'nav.supplierInvoices' },
-        { key: 'returnNotes', href: '/inventory/return-notes', icon: RotateCcw },
+        // `/inventory/return-notes` is `moduleKey="inventory"` at the route
+        // (gate r4 finding 4) — needs `inventory.view`, which this group's
+        // members do not all hold.
+        { key: 'returnNotes', href: '/inventory/return-notes', icon: RotateCcw, permission: 'inventory.view' },
       ],
     },
     // Catalog — "what you sell": product definitions, categorisation, pricing.

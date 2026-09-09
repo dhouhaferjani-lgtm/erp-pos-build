@@ -876,6 +876,12 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       expect(screen.queryByRole('link', { name: /navigation\.purchaseOrders/i })).not.toBeInTheDocument()
       expect(screen.queryByRole('link', { name: /navigation\.quoteRequests/i })).not.toBeInTheDocument()
       expect(screen.queryByRole('link', { name: /navigation\.goodsReceipts/i })).not.toBeInTheDocument()
+      // Gate r4 finding 4 — `suppliers` (route requires `purchases`) and
+      // `returnNotes` (route requires `inventory.view`) previously carried no
+      // own `permission`, so they rendered unconditionally once the group's
+      // gate passed even though this accountant's API 403s both routes.
+      expect(screen.queryByRole('link', { name: /navigation\.suppliers/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: /navigation\.returnNotes/i })).not.toBeInTheDocument()
     })
 
     it('keeps every Purchases child for a manager (the widening is additive)', async () => {
