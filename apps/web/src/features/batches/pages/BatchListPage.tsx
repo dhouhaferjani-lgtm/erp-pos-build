@@ -7,6 +7,9 @@ import { BatchStatusBadge } from '../components/BatchStatusBadge'
 import { SearchInput } from '@/components/molecules/SearchInput'
 import { FilterTabs } from '@/components/molecules/FilterTabs'
 import type { ExpiryStatus } from '../types'
+import { usePermissions } from '@/hooks/usePermissions'
+import { formatQuantity } from '@/lib/decimal'
+import { textColors } from '@/lib/designTokens'
 import { useCurrency } from '@/hooks/useCurrency'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
@@ -18,6 +21,8 @@ type ActiveFilter = 'all' | 'active' | 'inactive'
 export function BatchListPage() {
   const { t } = useTranslation(['batches', 'common'])
   const { decimals } = useCurrency()
+  const { hasPermission } = usePermissions()
+  const canCreate = hasPermission('batches.create')
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('active')
@@ -83,13 +88,15 @@ export function BatchListPage() {
             {total} {t('batches:batchCount', { count: total })}
           </p>
         </div>
+        {canCreate && (
         <Link
           to="/inventory/batches/new"
-          className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover} transition-colors`}
+          className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${textColors.inverse} ${colorTokens.intent.primary.bgStrongHover} transition-colors`}
         >
           <Plus className="h-4 w-4" />
           {t('batches:actions.addBatch', 'Add Batch')}
         </Link>
+        )}
       </div>
 
       {/* Filters */}
@@ -129,11 +136,11 @@ export function BatchListPage() {
               ? t('common:status.tryDifferentSearch')
               : t('batches:empty.description', 'Get started by creating your first batch.')}
           </p>
-          {!searchQuery && (
+          {!searchQuery && canCreate && (
             <div className="mt-6">
               <Link
                 to="/inventory/batches/new"
-                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium text-white ${colorTokens.intent.primary.bgStrongHover}`}
+                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${textColors.inverse} ${colorTokens.intent.primary.bgStrongHover}`}
               >
                 <Plus className="h-4 w-4" />
                 {t('batches:actions.addBatch', 'Add Batch')}
@@ -209,7 +216,7 @@ export function BatchListPage() {
                       />
                     </td>
                     <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
-                      {totalQuantity.toFixed(decimals)}
+                      {formatQuantity(totalQuantity, decimals)}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm">
                       <Link

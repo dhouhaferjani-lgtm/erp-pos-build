@@ -32,6 +32,15 @@ export type Permission = GeneratedPermission | UiAliasPermission
  *     directly-assigned permissions.
  */
 const SERVER_AUTHORITATIVE_PERMISSIONS = new Set<Permission>([
+  'batches.view',
+  'batches.create',
+  'batches.update',
+  'batches.delete',
+  'batches.recall',
+  'batches.recall.request',
+  'batches.write-off',
+  'batches.traceability',
+
   'pricing.view_cost_prices',
   'bank-statements.view',
   'bank-statements.import',
@@ -53,6 +62,7 @@ const SERVER_AUTHORITATIVE_PERMISSIONS = new Set<Permission>([
  * {@link usePermissions.canAccessModule} unchecked.
  */
 export const MODULE_PERMISSIONS = {
+  'batches.view': ['batches.view'],
   dashboard: ['dashboard.view'],
   sales: ['sales.view'],
   // Gate r3 finding N1: this key is SHARED — it is also the sole guard on

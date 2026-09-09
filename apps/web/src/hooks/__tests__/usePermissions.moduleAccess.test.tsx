@@ -125,3 +125,20 @@ describe('Purchases group nav key is split from the shared purchases module key 
     expect(result.current.canAccessModule('purchases')).toBe(false)
   })
 })
+
+describe('W-LOT-A-1a server-authoritative batch permissions', () => {
+  it('accepts batches.view as a valid ModuleKey', () => {
+    expect(Object.keys(MODULE_PERMISSIONS)).toContain('batches.view')
+  })
+  it('uses a present server permission list as authoritative', () => {
+    useAuthStore.getState().setUser({ ...baseUser, roles: ['viewer'], permissions: ['batches.view'] })
+    const { result } = renderHook(() => usePermissions())
+    expect(result.current.hasPermission('batches.view')).toBe(true)
+    expect(result.current.hasPermission('batches.create')).toBe(false)
+  })
+  it('does not restore a missing batch permission from role fallback', () => {
+    useAuthStore.getState().setUser({ ...baseUser, roles: ['admin'], permissions: [] })
+    const { result } = renderHook(() => usePermissions())
+    expect(result.current.hasPermission('batches.recall')).toBe(false)
+  })
+})

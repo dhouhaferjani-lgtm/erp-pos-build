@@ -347,6 +347,8 @@ function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   )
 }
 
+export const WLOTA1A_WEB_FINGERPRINT = 'wlota1a-batch-permission-gating-v1' as const
+
 export function AppRoutes() {
   return (
     <Routes>
@@ -1200,9 +1202,10 @@ export function AppRoutes() {
           {/* Batches — vertical-gated via ModuleGuard (BatchExpiry) */}
           <Route
             path="batches"
+            handle={{ featureFingerprint: WLOTA1A_WEB_FINGERPRINT }}
             element={
               <ModuleGuard module="BatchExpiry">
-                <RequirePermission moduleKey="inventory">
+                <RequirePermission permission="batches.view">
                   <SuspenseWrapper>
                     <BatchListPage />
                   </SuspenseWrapper>
@@ -1212,9 +1215,10 @@ export function AppRoutes() {
           />
           <Route
             path="batches/new"
+            handle={{ featureFingerprint: WLOTA1A_WEB_FINGERPRINT }}
             element={
               <ModuleGuard module="BatchExpiry">
-                <RequirePermission moduleKey="inventory">
+                <RequirePermission permission="batches.create">
                   <SuspenseWrapper>
                     <CreateBatchPage />
                   </SuspenseWrapper>
@@ -1224,9 +1228,10 @@ export function AppRoutes() {
           />
           <Route
             path="batches/:uuid/edit"
+            handle={{ featureFingerprint: WLOTA1A_WEB_FINGERPRINT }}
             element={
               <ModuleGuard module="BatchExpiry">
-                <RequirePermission moduleKey="inventory">
+                <RequirePermission permission="batches.update">
                   <SuspenseWrapper>
                     <EditBatchPage />
                   </SuspenseWrapper>
@@ -1236,9 +1241,10 @@ export function AppRoutes() {
           />
           <Route
             path="batches/:uuid"
+            handle={{ featureFingerprint: WLOTA1A_WEB_FINGERPRINT }}
             element={
               <ModuleGuard module="BatchExpiry">
-                <RequirePermission moduleKey="inventory">
+                <RequirePermission permission="batches.view">
                   <SuspenseWrapper>
                     <BatchDetailPage />
                   </SuspenseWrapper>

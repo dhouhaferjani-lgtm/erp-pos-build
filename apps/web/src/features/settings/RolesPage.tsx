@@ -15,14 +15,9 @@ import { toast } from 'sonner'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
-interface Role {
-  id: number
-  name: string
-  permissions: string[]
-  users_count: number
-  created_at: string | null
-  updated_at: string | null
-}
+type Role = App.Modules.Identity.Application.DTOs.RoleData
+
+const isReadOnlyRole = (role: Role) => role.is_provisioned_read_only
 
 interface RolesResponse {
   data: Role[]
@@ -158,6 +153,7 @@ export function RolesPage() {
   }
 
   const openEditModal = (role: Role) => {
+    if (isReadOnlyRole(role)) return
     setEditingRole(role)
     setRoleName(role.name)
     setSelectedPermissions([...role.permissions])
@@ -173,7 +169,7 @@ export function RolesPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!roleName.trim()) return
+    if (!roleName.trim() || editingRole?.is_provisioned_read_only) return
 
     if (editingRole) {
       const isSystem = SYSTEM_ROLES.includes(editingRole.name)
@@ -255,17 +251,18 @@ export function RolesPage() {
               <div
                 key={role.id}
                 className={cn(
-                  'rounded-lg border bg-white p-4 transition-shadow',
-                  isSystemRole(role.name)
+                  'rounded-lg border p-4 transition-shadow',
+                  tokens.card.base,
+                  (isSystemRole(role.name) || isReadOnlyRole(role))
                     ? cn(borderColors.primary, colors.primary[50])
                     : cn(borderColors.light, 'hover:shadow-md cursor-pointer'),
                 )}
-                onClick={() => { if (!isSystemRole(role.name)) openEditModal(role) }}
+                onClick={() => { if (!isSystemRole(role.name) && !isReadOnlyRole(role)) openEditModal(role) }}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className={cn('rounded-lg p-2', tokens.badge.blue)}>
-                      {isSystemRole(role.name) ? (
+                      {isSystemRole(role.name) || isReadOnlyRole(role) ? (
                         <Lock className="h-5 w-5" />
                       ) : (
                         <Shield className="h-5 w-5" />
@@ -274,7 +271,7 @@ export function RolesPage() {
                     <div>
                       <h3 className={cn('font-semibold capitalize flex items-center gap-2', textColors.primary)}>
                         {role.name}
-                        {isSystemRole(role.name) && (
+                        {(isSystemRole(role.name) || isReadOnlyRole(role)) && (
                           <span className={cn('text-xs font-normal', tokens.badge.base, tokens.badge.blue)}>
                             {t('roles.systemRole')}
                           </span>
@@ -285,7 +282,7 @@ export function RolesPage() {
                       </p>
                     </div>
                   </div>
-                  {!isSystemRole(role.name) && (
+                  {!isSystemRole(role.name) && !isReadOnlyRole(role) && (
                     <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
@@ -303,7 +300,7 @@ export function RolesPage() {
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation()
-                          setDeleteRole(role)
+                          if (!isReadOnlyRole(role)) setDeleteRole(role)
                         }}
                         title={t('roles.deleteRole')}
                       >
@@ -319,7 +316,7 @@ export function RolesPage() {
                     : t('roles.noUsers')
                   }
                 </div>
-                {!isSystemRole(role.name) && (
+                {!isSystemRole(role.name) && !isReadOnlyRole(role) && (
                   <div className={cn('mt-2 text-xs', textColors.disabled)}>
                     {t('roles.clickToEdit')}
                   </div>
@@ -530,7 +527,7 @@ export function RolesPage() {
               </Button>
               <Button
                 variant="danger"
-                onClick={() => { deleteMutation.mutate(deleteRole.id) }}
+                onClick={() => { if (!isReadOnlyRole(deleteRole)) deleteMutation.mutate(deleteRole.id) }}
                 disabled={deleteMutation.isPending || deleteRole.users_count > 0}
               >
                 {deleteMutation.isPending ? t('status.processing') : t('roles.confirmations.delete.confirm')}
