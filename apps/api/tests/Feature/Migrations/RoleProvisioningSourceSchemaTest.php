@@ -69,6 +69,13 @@ final class RoleProvisioningSourceSchemaTest extends TestCase
         self::assertSame('custom', DB::table('roles')->value('name'));
     }
 
+    public function test_unmarked_null_team_legacy_role_remains_valid(): void
+    {
+        $this->migrate();
+        DB::table('roles')->insert(['tenant_id' => null, 'name' => 'manager', 'guard_name' => 'sanctum']);
+        $this->assertDatabaseHas('roles', ['tenant_id' => null, 'name' => 'manager', 'provisioning_source' => null]);
+    }
+
     public function test_postgresql_rejects_marked_role_without_team(): void
     {
         $this->migrate();
