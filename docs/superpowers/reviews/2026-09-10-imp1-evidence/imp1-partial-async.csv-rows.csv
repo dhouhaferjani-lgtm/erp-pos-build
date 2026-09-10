@@ -1,0 +1,6 @@
+row_number,sku,name,unit,barcode,sale_price,error_type,error_reason
+96,IMP1-ASYNC-95,IMP1 Crème ASYNC 95,pc,,invalid,validation,"sale_price: The sale price field must be a number., The sale price field format is invalid."
+97,IMP1-ASYNC-96,IMP1 Crème ASYNC 96,pc,,invalid,validation,"sale_price: The sale price field must be a number., The sale price field format is invalid."
+98,IMP1-ASYNC-97,IMP1 Crème ASYNC 97,pc,,invalid,validation,"sale_price: The sale price field must be a number., The sale price field format is invalid."
+99,IMP1-ASYNC-98,IMP1 Crème ASYNC 98,pc,,invalid,validation,"sale_price: The sale price field must be a number., The sale price field format is invalid."
+100,IMP1-ASYNC-99,IMP1 Crème ASYNC 99,pc,,invalid,validation,"sale_price: The sale price field must be a number., The sale price field format is invalid."

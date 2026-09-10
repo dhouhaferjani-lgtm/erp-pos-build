@@ -1,0 +1,3 @@
+row_number,sku,name,unit,barcode,sale_price,error_type,error_reason
+9,IMP1-BAD-UNIT,Unknown unit,NO-SUCH-UNIT,,12.500,validation,"unit: unit_unknown: Unknown unit ""NO-SUCH-UNIT""; enter a code exactly as spelled."
+10,IMP1-BAD-PRICE,Invalid price,pc,,invalid,validation,"sale_price: The sale price field must be a number., The sale price field format is invalid."
