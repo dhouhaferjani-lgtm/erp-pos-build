@@ -30,8 +30,21 @@ Tenancy 3.10 / PHPUnit 11 / PHPStan L8 / Pint / React 19 / TanStack Query 5 / Vi
 (rev 9, **ACCEPTED** — Codex spec gate r9, 0 BLOCKER / 0 MAJOR / 3 minor editorial,
 register at [`docs/superpowers/reviews/2026-09-10-rbac-spec-codex-gate-r9.md`](../reviews/2026-09-10-rbac-spec-codex-gate-r9.md)).
 
-**Measured at:** `dev` = `d64db9a0e`, 2026-09-10. Every lane SHA and every overlap
+**Measured at:** `dev` = `2f99fef26`, 2026-09-10, **re-measured after the wave-0a plan's
+Codex gate r1** (it was `d64db9a0e` when this document was written and `105b1b22b` when
+the gate read it — `dev` moves several times a day). Every lane SHA and every overlap
 claim below was re-run at that tip; none is carried forward from the spec.
+
+> **Revision note, 2026-09-10 (wave-0a plan gate r1).** Wave 0a's plan is now **rev 2**
+> (register: `docs/superpowers/reviews/2026-09-10-rbac-plan-0a-codex-gate-r1.md`,
+> CHANGES-REQUIRED, 3 B / 7 M / 5 m). Three of its findings change **this** document:
+> **B-3** moved 0a's T3/T3b — the four Identity read-route gates and the `UsersPage`
+> guard — into wave **0b** as task **0b-15**, together with the `RolesPage` / route /
+> Settings-card guards they require; **B-2** brought the CI registration of 0a's
+> Architecture classes **into 0a** (residual F-2/R-4 is closed, not deferred); and
+> **M-2** corrected the claim that those classes ran on no CI event — they ran on
+> `workflow_dispatch`, they did not gate PR→`dev`. The wave-0a row, the "which wave may
+> start" table, §5's findings and §7's handback table are updated below.
 
 ---
 
@@ -74,34 +87,44 @@ These are not per-wave choices. A lane that breaks one of them is not mergeable.
 
 | Field | Value |
 |---|---|
-| **Goal** | Stop the bleeding with permissions that already exist: mark the seven genuinely self-service routes, install the route-coverage ratchet with its baseline, and close 15 ungated writes + 6 ungated reads using only seeded keys. No migration, no new permission key, no seeder edit. |
-| **Scope items (spec §8)** | `0a-1` land S-1 tenant-scoped permission cache — **DONE**, merged into local `dev` at `6415062b9` (lane `lane/rbac-w0a-s1-permission-cache`, tip `05455fa41`; gates r1/r2 at `docs/superpowers/reviews/2026-09-10-rbac-w0a-s1-gate-r{1,2}.md`). `0a-2` route-coverage ratchet + baseline + liveness fixture. `0a-3` `authz.self` middleware, alias and the two allow-list/shape tests. `0a-4` gate the four Identity read routes. `0a-5` gate Promotion ×4, Uom ×5, Menu ×3, Coupon ×3 writes + the two coupon reads. `0a-8` docs. Plus the S-1 follow-up minor (entrypoint per-tenant reset reports its outcome). |
-| **Entry condition** | **None.** Every 0a path was re-measured on 2026-09-10 against `lane/w-lot-a-1a` (`5d847b2ba`) and `lane/t2-receipt-spine` (`d7123fa30`) with `git diff --name-only dev...<lane> -- <path>`: **every path returns empty for both lanes.** The spec's single accepted overlap — `apps/api/tests/feature-lane-manifest.json` — is **no longer an overlap**, because 0a-1 already merged (it consumed the `Identity.classes` 32→33 and `gated_ceiling` 1253→1254 raise) and every remaining 0a test lives under `tests/Architecture/`, which the feature-lane manifest does not govern (`apps/api/tools/feature-lane-manifest-check.php:205,328-334`). Wave 0a is now **fully disjoint**. |
-| **Exit checklist** | ① Every task's named PHPUnit path green, red captured first with the exact failing assertion pasted into the handback. ② `php tools/feature-lane-manifest-check.php` green with **no** ceiling change (0a adds no `tests/Feature` class). ③ PHPStan L8 + Pint clean on touched paths. ④ **UI happy path, real app, console + network captured:** log in as `admin` → Settings → Roles (`GET /roles`, `GET /permissions` still 200) → Settings → Users (`GET /users`, `GET /roles`) → Promotions list, archive a promotion → UoM units create/edit/delete → Menus delete a category item → Coupons list + revoke. ⑤ **Denial probe, same capture:** log in as `manager` → Settings → Users loads with **no 403 in the network log** (T3b's guard) → Promotions archive still works (manager holds `promotions.manage`) → Coupons list still works. ⑥ Zero 5xx and zero new console errors across both probes. ⑦ Handback written at `docs/handoff/HANDBACK-rbac-w0a-2026-09-10.md`. |
-| **Reviewer gates** | `tenancy-authz-reviewer` (**mandatory**) on the whole diff. `frontend-conventions-reviewer` (**mandatory**, because T3b touches `apps/web/src/features/settings/UsersPage.tsx`). No inventory/treasury/fiscal reviewer — 0a touches none of those modules. |
+| **Goal** | Stop the bleeding with permissions that already exist: mark the seven genuinely self-service routes, install the route-coverage ratchet with its baseline, **its tombstone behaviour test and its convention-08 tamper cases**, and close 15 ungated writes + **2** ungated reads using only seeded keys — then **register the whole set in CI** so it gates PR→`dev`. No migration, no new permission key, no seeder edit, **and no `apps/web` file** (rev 2, gate r1 B-3). |
+| **Scope items (spec §8)** | `0a-1` land S-1 tenant-scoped permission cache — **DONE**, merged into local `dev` at `6415062b9` (lane `lane/rbac-w0a-s1-permission-cache`, tip `05455fa41`; gates r1/r2 at `docs/superpowers/reviews/2026-09-10-rbac-w0a-s1-gate-r{1,2}.md`). `0a-2` route-coverage ratchet + baseline + liveness fixture. `0a-3` `authz.self` middleware, alias and the two allow-list/shape tests. ~~`0a-4` gate the four Identity read routes~~ — **MOVED to wave 0b as `0b-15`** by plan gate r1 B-3, with the page guards it requires. `0a-5` gate Promotion ×4, Uom ×5, Menu ×3, Coupon ×3 writes + the two coupon reads. `0a-8` docs. **`0a-2b` (new, rev 2)** register the wave's six Architecture classes in the always-on `backend-architecture` CI job. Plus the S-1 follow-up minor (entrypoint per-tenant reset reports its outcome). |
+| **Entry condition** | **None.** Every 0a path was re-measured on 2026-09-10 against `lane/w-lot-a-1a` (`5d847b2ba`) and `lane/t2-receipt-spine` (`d7123fa30`) with `git diff --name-only dev...<lane> -- <path>`: **every path returns empty for both lanes.** The spec's single accepted overlap — `apps/api/tests/feature-lane-manifest.json` — is **no longer an overlap**, because 0a-1 already merged (it consumed the `Identity.classes` 32→33 and `gated_ceiling` 1253→1254 raise) and every remaining 0a test lives under `tests/Architecture/`, which the feature-lane manifest does not govern (`apps/api/tools/feature-lane-manifest-check.php:205,328-334`). Wave 0a is now disjoint **except for one accepted file-level overlap**: rev 2 adds a `.github/workflows/ci.yml` step (gate r1 B-2), a file both lanes edit — but their hunks are at `:1130` (W-LOT) and `:1138-1145` (T2) while 0a appends after `:228`, ~900 lines away, so all three merge cleanly. Convention 08's same-lane rule (`docs/conventions/08-DETECTOR-LIVENESS.md:58-64`) outweighs the zero-overlap preference: a ratchet that gates no merge event is not a CI guard. |
+| **Exit checklist** | ① Every task's named PHPUnit path green, red captured first with the exact failing assertion pasted into the handback. ② `php tools/feature-lane-manifest-check.php` green with **no** ceiling change (0a adds no `tests/Feature` class). ③ PHPStan L8 + `pint --test` clean on touched paths. ④ **The six Architecture classes named in one `backend-architecture` step**, the workflow parses, and the local run names the same six. ⑤ **UI happy path, real app, console + network captured:** log in as `admin` → Settings → Roles and Settings → Users behave **exactly as on `dev`** (`GET /roles`, `GET /permissions` still 200 — 0a does not gate them) → Promotions list, archive a promotion → UoM units create/edit/delete **plus one conversion** → Menus delete a category item → Coupons list + revoke. ⑥ **No-regression probe as `manager`** (every key 0a uses is one a manager already holds, so nothing may newly refuse) **and a real denial probe as `viewer`**: a UoM unit create and a coupon revoke each 403 with the standard envelope, while the UoM conversion still succeeds. ⑦ Zero 5xx and zero new console errors across all three probes. ⑧ Handback written at `docs/handoff/HANDBACK-rbac-w0a-2026-09-10.md`. |
+| **Reviewer gates** | `tenancy-authz-reviewer` (**mandatory**) on the whole diff. **`frontend-conventions-reviewer` is NOT a gate for 0a as of rev 2** — the wave touches no `apps/web` file (gate r1 B-3); it becomes mandatory for wave 0b's task 0b-15. No inventory/treasury/fiscal reviewer — 0a touches none of those modules. |
 | **Deploy steps** | **None new.** 0a-1 already requires `permission:cache-reset` at boot and that is already wired (`apps/api/docker/entrypoint.sh:190-191`); the follow-up task only makes its per-tenant arm report its outcome. No permission row is added, so no tenant needs a catalogue run. |
 | **Rollback point** | Each task is one self-contained commit; `git revert` of the task commit restores prior behaviour. The ratchet baseline reverts with its test (they are added in the same commit and every gating commit deletes its own baseline entries). |
 
-**Named residual carried out of 0a (not a defect of the wave, a consequence of its
-scoping):** the three new `tests/Architecture/` classes execute on **no CI event**
-until a step in the `backend-architecture` job names them. That job runs named files
-only — never the `tests/Architecture` directory (`.github/workflows/ci.yml:202,215,228`,
-with the reason stated at `:223-227`). `.github/workflows/ci.yml` is edited by **both**
-in-flight lanes, which is why the spec already moved 0a-2's protected-blob `env:`
-line to **0b-11**. The CI *step* registration must ride in that same 0b-11 commit.
-Until then the ratchet is real locally and in every lane's own run, and dark in CI —
-recorded here, in the 0a plan's residual list, and in the 0b entry below so it cannot
-be forgotten.
+**Named residual carried out of 0a, rev 2:** the ratchet's **anti-growth** direction —
+the baseline key set compared against a CI-pinned blob — stays inert until **0b-11**
+registers `ROUTE_COVERAGE_BASELINE_PROTECTED_BLOB`, because that `env:` line is on a file
+both in-flight lanes edit and 0b's entry condition is what waits for them. Growth and
+stale are live from 0a's own merge. Wave 0a's
+`RoutePermissionCoverageRatchetLivenessTest::matched_growth_defeats_the_checker_which_is_what_the_protected_blob_exists_for`
+is that residual's executable record.
+
+> **The former residual "the new Architecture classes execute on no CI event" is CLOSED,
+> and it was also mis-stated (plan gate r1 B-2 / M-2).** Mis-stated: the classes *did*
+> execute on `workflow_dispatch`, because the manual full-suite step runs
+> `tests/Architecture` (`.github/workflows/ci.yml:473-501`); what they did not do is gate
+> **PR→`dev`**, since `backend-architecture` names files only (`:191,202,215,228`, reason
+> at `:223-227`) and `backend-test` is `if:`-skipped there (`:325-330`). Closed: **wave 0a
+> now registers them itself**, as a discrete appended step after `:228` in its own
+> path-scoped commit (0a plan Task 6 step 1), naming **six** classes — the four the wave
+> originally planned plus `TombstoneRouteBehaviourTest` and
+> `RoutePermissionCoverageRatchetLivenessTest`, which gate r1's two other blockers added.
+> **0b-11 is narrowed to appending the `env:` block to that step.** Deferring a detector's
+> registration while calling it a CI ratchet is exactly what convention 08 forbids.
 
 ### Wave 0b — new permissions for the remaining ungated writes
 
 | Field | Value |
 |---|---|
 | **Goal** | Declare and gate the ungated writes whose permission does **not** exist yet, plus the four items wave 0a had to defer for file-overlap reasons, and ship the one shared fleet runner. |
-| **Scope items (spec §8)** | `0b-1` `credit-notes.cancel` (first). `0b-2..4` `services.*` (3), `service-categories.*` (3), `channels.*` (4), `categories.*` (4), `progression.*` (2), `purchase-hub.orders.create`, `companies.create`. `0b-5` the two `BatchExpiry` writes, gated **beside** the lane's `BatchActionAccess`, not instead of it. `0b-6` delete `PermissionSeeder.php` + its `ProductionSeeder.php:73-75` caller. `0b-7` fix `RefundResidualTenantIsolationTest:136-142` **in 0b-1's commit**. `0b-8` glossary rows on top of the lane's General-manager row. `0b-9` `permissions:ensure` + `permissions:ensure-fleet` + `TenantFleetRunner` + `LegacyRoleBaseline` (both predicates) + `PermissionWriteLock`. `0b-11` the `ROUTE_COVERAGE_BASELINE_PROTECTED_BLOB` `env:` line **and the `backend-architecture` step that names 0a's three Architecture classes**. `0b-12` `RequireAnyPermission` `error.details`. `0b-13` the counting-item gate. `0b-14` wire the lock into every runtime role-grant writer. |
-| **Entry condition** | **`lane/w-lot-a-1a` merged into local `dev`.** Reason, by file: 0b edits `apps/api/database/seeders/RolesAndPermissionsSeeder.php` (`permissionNames()` and `rolePermissionGrants()`) — the lane rewrites that file and introduces a marked-tenant preservation branch in it; 0b-5 edits `apps/api/app/Modules/BatchExpiry/Presentation/routes.php` — the lane rewrites it wholesale and adds `BatchActionAccess`; 0b-8 edits `docs/glossary.md` — the lane adds the General-manager row and the sole-writer sentence there; 0b-11 edits `.github/workflows/ci.yml` — **both** lanes edit it; 0b-14 edits `RoleController.php` and `UserController.php` — the lane moves both. **Additionally: 0b-13 edits `apps/api/app/Modules/Inventory/Presentation/routes.php` and 0b-12 edits `apps/api/app/Http/Middleware/RequireAnyPermission.php` — both are in `lane/t2-receipt-spine`'s diff**, so 0b-12 and 0b-13 wait for **T2** as well; the rest of 0b needs only W-LOT. Split 0b into `0b-main` (W-LOT gated) and `0b-t2` (T2 gated) if T2 lands late. |
-| **Exit checklist** | ① All named PHPUnit paths green by path, red captured first. ② `EnsurePermissionsFleetTest` and `TenantFleetRunnerSelectorTest` green — the latter **using a reachable cross-column collision** (a selector equal to tenant A's UUID and tenant B's slug), never two equal slugs, because `tenants.slug` is globally unique (`apps/api/database/migrations/2025_11_30_000001_create_tenants_table.php:16-20`); the snapshot primitive is `get(['id', 'slug'])`, not `pluck('id','slug')` (gate r9 m-1). ③ Convention-09 rows for this wave: `ServicePermissionsSecondCompanyTest`, `CategoryPermissionsSecondCompanyTest`, `StockAdjustmentLocationScopePermissionTest`, and `permissions:ensure` run twice reporting `created=0 granted=0` with zero row writes. ④ Route-coverage ceilings shrink (152 → ~127 writes) and no baseline entry is left stale. ⑤ **UI happy path with console + 5xx capture:** a Services CRUD round trip as `manager`, a Categories create/reorder, a Channels list, a company create refused for a non-admin, a batch delete as `admin`. ⑥ `tenant:census-day-one` clean. |
-| **Reviewer gates** | `tenancy-authz-reviewer` (**mandatory**). `frontend-conventions-reviewer` (the regenerated `permissionsMap.generated.ts`, the label JSONs). `inventory-costing-reviewer` for 0b-13 and 0b-5 (a batch delete and a counting-item write). |
+| **Scope items (spec §8)** | `0b-1` `credit-notes.cancel` (first). `0b-2..4` `services.*` (3), `service-categories.*` (3), `channels.*` (4), `categories.*` (4), `progression.*` (2), `purchase-hub.orders.create`, `companies.create`. `0b-5` the two `BatchExpiry` writes, gated **beside** the lane's `BatchActionAccess`, not instead of it. `0b-6` delete `PermissionSeeder.php` + its `ProductionSeeder.php:73-75` caller. `0b-7` fix `RefundResidualTenantIsolationTest:136-142` **in 0b-1's commit**. `0b-8` glossary rows on top of the lane's General-manager row. `0b-9` `permissions:ensure` + `permissions:ensure-fleet` + `TenantFleetRunner` + `LegacyRoleBaseline` (both predicates) + `PermissionWriteLock`. `0b-11` the `ROUTE_COVERAGE_BASELINE_PROTECTED_BLOB` `env:` line, appended to the `backend-architecture` step **wave 0a already created** (the step registration is no longer 0b's — gate r1 B-2). `0b-12` `RequireAnyPermission` `error.details`. `0b-13` the counting-item gate. `0b-14` wire the lock into every runtime role-grant writer. **`0b-15` (new — plan gate r1 B-3) the four Identity read-route gates relocated from 0a, with the `UsersPage` roles-query guard, the two `RolesPage` queries, the `/settings/roles` route and the Settings card all gated on `roles.view`, plus a Playwright spec.** |
+| **Entry condition** | **`lane/w-lot-a-1a` merged into local `dev`.** Reason, by file: 0b edits `apps/api/database/seeders/RolesAndPermissionsSeeder.php` (`permissionNames()` and `rolePermissionGrants()`) — the lane rewrites that file and introduces a marked-tenant preservation branch in it; 0b-5 edits `apps/api/app/Modules/BatchExpiry/Presentation/routes.php` — the lane rewrites it wholesale and adds `BatchActionAccess`; 0b-8 edits `docs/glossary.md` — the lane adds the General-manager row and the sole-writer sentence there; 0b-11 edits `.github/workflows/ci.yml` — **both** lanes edit it; 0b-14 edits `RoleController.php` and `UserController.php` — the lane moves both; **0b-15 edits `apps/web/src/features/settings/RolesPage.tsx`, `apps/web/src/routes/index.tsx` and `apps/web/src/hooks/usePermissions.ts` — all three are in the lane's diff, which is precisely why plan gate r1 B-3 put it here rather than in 0a.** **Additionally: 0b-13 edits `apps/api/app/Modules/Inventory/Presentation/routes.php` and 0b-12 edits `apps/api/app/Http/Middleware/RequireAnyPermission.php` — both are in `lane/t2-receipt-spine`'s diff**, so 0b-12 and 0b-13 wait for **T2** as well; the rest of 0b needs only W-LOT. Split 0b into `0b-main` (W-LOT gated) and `0b-t2` (T2 gated) if T2 lands late. |
+| **Exit checklist** | ① All named PHPUnit paths green by path, red captured first. ② `EnsurePermissionsFleetTest` and `TenantFleetRunnerSelectorTest` green — the latter **using a reachable cross-column collision** (a selector equal to tenant A's UUID and tenant B's slug), never two equal slugs, because `tenants.slug` is globally unique (`apps/api/database/migrations/2025_11_30_000001_create_tenants_table.php:16-20`); the snapshot primitive is `get(['id', 'slug'])`, not `pluck('id','slug')` (gate r9 m-1). ③ Convention-09 rows for this wave: `ServicePermissionsSecondCompanyTest`, `CategoryPermissionsSecondCompanyTest`, `StockAdjustmentLocationScopePermissionTest`, and `permissions:ensure` run twice reporting `created=0 granted=0` with zero row writes. ④ Route-coverage ceilings shrink — writes **152 → 127**, reads **146 → 142** (0b-15, the first read closure) **→ 126** — and no baseline entry is left stale. ⑤ **0b-15's e2e:** `pnpm --filter @autoerp/web test:e2e` run and `apps/web/e2e/rbac-role-read-gates.spec.ts` green (`AGENTS.md:12-16`), asserting a `manager` issues **no** `/roles` or `/permissions` request at all — an absence, not a 403. ⑤ **UI happy path with console + 5xx capture:** a Services CRUD round trip as `manager`, a Categories create/reorder, a Channels list, a company create refused for a non-admin, a batch delete as `admin`. ⑥ `tenant:census-day-one` clean. |
+| **Reviewer gates** | `tenancy-authz-reviewer` (**mandatory**). `frontend-conventions-reviewer` (**mandatory** — the regenerated `permissionsMap.generated.ts`, the label JSONs, **and 0b-15's four frontend surfaces**). `inventory-costing-reviewer` for 0b-13 and 0b-5 (a batch delete and a counting-item write). |
 | **Deploy steps** | 1. `php artisan permissions:ensure-fleet --keys=… --grant-to=…` — additive, marker-safe, idempotent; **never** `tenants:seed RolesAndPermissionsSeeder` (on a marked tenant with `LOT_ACTION_PERMISSIONS_ENFORCE=false`, the shipped default, that seeder takes its preservation branch and writes nothing, so the 0b keys would never reach a tenant whose routes are already gated on them → 403 for everyone including `admin`). 2. `php artisan permission:cache-reset`. 3. `php artisan permissions:export-frontend-map`. **Health check:** the run exits zero **and** `/var/run/autoerp/permissions-ensure.status` reads `permissions_ensure=ok`; if not, grep the container log for the `PERMISSIONS-ENSURE-FLEET` aggregate line, which names each failed/blocked tenant id with its reason, and re-run with `--tenants=…` for those. |
 | **Rollback point** | Revert the wave's commits. Added `permissions` rows are inert once no route references them; `permissions:prune-orphans` is **not** run as part of a rollback. |
 
@@ -122,7 +145,7 @@ be forgotten.
 | Field | Value |
 |---|---|
 | **Goal** | Make role management safe to operate: no tenant can lose its last admin, role reads are gated **and shaped**, every role mutation and denial lands on the audit chain, and the eight role-name authorization sites become permission checks. |
-| **Scope items (spec §8)** | `roles.is_system` consumption; the single `LastAdminFloor` service wired into all nine writers of §4.6.3 plus `LastAdminFloorWriterCensusTest`; F-1; **the D4 payload shaping of §4.6.4** (this is where `GET /users/{userId}/roles` stops returning the permission matrix to a bare `users.assign-roles` holder — wave 0a only *gates* those routes); `RoleCreated/RoleUpdated/RoleDeleted` on `DomainEvent`; `(principal_id, token_id)` attribution; denial events on `audit_events` with the two-key Redis dedup; `EffectivePermissionResolver` with `forSubject`/`forTarget`; `GET /users/{id}/effective-permissions[?token_id=]`; the effective-permissions panel; `RolesPage` grouped by registry module; the FE deletions of §4.5.4 (`uiAliasPermissions.ts` and the fail-open fallback); **and the conversion of the eight role-name sites** — `CreateDraftCountingRequest.php:35`, `InventoryCountingController.php:782,866,905,975,1297,1494`, `DiscountPermissionResolver.php:39`. |
+| **Scope items (spec §8)** | `roles.is_system` consumption; the single `LastAdminFloor` service wired into all nine writers of §4.6.3 plus `LastAdminFloorWriterCensusTest`; F-1; **the D4 payload shaping of §4.6.4** (this is where `GET /users/{userId}/roles` stops returning the permission matrix to a bare `users.assign-roles` holder — **wave 0b's task 0b-15** only *gates* those routes; the gating moved out of 0a by plan gate r1 B-3); `RoleCreated/RoleUpdated/RoleDeleted` on `DomainEvent`; `(principal_id, token_id)` attribution; denial events on `audit_events` with the two-key Redis dedup; `EffectivePermissionResolver` with `forSubject`/`forTarget`; `GET /users/{id}/effective-permissions[?token_id=]`; the effective-permissions panel; `RolesPage` grouped by registry module; the FE deletions of §4.5.4 (`uiAliasPermissions.ts` and the fail-open fallback); **and the conversion of the eight role-name sites** — `CreateDraftCountingRequest.php:35`, `InventoryCountingController.php:782,866,905,975,1297,1494`, `DiscountPermissionResolver.php:39`. |
 | **Entry condition** | **Wave 1 merged and soaked.** |
 | **Exit checklist** | ① `LastAdminFloorTest` with **two companies in one tenant**, asserting the floor is per *tenant*: removing the admin role from the only admin is refused even though company B has its own owner. ② The nine-writer census test enumerates every writer by name. ③ Denial dedup proven against a **real Redis**, not a fake. ④ Shaping asserted on **rows**: a `users.assign-roles`-only caller gets `{user_id, roles:[{id,name,is_system}]}` with the `permissions` array **absent**; a `roles.view` caller gets it. ⑤ `ScopedTokenIssuanceEntryConditionTest` green — this is what unlocks 2b. ⑥ UI happy path: role create/edit/delete as `admin` with the audit rows asserted; a manager's Users page unchanged; console + 5xx captured. |
 | **Reviewer gates** | `tenancy-authz-reviewer` (**mandatory**), `frontend-conventions-reviewer`, plus **`inventory-costing-reviewer`** for the seven Inventory counting conversions and **`fiscal-pos-reviewer`** for `DiscountPermissionResolver`. |
@@ -190,11 +213,17 @@ Measured 2026-09-10 in the shared checkout `/Users/houssamr/Projects/syneriva/ap
 
 | Ref | SHA today | `git diff --shortstat dev...<ref>` | Merged into `dev`? | What it blocks |
 |---|---|---|---|---|
-| `dev` | `d64db9a0e` | — | — | — |
+| `dev` | `2f99fef26` | — | — | — |
 | `lane/rbac-w0a-s1-permission-cache` | `05455fa41` | — | **YES** — merged at `6415062b9` | nothing; 0a-1 is DONE |
 | `lane/t1-transfers-edge` | `86273346a` | **empty** | **YES** — ancestor of `dev` | nothing |
 | `lane/w-lot-a-1a` | `5d847b2ba` | 83 files, +4 674, −663 | **NO** | wave **0b-main** and (via its staging protocol) wave **1** |
 | `lane/t2-receipt-spine` | `d7123fa30` | 100 files, +13 066, −495 | **NO** | wave **0b-t2** (items 0b-12, 0b-13 only) |
+
+**`dev` moved twice more while the wave-0a plan was being gated** — `d64db9a0e` when this
+document was written, `105b1b22b` when plan gate r1 read the tree, `2f99fef26` now — while
+**both lane tips held still** at `5d847b2ba` and `d7123fa30`, with their shortstats
+unchanged (83 files / +4 674 / −663 and 100 files / +13 066 / −495). `origin/dev` is
+`ad1d6ceb1` and still does not contain `6415062b9`, so O-1 stands.
 
 **The lane tips moved again since Codex spec gate r9 read them** (r9 saw
 `e66ab5823` / `ede6a990a`; the spec text still pins `f8005243d` / `bd91f8de5`). That
@@ -208,8 +237,8 @@ overlap is gone because 0a-1 already landed.
 
 | Wave | May start | Trigger the orchestrator watches |
 |---|---|---|
-| **0a** | **NOW.** No entry condition, fully disjoint at today's tips, and the laptop lane cap allows it: one RBAC lane (`lane/rbac-w0a`) alongside the two in-flight lanes is exactly 3. | none — dispatch `docs/superpowers/plans/2026-09-10-rbac-wave-0a.md` |
-| **0b-main** | When W-LOT lands. | `git -C /Users/houssamr/Projects/syneriva/apps/erp branch --merged dev \| grep lane/w-lot-a-1a` returns a line |
+| **0a** | **NOW.** No entry condition; disjoint at today's tips **except the accepted `.github/workflows/ci.yml` file-level overlap** (hunks ~900 lines apart), and the laptop lane cap allows it: one RBAC lane (`lane/rbac-w0a`) alongside the two in-flight lanes is exactly 3. | none — dispatch `docs/superpowers/plans/2026-09-10-rbac-wave-0a.md` (**rev 2**; rev 1 was CHANGES-REQUIRED at plan gate r1) |
+| **0b-main** | When W-LOT lands. **Task 0b-15 (the Identity read gates + page guards, relocated from 0a) rides in this half**, because the three frontend files it needs are in W-LOT's diff. | `git -C /Users/houssamr/Projects/syneriva/apps/erp branch --merged dev \| grep lane/w-lot-a-1a` returns a line |
 | **0b-t2** (items 0b-12, 0b-13) | When T2 lands. | `git -C … branch --merged dev \| grep lane/t2-receipt-spine` returns a line |
 | **1** | When 0a **and** 0b are merged **and** W-LOT's five-push staging protocol has completed. | the two `branch --merged dev` greps above **plus** the owner's confirmation that the five-push protocol finished — the protocol is a staging fact, not a repo fact, so no grep can prove it |
 | **2a** | Wave 1 merged and its one-week staging soak shows zero unintended diffs. | soak evidence in the wave-1 handback |
@@ -234,7 +263,7 @@ entry conditions and therefore cannot both be open before their blocking lane la
 | **O-4** | **OQ-2 — default service-token TTL.** Default applied: **365 days, set explicitly at issue, no unlimited option**, plus `sanctum:prune-expired --hours=24` daily. Consequence stated: **human back-office tokens LENGTHEN from today's 30 days to 90**; POS terminal tokens keep their explicit one-year `expires_at`. **Needed before wave 2b.** | changes a live token policy |
 | **O-5** | **OQ-3 — retire any of the eighteen baselined SoD combinations?** Default applied: retire **three** from `manager` (`invoices.create`+`.post`, `credit-notes.create`+`.post`, `payments.create`+`.refund`), keep the rest, change nothing on `accountant`. Second half of the question: does `general_manager` mirror the retirement (18 → 15 → 12)? **Needed before wave 1's `PermissionSodTemplateTest` baseline is pinned.** | narrows what a real manager can do on day one |
 | **O-6** | **OQ-4 — does `SYNC_PERMISSIONS_ON_BOOT` default to `true` in production after the wave-1 soak?** Default applied: **yes**, after a one-week staging soak with zero unintended diffs. Conservative alternative: leave it `false` and run `permissions:sync-fleet` as a named deploy step. **Needed at the end of wave 1.** | production deploy behaviour |
-| **O-7** | **Wave 0a scope addition to argue with or accept:** T3b adds `apps/web/src/features/settings/UsersPage.tsx` to wave 0a, which is **not** in the spec's verified 0a file list. Reason in §5 below. It makes `frontend-conventions-reviewer` mandatory for 0a. Alternative: gate as specified and ship a known 403-on-load for `manager`, deferring the guard to wave 2a. | a deliberate deviation from an accepted spec |
+| ~~**O-7**~~ | **CLOSED by the orchestrator, 2026-09-10, on plan gate r1 B-3.** The question was whether to accept `apps/web/src/features/settings/UsersPage.tsx` into wave 0a. The ruling took neither of the two options as posed: the **whole item** — the four Identity read gates *and* their page guards, now including `RolesPage`, the `/settings/roles` route and the Settings card — moved to wave **0b as task 0b-15**. Wave 0a touches no `apps/web` file, needs no `frontend-conventions-reviewer`, and ships no known 403-on-load. | — (closed) |
 
 ---
 
@@ -243,6 +272,21 @@ entry conditions and therefore cannot both be open before their blocking lane la
 Two things the spec's wave-0a scoping does not cover, found while writing the
 dispatchable plan. Both are recorded here so a gate can argue with them rather than
 discover them.
+
+> **Both findings below are SUPERSEDED by the wave-0a plan's Codex gate r1 and are kept
+> for the reasoning, not the disposition.** **F-1** was right about `UsersPage` and
+> **incomplete**: gate r1 B-3 found a second, reachable caller the one-line fix did not
+> close — `RolesPage` fires `GET /roles` **and** `GET /permissions` unconditionally
+> (`apps/web/src/features/settings/RolesPage.tsx:73-80,82-89`) behind a route gated only on
+> `moduleKey="settings"` (`apps/web/src/routes/index.tsx:2344-2351`) and a Settings card
+> with no permission check at all (`apps/web/src/features/settings/SettingsPage.tsx:30-42`,
+> whose section type has no permission field). Because `RolesPage.tsx`, `routes/index.tsx`
+> and `usePermissions.ts` are all in `lane/w-lot-a-1a`'s diff, the **whole** item — API
+> gates and page guards together — moved to wave **0b as task 0b-15**, and wave 0a now
+> touches no `apps/web` file. That also closes **O-7** below: there is no frontend scope
+> addition to wave 0a to accept or refuse. **F-2** is closed by 0a itself registering its
+> Architecture classes in CI, and its premise was wrong (see the residual note under wave
+> 0a): the classes ran on `workflow_dispatch`, they did not gate PR→`dev`.
 
 **F-1 — `GET /roles` is called by a page a `manager` can open, and gating it 403s
 that call.** Wave 0a-4 gates `GET /api/v1/roles` on
@@ -267,10 +311,10 @@ in-flight lanes** (measured 2026-09-10); `RolesPage.tsx` and `usePermissions.ts`
 are **not** — `lane/w-lot-a-1a` edits both — which is why the guard goes in
 `UsersPage.tsx` and nowhere else.
 
-**F-2 — wave 0a's three new Architecture tests run on no CI event.** See the named
-residual under wave 0a above. The fix is one step in the `backend-architecture` job
-naming the three files, batched into **0b-11**'s `ci.yml` commit because that file is
-edited by both in-flight lanes.
+**F-2 — wave 0a's three new Architecture tests run on no CI event.** *(Superseded — see
+the box above and the residual note under wave 0a. The count was three, is now six; the
+claim "no CI event" was wrong, the true gap was PR→`dev`; and the registration is in 0a,
+not 0b-11.)*
 
 ---
 
@@ -289,9 +333,10 @@ edited by both in-flight lanes.
 | Wave | Plan | Handback | Gate records |
 |---|---|---|---|
 | 0a-1 (done) | `docs/superpowers/plans/2026-09-03-request-hygiene-phase-a.md` Task 1 | `docs/handoff/HANDBACK-rbac-w0a-s1-2026-09-10.md` | `docs/superpowers/reviews/2026-09-10-rbac-w0a-s1-gate-r{1,2}.md` |
-| 0a | `docs/superpowers/plans/2026-09-10-rbac-wave-0a.md` | `docs/handoff/HANDBACK-rbac-w0a-2026-09-10.md` | `docs/superpowers/reviews/2026-09-10-rbac-w0a-gate-r*.md` |
-| 0b | *(written when its entry condition is met)* | `docs/handoff/HANDBACK-rbac-w0b-*.md` | — |
-| 1..4 | *(one plan per wave, written at its entry condition)* | — | — |
+| 0a | `docs/superpowers/plans/2026-09-10-rbac-wave-0a.md` (**rev 2**) | `docs/handoff/HANDBACK-rbac-w0a-2026-09-10.md` | plan gates: `docs/superpowers/reviews/2026-09-10-rbac-plan-0a-codex-gate-r*.md` · lane gates: `docs/superpowers/reviews/2026-09-10-rbac-w0a-gate-r*.md` |
+| 0b | `docs/superpowers/plans/2026-09-10-rbac-wave-0b.md` (**rev 1.1** — task 0b-15 added by plan gate r1 B-3) | `docs/handoff/HANDBACK-rbac-w0b-*.md` | — |
+| 1 | `docs/superpowers/plans/2026-09-10-rbac-wave-1.md` (rev 1) | — | — |
+| 2a..4 | *(one plan per wave, written at its entry condition)* | — | — |
 
 Spec gates r1..r9 are at `docs/superpowers/reviews/2026-09-10-rbac-spec-codex-gate-r{1..9}.md`;
 the accepted revision is rev 9 at `c08a3db21`.
