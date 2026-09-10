@@ -31,3 +31,7 @@ Previous orchestrator session: Claude Fable 5.1 (`session_01Q63X8ksgVWSsbZ5eYVke
 - Reboot the laptop between Codex runs (swap).
 - Promote local dev to origin/dev when the owner says so (code now included; staging deploy).
 - OD/rulings all closed; no owner question open at handover time.
+
+## Lane C — IMP-1 imports history + error-line export (added 13:3x, owner request)
+- Owner symptom: exporting failing lines returns "the same file". Root cause: spec §4.10 / lane G-1 (error-line export with `_status/_code/_message`, source headers, BOM, re-importable) was never dispatched; today's `FailedRowsExportService` + result workbook echo rows without reasons. Benchmark + ruling: `docs/superpowers/reviews/2026-09-10-benchmark-import-error-export.md`.
+- Dispatch packet handed to the owner: `docs/handoff/CODEX-DISPATCH-IMP-1-imports-history-and-error-export-2026-09-10.md` (worktree `.worktrees/imp1-history-export`, PG `autoerp_test_z`; Phase A Playwright evidence with 4 sample files → Phase B G-1 implementation). On `status: review`: gate with imports-reviewer + frontend-conventions-reviewer (one at a time), merge into local dev. Owner confirmation pending on one UI point: row export = primary history action, result workbook = secondary "full report".
