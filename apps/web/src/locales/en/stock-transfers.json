@@ -21,6 +21,9 @@
   "status": {
     "draft": "Draft",
     "in_transit": "In Transit",
+    "partially_received": "Partially received",
+    "closed_with_writeoff": "Closed with write-off",
+    "closed_returned": "Closed with return",
     "completed": "Completed",
     "cancelled": "Cancelled"
   },

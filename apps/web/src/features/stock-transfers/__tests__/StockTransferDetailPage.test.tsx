@@ -60,6 +60,16 @@ describe('StockTransferDetailPage', () => {
     expect(productLink).toHaveAttribute('href', '/inventory/products/prod-42')
   })
 
+  it('offers completion for a partially received transfer', () => {
+    transfer.status = 'partially_received'
+    try {
+      renderWithProviders(<StockTransferDetailPage />, { route: '/inventory/stock-transfers/transfer-1' })
+      expect(screen.getByRole('button', { name: /confirm receipt/i })).toBeInTheDocument()
+    } finally {
+      transfer.status = 'completed'
+    }
+  })
+
   it('formats line quantity with the product unit precision', () => {
     renderWithProviders(<StockTransferDetailPage />, { route: '/inventory/stock-transfers/transfer-1' })
 

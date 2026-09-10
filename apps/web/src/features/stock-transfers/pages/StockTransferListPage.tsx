@@ -16,6 +16,9 @@ const STATUS_OPTIONS: readonly (StockTransferStatus | 'all')[] = [
   'all',
   'draft',
   'in_transit',
+  'partially_received',
+  'closed_with_writeoff',
+  'closed_returned',
   'completed',
   'cancelled',
 ]

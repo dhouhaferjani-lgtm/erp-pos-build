@@ -35,7 +35,7 @@ export function StockTransferDetailPage() {
     return <div className={`p-10 text-center ${textColors.tertiary}`}>...</div>
   }
 
-  const canComplete = transfer.status === 'in_transit'
+  const canComplete = transfer.status === 'in_transit' || transfer.status === 'partially_received'
   const canCancel = transfer.status === 'draft' || transfer.status === 'in_transit'
 
   const completeTransfer = async (): Promise<void> => {

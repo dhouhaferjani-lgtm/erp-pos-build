@@ -1,15 +1,5 @@
-/**
- * Stock Transfer feature — TypeScript types.
- *
- * NOTE: Domain types are intentionally hand-written here (not auto-generated
- * from PHP DTOs) because this feature ships before the generic DTO transformer
- * is wired up for the new module. When `php artisan typescript:transform`
- * gains support for inventory transfers, replace this file with the generated
- * output and drop the hand-written interfaces — types ALWAYS flow from
- * backend (CLAUDE.md rule 7).
- */
-
-export type StockTransferStatus = 'draft' | 'in_transit' | 'completed' | 'cancelled'
+/** Transfer statuses come from the generated backend enum. */
+export type StockTransferStatus = App.Modules.Inventory.Domain.Enums.TransferStatus
 
 export type StockTransferType = 'intracompany' | 'intercompany'
 

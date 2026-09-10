@@ -50,6 +50,7 @@ import enChannels from '../locales/en/channels.json'
 import enReports from '../locales/en/reports.json'
 import enStockAdjustments from '../locales/en/stock-adjustments.json'
 import enStockTransfers from '../locales/en/stock-transfers.json'
+import arStockTransfers from '../locales/ar/stock-transfers.json'
 import enReplenishment from '../locales/en/replenishment.json'
 import enAdmin from '../locales/en/admin.json'
 import enPurchases from '../locales/en/purchases.json'
@@ -472,9 +473,9 @@ const resources = {
     channels: arChannels,
     reports: arReports,
     // ar has no stock-adjustments bundle: fall back to English for the whole
-    // namespace, the same treatment stock-transfers gets.
+    // namespace. Stock transfers overrides the new receipt status labels below.
     'stock-adjustments': enStockAdjustments,
-    'stock-transfers': enStockTransfers,
+    'stock-transfers': { ...enStockTransfers, status: { ...enStockTransfers.status, ...arStockTransfers.status } },
     replenishment: arReplenishment,
     admin: arAdmin,
     purchases: arPurchases,
