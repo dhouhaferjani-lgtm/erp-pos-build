@@ -64,7 +64,7 @@ final class BatchActionPermissionsTest extends BatchPermissionFixture
             'days_until_expiry' => -1, 'is_active' => true, 'is_expired' => true, 'is_recalled' => false,
             'recall_reason' => null, 'recalled_at' => null, 'notes' => null, 'expiry_status' => 'EXPIRED', 'can_be_sold' => false,
             'total_quantity' => '12.1234', 'available_quantity' => '12.0234',
-            'product' => ['id' => $this->product->id, 'name' => $this->product->name, 'sku' => $this->product->sku, 'quantity_decimals' => 4],
+            'product' => ['id' => $this->product->id, 'name' => $this->product->name, 'sku' => $this->product->sku, 'quantity_decimals' => 2],
             'batch_stock' => $stock, 'created_at' => $batch->created_at->toIso8601String(), 'updated_at' => $batch->updated_at->toIso8601String(),
         ];
         foreach (['/batches', '/products/'.$this->product->id.'/batch-stock'] as $path) {

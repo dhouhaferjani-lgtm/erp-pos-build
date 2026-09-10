@@ -136,6 +136,7 @@ function batchFixture(uuid: string): Batch {
       id: 'product-1',
       name: 'Product',
       sku: 'SKU-1',
+      quantity_decimals: 4,
     },
     batch_stock: [
       {

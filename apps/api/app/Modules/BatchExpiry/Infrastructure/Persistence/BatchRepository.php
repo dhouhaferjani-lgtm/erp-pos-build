@@ -31,7 +31,7 @@ class BatchRepository implements BatchRepositoryInterface
         $query = Batch::query()->where('uuid', $uuid)->where('company_id', $companyId);
         $this->scopeVisible($query, $locationIds, $historicallyVisibleBatchIds);
 
-        return $query->with(['product', 'batchStock' => fn ($stock) => $locationIds === null ? $stock : $stock->whereIn('location_id', $locationIds)])->first();
+        return $query->with(['product.unitOfMeasure', 'batchStock' => fn ($stock) => $locationIds === null ? $stock : $stock->whereIn('location_id', $locationIds)])->first();
     }
 
     /**
@@ -150,7 +150,7 @@ class BatchRepository implements BatchRepositoryInterface
 
         $this->scopeVisible($query, $locationIds, $historicallyVisibleBatchIds);
 
-        return $query->with(['product', 'batchStock' => fn ($stock) => $locationIds === null ? $stock : $stock->whereIn('location_id', $locationIds)])
+        return $query->with(['product.unitOfMeasure', 'batchStock' => fn ($stock) => $locationIds === null ? $stock : $stock->whereIn('location_id', $locationIds)])
             ->orderByRaw('(expiry_date IS NULL) ASC, expiry_date ASC')
             ->orderBy('id')
             ->get();

@@ -129,7 +129,7 @@ class BatchController extends Controller
     /** @param list<string>|null $locations */
     private function loadScopedResourceRelations(Batch $batch, ?array $locations): void
     {
-        $batch->load(['product', 'batchStock' => fn ($stock) => $locations === null
+        $batch->load(['product.unitOfMeasure', 'batchStock' => fn ($stock) => $locations === null
             ? $stock : $stock->whereIn('location_id', $locations)]);
     }
 
@@ -206,7 +206,7 @@ class BatchController extends Controller
         }
 
         if (! $this->activation->enforced()) {
-            $result->load(['product', 'batchStock.location']);
+            $result->load(['product.unitOfMeasure', 'batchStock.location']);
         }
 
         return response()->json([

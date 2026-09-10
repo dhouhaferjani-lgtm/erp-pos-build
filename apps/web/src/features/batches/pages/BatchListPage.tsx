@@ -10,7 +10,7 @@ import type { ExpiryStatus } from '../types'
 import { usePermissions } from '@/hooks/usePermissions'
 import { formatQuantity } from '@/lib/decimal'
 import { textColors } from '@/lib/designTokens'
-import { useCurrency } from '@/hooks/useCurrency'
+import { getQuantityDecimals } from '@/lib/quantityScale'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
@@ -20,7 +20,6 @@ type ActiveFilter = 'all' | 'active' | 'inactive'
 
 export function BatchListPage() {
   const { t } = useTranslation(['batches', 'common'])
-  const { decimals } = useCurrency()
   const { hasPermission } = usePermissions()
   const canCreate = hasPermission('batches.create')
   const [searchQuery, setSearchQuery] = useState('')
@@ -175,7 +174,7 @@ export function BatchListPage() {
             </thead>
             <tbody className={`divide-y ${colorTokens.border.divider} bg-white`}>
               {batches.map((batch) => {
-                const totalQuantity = batch.available_quantity ?? 0
+                const totalQuantity = batch.available_quantity
 
                 return (
                   <tr key={batch.id} className={`${colorTokens.variants.hoverBgGray50}`}>
@@ -216,7 +215,7 @@ export function BatchListPage() {
                       />
                     </td>
                     <td className={`whitespace-nowrap px-6 py-4 text-sm ${colorTokens.text.subtle}`}>
-                      {formatQuantity(totalQuantity, decimals)}
+                      {formatQuantity(totalQuantity, getQuantityDecimals(batch.product))}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-end text-sm">
                       <Link

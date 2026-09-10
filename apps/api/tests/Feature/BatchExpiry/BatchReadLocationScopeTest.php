@@ -23,6 +23,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Domain\Entities\Unit;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -89,7 +90,9 @@ abstract class BatchPermissionFixture extends TestCase
         app(CompanyContext::class)->setCompanyId($this->company->id);
 
         $this->location = Location::factory()->create(['company_id' => $this->company->id]);
+        $unit = Unit::factory()->create(['decimal_places' => 2]);
         $this->product = Product::factory()->create([
+            'unit_id' => $unit->id,
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
         ]);
@@ -142,7 +145,7 @@ final class BatchReadLocationScopeTest extends BatchPermissionFixture
         $this->stockAt($batch, $this->location, '3.1234', '0.1000');
         $this->restrict([$this->location->id]);
         $this->patchJson('/api/v1/batches/'.$batch->uuid, ['notes' => 'Scoped response'])
-            ->assertOk()->assertJsonPath('data.total_quantity', '3.1234')
+            ->assertOk()->assertJsonPath('data.product.quantity_decimals', 2)->assertJsonPath('data.total_quantity', '3.1234')
             ->assertJsonPath('data.available_quantity', '3.0234')
             ->assertJsonCount(1, 'data.batch_stock')
             ->assertJsonPath('data.batch_stock.0.location_id', $this->location->id);

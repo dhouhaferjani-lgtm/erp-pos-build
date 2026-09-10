@@ -45,6 +45,7 @@ export interface Batch {
     id: string
     name: string
     sku: string
+    quantity_decimals: number
   }
   batch_stock?: Array<{
     location_id: string | number
