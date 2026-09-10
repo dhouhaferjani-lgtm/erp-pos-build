@@ -86,15 +86,27 @@ class BatchController extends Controller
 
     private function findVisibleBatchOrFail(Request $request, string $uuid): Batch|JsonResponse
     {
+        return $this->findBatchInReadScope($uuid, $this->resolvedReadLocationIds($request));
+    }
+
+    /** @param list<string>|null $locations */
+    private function findBatchInReadScope(string $uuid, ?array $locations): Batch|JsonResponse
+    {
         if (! $this->activation->enforced()) {
             return $this->findBatchOrFail($uuid);
         }
         $company = $this->companyContext->requireCompany();
-        $locations = $this->resolvedReadLocationIds($request);
         $history = $locations === null ? [] : $this->historicallyVisibleBatchIds($company->tenant_id, $company->id, $locations);
         $batch = Str::isUuid($uuid) ? $this->batchRepository->findVisibleByUuid($uuid, $company->id, $locations, $history) : null;
 
         return $batch ?? response()->json(['error' => ['code' => 'BATCH_NOT_FOUND', 'message' => 'Batch not found']], 404);
+    }
+
+    private function loadScopedResourceRelations(Request $request, Batch $batch): void
+    {
+        $locations = $this->resolvedReadLocationIds($request);
+        $batch->load(['product', 'batchStock' => fn ($stock) => $locations === null
+            ? $stock : $stock->whereIn('location_id', $locations)]);
     }
 
     /**
@@ -208,7 +220,7 @@ class BatchController extends Controller
         }
 
         $batch = $this->batchRepository->create($data);
-        $batch->load(['product']);
+        $this->loadScopedResourceRelations($request, $batch);
 
         return response()->json([
             'data' => new BatchResource($batch),
@@ -226,7 +238,7 @@ class BatchController extends Controller
         }
 
         $this->batchRepository->update($result, $request->validated());
-        $result->refresh()->load(['product', 'batchStock']);
+        $this->loadScopedResourceRelations($request, $result->refresh());
 
         return response()->json([
             'data' => new BatchResource($result),
@@ -265,7 +277,7 @@ class BatchController extends Controller
         }
 
         $result->recall($request->input('reason'));
-        $result->refresh()->load(['product', 'batchStock']);
+        $this->loadScopedResourceRelations($request, $result->refresh());
 
         return response()->json([
             'data' => new BatchResource($result),
@@ -329,12 +341,13 @@ class BatchController extends Controller
      */
     public function stock(Request $request, string $uuid): JsonResponse
     {
-        $result = $this->findVisibleBatchOrFail($request, $uuid);
+        $locations = $this->resolvedReadLocationIds($request);
+        $result = $this->findBatchInReadScope($uuid, $locations);
         if ($result instanceof JsonResponse) {
             return $result;
         }
 
-        $stockLevels = $this->fefoService->getBatchStockByLocation((string) $result->id, $this->resolvedReadLocationIds($request));
+        $stockLevels = $this->fefoService->getBatchStockByLocation((string) $result->id, $locations);
 
         return response()->json([
             'data' => $stockLevels->map(fn ($stock) => [
@@ -461,7 +474,7 @@ class BatchController extends Controller
             ], 422);
         }
 
-        $result->refresh()->load(['product', 'batchStock.location']);
+        $this->loadScopedResourceRelations($request, $result->refresh());
 
         return response()->json([
             'data' => new BatchResource($result),
@@ -500,7 +513,7 @@ class BatchController extends Controller
             ], 422);
         }
 
-        $result->refresh()->load(['product', 'batchStock.location']);
+        $this->loadScopedResourceRelations($request, $result->refresh());
 
         return response()->json([
             'data' => new BatchResource($result),

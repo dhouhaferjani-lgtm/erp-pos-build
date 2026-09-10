@@ -20,6 +20,10 @@ class BatchResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        if (! $this->relationLoaded('batchStock')) {
+            throw new \LogicException('BatchResource requires scoped batchStock to be loaded.');
+        }
+
         return [
             'id' => $this->id,
             'uuid' => $this->uuid,
@@ -68,10 +72,8 @@ class BatchResource extends JsonResource
     private function scopedTotalQuantity(): string
     {
         $total = bcadd('0', '0', QuantityScale::SCALE);
-        if ($this->relationLoaded('batchStock')) {
-            foreach ($this->batchStock as $stock) {
-                $total = bcadd($total, $stock->quantity, QuantityScale::SCALE);
-            }
+        foreach ($this->batchStock as $stock) {
+            $total = bcadd($total, $stock->quantity, QuantityScale::SCALE);
         }
 
         return $total;
@@ -80,10 +82,8 @@ class BatchResource extends JsonResource
     private function scopedAvailableQuantity(): string
     {
         $total = bcadd('0', '0', QuantityScale::SCALE);
-        if ($this->relationLoaded('batchStock')) {
-            foreach ($this->batchStock as $stock) {
-                $total = bcadd($total, bcsub($stock->quantity, $stock->reserved_quantity, QuantityScale::SCALE), QuantityScale::SCALE);
-            }
+        foreach ($this->batchStock as $stock) {
+            $total = bcadd($total, bcsub($stock->quantity, $stock->reserved_quantity, QuantityScale::SCALE), QuantityScale::SCALE);
         }
 
         return $total;

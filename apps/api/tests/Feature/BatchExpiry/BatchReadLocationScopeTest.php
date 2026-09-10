@@ -7,6 +7,7 @@ namespace Tests\Feature\BatchExpiry;
 use App\Enums\Vertical;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
+use App\Modules\BatchExpiry\Presentation\Resources\BatchResource;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
@@ -132,6 +133,50 @@ final class BatchReadLocationScopeTest extends BatchPermissionFixture
         $response->assertJsonPath('data.total_quantity', '2.1234')->assertJsonPath('data.available_quantity', '2.0234');
     }
 
+    public function test_update_response_uses_only_membership_stock(): void
+    {
+        $batch = $this->lot();
+        $other = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->stockAt($batch, $other, '91.0000');
+        $this->stockAt($batch, $this->location, '3.1234', '0.1000');
+        $this->restrict([$this->location->id]);
+        $this->patchJson('/api/v1/batches/'.$batch->uuid, ['notes' => 'Scoped response'])
+            ->assertOk()->assertJsonPath('data.total_quantity', '3.1234')
+            ->assertJsonPath('data.available_quantity', '3.0234')
+            ->assertJsonCount(1, 'data.batch_stock')
+            ->assertJsonPath('data.batch_stock.0.location_id', $this->location->id);
+    }
+
+    public function test_unloaded_resource_cannot_silently_emit_zero_stock(): void
+    {
+        $batch = $this->lot();
+        $this->expectException(\LogicException::class);
+        (new BatchResource($batch))->resolve();
+    }
+
+    public function test_restricted_pos_foreign_location_is_denied_without_writes(): void
+    {
+        $batch = $this->lot();
+        $other = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->stockAt($batch, $other, '9.1234');
+        $this->restrict([$this->location->id]);
+        $snapshot = static fn (): array => array_map(static fn (string $table): array => DB::table($table)->orderBy('id')->get()->map(static fn ($row): array => (array) $row)->all(), ['product_batches', 'inventory_batch_stock', 'stock_reservations', 'document_lines', 'pos_receipt_line_batch_allocations', 'journal_entries', 'journal_lines']);
+        $before = $snapshot();
+        $this->getJson('/api/v1/pos/products/'.$this->product->id.'/batches?'.http_build_query(['location_id' => $other->id, 'quantity' => '1.0000']))->assertForbidden();
+        self::assertSame($before, $snapshot());
+    }
+
+    public function test_unrestricted_pos_suggestions_are_identical_across_activation(): void
+    {
+        $batch = $this->lot();
+        $this->stockAt($batch, $this->location, '3.1234');
+        $this->restrict(null);
+        $url = '/api/v1/pos/products/'.$this->product->id.'/batches?'.http_build_query(['location_id' => $this->location->id, 'quantity' => '1.0000']);
+        $active = $this->getJson($url)->assertOk()->json();
+        config(['lot_action_permissions.enforce' => false]);
+        self::assertSame($active, $this->getJson($url)->assertOk()->json());
+    }
+
     public function test_every_read_filters_other_branch_and_empty_scope(): void
     {
         $batch = $this->lot();
@@ -167,6 +212,8 @@ final class BatchReadLocationScopeTest extends BatchPermissionFixture
         ]);
         $this->restrict([$this->location->id]);
         $this->getJson('/api/v1/batches/'.$batch->uuid)->assertOk()->assertJsonPath('data.total_quantity', '0.0000');
+        // Stock pickers intentionally exclude depleted lots even when history makes detail visible.
+        $this->getJson('/api/v1/products/'.$this->product->id.'/batch-stock')->assertOk()->assertJsonPath('data', []);
         $other = Location::factory()->create(['company_id' => $this->company->id]);
         $this->restrict([$other->id]);
         $this->getJson('/api/v1/batches/'.$batch->uuid)->assertNotFound();
@@ -195,11 +242,17 @@ final class BatchReadLocationScopeTest extends BatchPermissionFixture
         $this->stockAt($batch, Location::findOrFail($locations[$this->company->id][0]), '99.0000');
         $this->stockAt($batch, Location::findOrFail($locations[$this->company->id][1]), '3.1234');
         $traceNumbers = [];
+        $tracePartnerId = null;
         foreach ([[$this->company->id, $batch, $this->product->id, 0], [$this->company->id, $batch, $this->product->id, 1], [$second, Batch::where('uuid', $foreign)->firstOrFail(), $productB->id, 1]] as [$traceCompanyId, $traceBatch, $traceProductId, $index]) {
             $document = Document::factory()->create([
                 'tenant_id' => $this->tenant->id, 'company_id' => $traceCompanyId,
                 'location_id' => $locations[$traceCompanyId][$index],
             ]);
+            if ($tracePartnerId === null) {
+                $tracePartnerId = $document->partner_id;
+            } else {
+                $document->update(['partner_id' => $tracePartnerId]);
+            }
             DocumentLine::create([
                 'document_id' => $document->id, 'product_id' => $traceProductId, 'batch_id' => $traceBatch->id,
                 'line_number' => 1, 'description' => 'Selected location trace', 'quantity' => '1.0000',
@@ -213,6 +266,12 @@ final class BatchReadLocationScopeTest extends BatchPermissionFixture
         $this->getJson('/api/v1/batches/'.$foreign)->assertNotFound();
         $trace = $this->getJson('/api/v1/batches/'.$uuid.'/traceability')->assertOk()->json('data.document_sales');
         self::assertSame([$traceNumbers[$this->company->id][1]], array_column($trace, 'document_number'));
+        $backward = $this->getJson('/api/v1/partners/'.$tracePartnerId.'/batch-history')->assertOk()->json('data');
+        self::assertSame([$traceNumbers[$this->company->id][1]], array_column($backward, 'document_number'));
+        $this->withHeader('X-Company-ID', $second);
+        $backwardB = $this->getJson('/api/v1/partners/'.$tracePartnerId.'/batch-history')->assertOk()->json('data');
+        self::assertSame([$traceNumbers[$second][1]], array_column($backwardB, 'document_number'));
+        $this->withHeader('X-Company-ID', $this->company->id);
         $snapshot = static fn (): array => array_map(static fn (string $table): array => DB::table($table)->orderBy('id')->get()->map(static fn ($row): array => (array) $row)->all(), ['product_batches', 'inventory_batch_stock', 'stock_reservations', 'document_lines', 'pos_receipt_line_batch_allocations', 'journal_entries', 'journal_lines']);
         $before = $snapshot();
         $this->postJson('/api/v1/batches', $payload)->assertStatus(422)->assertJsonPath('meta.outcome', 'already_exists');
