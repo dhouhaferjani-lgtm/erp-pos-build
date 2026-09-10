@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Identity\Application\DTOs;
 
+use Spatie\TypeScriptTransformer\Attributes\LiteralTypeScriptType;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 #[TypeScript]
@@ -16,6 +17,7 @@ final readonly class RoleData
         public readonly int $id,
         public readonly string $name,
         public readonly string $guard_name,
+        #[LiteralTypeScriptType('Array<string>')]
         public readonly array $permissions,
         public readonly int $users_count,
         public readonly ?string $created_at,
