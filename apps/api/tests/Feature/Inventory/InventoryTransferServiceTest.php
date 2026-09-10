@@ -17,6 +17,7 @@ use App\Modules\Inventory\Application\DTOs\InitiateTransferBatchAllocationData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
 use App\Modules\Inventory\Application\Services\StockTransferMovementSupport;
+use App\Modules\Inventory\Application\Services\StockTransferReceiptService;
 use App\Modules\Inventory\Application\Services\StockTransferService;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Enums\TransferCostDistribution;
@@ -621,7 +622,7 @@ class InventoryTransferServiceTest extends TestCase
         $this->assertTrue($destinationAfterCancel === null || bccomp((string) $destinationAfterCancel->quantity, '0.0000', 4) === 0);
     }
 
-    public function test_cannot_complete_an_already_completed_transfer(): void
+    public function test_repeated_completion_replays_without_duplicate_stock(): void
     {
         $this->seedStock($this->productA, $this->warehouse, '50.0000');
 
@@ -632,8 +633,11 @@ class InventoryTransferServiceTest extends TestCase
         ));
         $this->service()->complete($transfer->id, $this->user->id);
 
-        $this->expectException(TransferStateException::class);
-        $this->service()->complete($transfer->id, $this->user->id);
+        $movements = StockMovement::query()->where('reference_id', $transfer->id)->count();
+        $replayed = $this->service()->complete($transfer->id, $this->user->id);
+        self::assertSame(TransferStatus::Completed, $replayed->status);
+        self::assertSame($movements, StockMovement::query()->where('reference_id', $transfer->id)->count());
+        self::assertSame(1, $replayed->receipts()->count());
     }
 
     public function test_complete_with_transfer_cost_recomputes_company_wide_wac(): void
@@ -830,6 +834,7 @@ class InventoryTransferServiceTest extends TestCase
             app(ProductVariantLookup::class),
             $collision,
             $this->app->make(StockTransferMovementSupport::class),
+            $this->app->make(StockTransferReceiptService::class),
         );
     }
 
@@ -874,8 +879,9 @@ final class ThrowingStockTransferService extends StockTransferService
         ProductVariantLookup $variantLookup,
         private readonly UniqueConstraintViolationException $collision,
         StockTransferMovementSupport $movementSupport,
+        StockTransferReceiptService $receiptService,
     ) {
-        parent::__construct($stockAdjustmentService, $costLock, $variantLookup, $movementSupport);
+        parent::__construct($stockAdjustmentService, $costLock, $variantLookup, $movementSupport, $receiptService);
     }
 
     protected function findExistingTransfer(InitiateTransferData $data): ?StockTransfer

@@ -12,6 +12,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
 use App\Modules\Inventory\Application\Services\StockTransferMovementSupport;
+use App\Modules\Inventory\Application\Services\StockTransferReceiptService;
 use App\Modules\Inventory\Application\Services\StockTransferService;
 use App\Modules\Inventory\Domain\Enums\TransferStatus;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
@@ -193,6 +194,7 @@ final class StockTransferIdempotencyCollisionPostgresTest extends TestCase
             app(ProductVariantLookup::class),
             $this->writer(),
             $this->app->make(StockTransferMovementSupport::class),
+            $this->app->make(StockTransferReceiptService::class),
         );
 
         $winner = $service->initiate($data);
@@ -226,6 +228,7 @@ final class StockTransferIdempotencyCollisionPostgresTest extends TestCase
             app(ProductVariantLookup::class),
             $this->writer(),
             $this->app->make(StockTransferMovementSupport::class),
+            $this->app->make(StockTransferReceiptService::class),
         );
 
         $winner = DB::transaction(function () use ($data, $service): StockTransfer {
@@ -265,8 +268,9 @@ final class InsertCollidingStockTransferService extends StockTransferService
         ProductVariantLookup $variantLookup,
         private readonly Connection $writer,
         StockTransferMovementSupport $movementSupport,
+        StockTransferReceiptService $receiptService,
     ) {
-        parent::__construct($stockAdjustmentService, $costLock, $variantLookup, $movementSupport);
+        parent::__construct($stockAdjustmentService, $costLock, $variantLookup, $movementSupport, $receiptService);
     }
 
     protected function findExistingTransfer(InitiateTransferData $data): ?StockTransfer

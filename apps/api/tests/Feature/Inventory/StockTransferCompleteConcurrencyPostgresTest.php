@@ -75,7 +75,7 @@ final class StockTransferCompleteConcurrencyPostgresTest extends TestCase
             while (DB::transactionLevel() > 0) {
                 DB::rollBack();
             }
-            foreach (['stock_transfer_line_batch_allocations', 'stock_transfer_lines', 'stock_transfers', 'stock_movements', 'stock_levels', 'products'] as $table) {
+            foreach (['stock_transfer_receipt_line_lots', 'stock_transfer_receipt_lines', 'stock_transfer_receipts', 'stock_transfer_line_batch_allocations', 'stock_transfer_lines', 'stock_transfers', 'stock_movements', 'stock_levels', 'products'] as $table) {
                 DB::table($table)->where('tenant_id', $this->tenant->id)->delete();
             }
             DB::table('locations')->where('company_id', $this->company->id)->delete();
@@ -86,7 +86,7 @@ final class StockTransferCompleteConcurrencyPostgresTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_concurrent_complete_waits_for_row_lock_then_refuses_without_duplicate_stock(): void
+    public function test_concurrent_complete_waits_for_row_lock_then_replays_without_duplicate_stock(): void
     {
         $transfer = $this->transfer('10.000');
         DB::beginTransaction();
@@ -101,9 +101,8 @@ $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 Illuminate\Support\Facades\DB::select("SELECT set_config('application_name', ?, false)", [$argv[4]]);
 $app->make(App\Modules\Company\Services\CompanyContext::class)->setCompanyId($argv[3]);
 try {
-    $app->make(App\Modules\Inventory\Application\Services\StockTransferService::class)->complete($argv[1], $argv[2]);
-    echo 'UNEXPECTED_COMPLETION';
-    exit(2);
+    $transfer = $app->make(App\Modules\Inventory\Application\Services\StockTransferService::class)->complete($argv[1], $argv[2]);
+    echo json_encode(['status' => $transfer->status->value, 'receipt_count' => $transfer->receipts()->count()], JSON_THROW_ON_ERROR);
 } catch (App\Modules\Inventory\Domain\Exceptions\TransferStateException $e) {
     echo json_encode(['status' => $e->currentStatus->value, 'action' => $e->attemptedAction], JSON_THROW_ON_ERROR);
 }
@@ -124,7 +123,7 @@ CHILD;
         self::assertTrue($blocked, 'Second process must actually block on PostgreSQL lock: '.$this->contender->getErrorOutput().$this->contender->getOutput());
         DB::commit();
         self::assertSame(0, $this->contender->wait(), $this->contender->getErrorOutput());
-        self::assertSame(['status' => 'completed', 'action' => 'complete'], json_decode($this->contender->getOutput(), true, flags: JSON_THROW_ON_ERROR));
+        self::assertSame(['status' => 'completed', 'receipt_count' => 1], json_decode($this->contender->getOutput(), true, flags: JSON_THROW_ON_ERROR));
         self::assertSame('4.0000', StockLevel::query()->where('product_id', $this->product->id)->where('location_id', $this->destination->id)->sole()->quantity);
         self::assertSame('6.0000', StockLevel::query()->where('product_id', $this->product->id)->where('location_id', $this->source->id)->sole()->quantity);
         self::assertSame(1, StockMovement::query()->where('reference_id', $transfer->id)->where('movement_type', MovementType::TransferIn)->count());

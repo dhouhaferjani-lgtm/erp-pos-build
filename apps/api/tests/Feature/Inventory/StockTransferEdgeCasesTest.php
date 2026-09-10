@@ -139,7 +139,7 @@ final class StockTransferEdgeCasesTest extends TestCase
         yield 'default type override' => ['issue', MovementType::Issue, '11111111-1111-4111-8111-111111111111'];
     }
 
-    public function test_complete_twice_returns_typed_422_and_receives_each_line_once(): void
+    public function test_complete_twice_replays_and_receives_each_line_once(): void
     {
         $this->seedStock();
         $second = Product::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->company->id, 'requires_batch_tracking' => false]);
@@ -147,7 +147,8 @@ final class StockTransferEdgeCasesTest extends TestCase
         $transfer = app(StockTransferService::class)->initiate($this->data(lines: [new InitiateTransferLineData($this->product->id, '4.0000'), new InitiateTransferLineData($second->id, '2.0000')]));
         $url = "/api/v1/stock-transfers/{$transfer->id}/complete";
         $this->postJson($url)->assertOk();
-        $this->postJson($url)->assertUnprocessable()->assertJsonPath('error.code', 'INVALID_TRANSFER_STATE');
+        $this->postJson($url)->assertOk();
+        self::assertSame(1, $transfer->receipts()->count());
         foreach ([$this->product->id => '4.0000', $second->id => '2.0000'] as $id => $qty) {
             $moves = StockMovement::query()->where('reference_id', $transfer->id)->where('movement_type', MovementType::TransferIn)->where('product_id', $id)->get();
             self::assertCount(1, $moves);

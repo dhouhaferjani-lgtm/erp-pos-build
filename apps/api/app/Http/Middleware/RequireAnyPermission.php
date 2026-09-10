@@ -22,7 +22,7 @@ final class RequireAnyPermission
             return response()->json([
                 'error' => [
                     'code' => 'FORBIDDEN',
-                    'message' => 'You do not have permission to view transaction destinations.',
+                    'message' => 'You do not have permission to perform this action.',
                 ],
                 'meta' => [
                     'timestamp' => now()->toIso8601String(),
