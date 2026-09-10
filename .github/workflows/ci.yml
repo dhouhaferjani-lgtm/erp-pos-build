@@ -1268,7 +1268,7 @@ jobs:
           DB_PASSWORD: secret
         run: |
           php artisan test -c phpunit-pgsql.xml \
-            --filter='/\\(TenantStanclFlipTest|TenantDatabaseIsolationTest|TenantProvisioningServiceTest|TenantReferenceDataSeedingTest|CentralPersonalAccessTokenPhase0bTest|CentralConnectionTest|TenancyManagerConfigTest|TenantMigrationsLoadedInTestingTest|CrossDbForeignKeyAuditTest|PlanLimitsServiceTest|TenancyResolverFailClosedTest|PendingSealMigrationTest|DeviceLossIncidentTest|FiscalEventQuarantineTableTest|FiscalEventsImmutabilityTest|ReceiptChainRebuildTest)::/'
+            --filter='/\\(TenantStanclFlipTest|TenantDatabaseIsolationTest|TenantProvisioningServiceTest|TenantReferenceDataSeedingTest|CentralPersonalAccessTokenPhase0bTest|CentralConnectionTest|TenancyManagerConfigTest|TenantMigrationsLoadedInTestingTest|CrossDbForeignKeyAuditTest|PlanLimitsServiceTest|TenancyResolverFailClosedTest|PendingSealMigrationTest|DeviceLossIncidentTest|FiscalEventQuarantineTableTest|FiscalEventsImmutabilityTest|ReceiptChainRebuildTest|PermissionCacheTenantScopingTest)::/'
 
   treasury-spine-pgsql:
     name: Treasury Spine — PG-only invariants (PHPUnit + PostgreSQL)

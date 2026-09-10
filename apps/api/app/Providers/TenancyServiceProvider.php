@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Modules\Identity\Application\Listeners\RestoreCentralPermissionCache;
+use App\Modules\Identity\Application\Listeners\ScopePermissionCacheToTenant;
+use App\Modules\Identity\Application\Support\PermissionCacheKey;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Stancl\Tenancy\Events\TenancyEnded;
@@ -37,15 +40,28 @@ use Stancl\Tenancy\Listeners\RevertToCentralContext;
  *   - mode ON (post-flip prod, and the PG-only flip/PAT tests): the bootstrap
  *     runs and the connection swaps to the tenant database.
  *
- * Only the bootstrap/revert listeners are wired — NOT TenantCreated ->
+ * Bootstrap/revert and permission-cache listeners are wired — NOT TenantCreated ->
  * CreateDatabase/MigrateDatabase, which would attempt `CREATE DATABASE` for
  * every Tenant row (e.g. in tests, inside a RefreshDatabase transaction, which
  * PostgreSQL forbids). Tenant database provisioning is driven explicitly.
  */
 class TenancyServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        // Singleton so the CONFIGURED permission cache key is captured exactly
+        // once. The listeners below rewrite `permission.cache.key` on every
+        // tenancy transition, so any later read of that config entry returns a
+        // tenant key, not the base one.
+        $this->app->singleton(PermissionCacheKey::class);
+    }
+
     public function boot(): void
     {
+        // Resolve eagerly: capture the base key while config still holds the
+        // value the application booted with, before the first TenancyInitialized.
+        $this->app->make(PermissionCacheKey::class);
+
         Event::listen(TenancyInitialized::class, function (TenancyInitialized $event): void {
             if ((bool) config('tenancy_resolver.db_per_tenant', false)) {
                 app(BootstrapTenancy::class)->handle($event);
@@ -57,5 +73,8 @@ class TenancyServiceProvider extends ServiceProvider
                 app(RevertToCentralContext::class)->handle($event);
             }
         });
+
+        Event::listen(TenancyInitialized::class, ScopePermissionCacheToTenant::class);
+        Event::listen(TenancyEnded::class, RestoreCentralPermissionCache::class);
     }
 }
