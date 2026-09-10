@@ -17,7 +17,6 @@
     "app/Modules/Inventory/Application/Services/ResetOpeningBalanceService.php::App\\Modules\\Inventory\\Application\\Services\\ResetOpeningBalanceService::reset::stock_movements::create#1",
     "app/Modules/Inventory/Application/Services/StockLevelMigrationService.php::App\\Modules\\Inventory\\Application\\Services\\StockLevelMigrationService::migrateToDefaultVariant::stock_levels::query_builder#1",
     "app/Modules/Inventory/Application/Services/StockThresholdService.php::App\\Modules\\Inventory\\Application\\Services\\StockThresholdService::update::stock_levels::query_builder#1",
-    "app/Modules/Inventory/Application/Services/StockTransferService.php::App\\Modules\\Inventory\\Application\\Services\\StockTransferService::markMovementAsTransfer::stock_movements::update#1",
     "app/Modules/Inventory/Application/Services/WeightedAverageCostService.php::App\\Modules\\Inventory\\Application\\Services\\WeightedAverageCostService::recordCostAdjustment::stock_movements::create#1",
     "app/Modules/Inventory/Application/Services/WeightedAverageCostService.php::App\\Modules\\Inventory\\Application\\Services\\WeightedAverageCostService::recordPurchase::stock_levels::create#1",
     "app/Modules/Inventory/Application/Services/WeightedAverageCostService.php::App\\Modules\\Inventory\\Application\\Services\\WeightedAverageCostService::recordPurchase::stock_levels::save#1",

@@ -16,8 +16,8 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferBatchAllocationData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
+use App\Modules\Inventory\Application\Services\StockTransferMovementSupport;
 use App\Modules\Inventory\Application\Services\StockTransferService;
-use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Enums\TransferCostDistribution;
 use App\Modules\Inventory\Domain\Enums\TransferStatus;
@@ -826,10 +826,10 @@ class InventoryTransferServiceTest extends TestCase
     ): ThrowingStockTransferService {
         return new ThrowingStockTransferService(
             app(StockAdjustmentService::class),
-            app(WeightedAverageCostService::class),
             app(ProductCostLock::class),
             app(ProductVariantLookup::class),
             $collision,
+            $this->app->make(StockTransferMovementSupport::class),
         );
     }
 
@@ -870,12 +870,12 @@ final class ThrowingStockTransferService extends StockTransferService
 {
     public function __construct(
         StockAdjustmentService $stockAdjustmentService,
-        WeightedAverageCostService $wacService,
         ProductCostLock $costLock,
         ProductVariantLookup $variantLookup,
         private readonly UniqueConstraintViolationException $collision,
+        StockTransferMovementSupport $movementSupport,
     ) {
-        parent::__construct($stockAdjustmentService, $wacService, $costLock, $variantLookup);
+        parent::__construct($stockAdjustmentService, $costLock, $variantLookup, $movementSupport);
     }
 
     protected function findExistingTransfer(InitiateTransferData $data): ?StockTransfer

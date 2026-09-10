@@ -20,6 +20,8 @@ use App\Modules\Inventory\Application\Services\StockTransferService;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Enums\TransferStatus;
+use App\Modules\Inventory\Domain\Events\StockMovementRecorded;
+use App\Modules\Inventory\Domain\Events\StockMovementRecordedV2;
 use App\Modules\Inventory\Domain\Exceptions\InsufficientStockException;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
@@ -30,6 +32,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -65,6 +68,75 @@ final class StockTransferEdgeCasesTest extends TestCase
         $this->destination = Location::factory()->create(['company_id' => $this->company->id, 'type' => 'shop', 'is_active' => true]);
         $this->product = Product::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->company->id, 'cost_price' => '5.0000', 'requires_batch_tracking' => false]);
         $this->actingAs($this->user)->withHeader('X-Company-Id', $this->company->id);
+    }
+
+    public function test_transfer_movements_are_created_with_final_linkage_and_never_updated(): void
+    {
+        $this->seedStock();
+        $created = [];
+        $updated = [];
+        StockMovement::created(static function (StockMovement $movement) use (&$created): void {
+            $created[] = [$movement->movement_type->value, $movement->reference_type, $movement->reference_id];
+        });
+        StockMovement::updated(static function (StockMovement $movement) use (&$updated): void {
+            $updated[] = $movement->id;
+        });
+        $transfer = $this->app->make(StockTransferService::class)->initiate($this->data());
+        self::assertSame([['transfer_out', StockTransfer::class, $transfer->id]], $created);
+        self::assertSame([], $updated);
+        $this->app->make(StockTransferService::class)->complete($transfer->id, $this->user->id);
+        self::assertSame(['transfer_in', StockTransfer::class, $transfer->id], $created[1]);
+        self::assertSame([], $updated);
+        $cancelled = $this->app->make(StockTransferService::class)->initiate($this->data());
+        $this->app->make(StockTransferService::class)->cancel($cancelled->id, $this->user->id, 'test');
+        self::assertSame(['transfer_in', StockTransfer::class, $cancelled->id], $created[3]);
+        self::assertSame([], $updated);
+    }
+
+    public function test_transfer_announcements_carry_final_labels_and_linkage_in_both_versions(): void
+    {
+        $this->seedStock();
+        $events = [StockMovementRecorded::class, StockMovementRecordedV2::class];
+        Event::fake($events);
+        $transfer = $this->app->make(StockTransferService::class)->initiate($this->data());
+        foreach ($events as $event) {
+            Event::assertDispatched($event, static fn ($posted): bool => $posted->movementType === 'transfer_out' && $posted->referenceType === StockTransfer::class && $posted->referenceId === $transfer->id);
+        }
+        $this->app->make(StockTransferService::class)->complete($transfer->id, $this->user->id);
+        foreach ($events as $event) {
+            Event::assertDispatched($event, static fn ($posted): bool => $posted->movementType === 'transfer_in' && $posted->referenceType === StockTransfer::class && $posted->referenceId === $transfer->id);
+        }
+    }
+
+    #[DataProvider('invalidTransferMovementOverrides')]
+    public function test_invalid_transfer_overrides_are_refused_before_any_write(string $method, ?MovementType $type, ?string $transferId): void
+    {
+        $this->seedStock();
+        $count = StockMovement::query()->count();
+        $before = StockLevel::query()->where('product_id', $this->product->id)->pluck('quantity', 'id')->all();
+        try {
+            $this->app->make(StockAdjustmentService::class)->{$method}(
+                $this->product->id, $this->source->id, '1.0000', 'INVALID-OVERRIDE', $this->user->id,
+                expectedCompanyId: $this->company->id, movementType: $type, transferId: $transferId,
+            );
+            self::fail('An invalid override must be refused.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame($count, StockMovement::query()->count());
+            self::assertSame($before, StockLevel::query()->where('product_id', $this->product->id)->pluck('quantity', 'id')->all());
+        }
+    }
+
+    /** @return iterable<string, array{string, MovementType|null, string|null}> */
+    public static function invalidTransferMovementOverrides(): iterable
+    {
+        yield 'receive wrong direction' => ['receive', MovementType::TransferOut, '11111111-1111-4111-8111-111111111111'];
+        yield 'issue wrong direction' => ['issue', MovementType::TransferIn, '11111111-1111-4111-8111-111111111111'];
+        yield 'receive missing linkage' => ['receive', MovementType::TransferIn, null];
+        yield 'issue missing linkage' => ['issue', MovementType::TransferOut, null];
+        yield 'receive malformed UUID' => ['receive', MovementType::TransferIn, 'invalid'];
+        yield 'issue malformed UUID' => ['issue', MovementType::TransferOut, 'invalid'];
+        yield 'linkage without type' => ['receive', null, '11111111-1111-4111-8111-111111111111'];
+        yield 'default type override' => ['issue', MovementType::Issue, '11111111-1111-4111-8111-111111111111'];
     }
 
     public function test_complete_twice_returns_typed_422_and_receives_each_line_once(): void

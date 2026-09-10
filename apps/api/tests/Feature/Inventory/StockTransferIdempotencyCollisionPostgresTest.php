@@ -11,8 +11,8 @@ use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
+use App\Modules\Inventory\Application\Services\StockTransferMovementSupport;
 use App\Modules\Inventory\Application\Services\StockTransferService;
-use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\TransferStatus;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
@@ -189,10 +189,10 @@ final class StockTransferIdempotencyCollisionPostgresTest extends TestCase
         );
         $service = new InsertCollidingStockTransferService(
             app(StockAdjustmentService::class),
-            app(WeightedAverageCostService::class),
             app(ProductCostLock::class),
             app(ProductVariantLookup::class),
             $this->writer(),
+            $this->app->make(StockTransferMovementSupport::class),
         );
 
         $winner = $service->initiate($data);
@@ -222,10 +222,10 @@ final class StockTransferIdempotencyCollisionPostgresTest extends TestCase
         );
         $service = new InsertCollidingStockTransferService(
             app(StockAdjustmentService::class),
-            app(WeightedAverageCostService::class),
             app(ProductCostLock::class),
             app(ProductVariantLookup::class),
             $this->writer(),
+            $this->app->make(StockTransferMovementSupport::class),
         );
 
         $winner = DB::transaction(function () use ($data, $service): StockTransfer {
@@ -261,12 +261,12 @@ final class InsertCollidingStockTransferService extends StockTransferService
 
     public function __construct(
         StockAdjustmentService $stockAdjustmentService,
-        WeightedAverageCostService $wacService,
         ProductCostLock $costLock,
         ProductVariantLookup $variantLookup,
         private readonly Connection $writer,
+        StockTransferMovementSupport $movementSupport,
     ) {
-        parent::__construct($stockAdjustmentService, $wacService, $costLock, $variantLookup);
+        parent::__construct($stockAdjustmentService, $costLock, $variantLookup, $movementSupport);
     }
 
     protected function findExistingTransfer(InitiateTransferData $data): ?StockTransfer
