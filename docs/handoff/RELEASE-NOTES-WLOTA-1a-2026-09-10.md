@@ -4,7 +4,7 @@ Status: review; no deployment or activation performed.
 
 Push 3 intentionally changes two contracts for every tenant, including when `LOT_ACTION_PERMISSIONS_ENFORCE=false` (plan rev 10 §0 / §6.1, Option B):
 
-1. Every `BatchResource` emits `total_quantity` and `available_quantity` as four-decimal JSON strings computed from the loaded, scoped stock relation. Consumers must accept strings. Mutation responses load membership-scoped stock before serialization; a missing relation now fails loudly. A newly created empty batch returns genuine `"0.0000"` totals.
+1. Every `BatchResource` emits `total_quantity` and `available_quantity` as four-decimal JSON strings computed from the loaded, scoped stock relation. Consumers must accept strings. Mutation responses load membership-scoped stock before serialization; a missing relation now fails loudly. A newly created empty batch returns genuine `"0.0000"` totals and an explicit `batch_stock: []` (the key was previously omitted). This create-response shape change also applies with the flag off.
 2. `/batches/expiring?location_id=…` eager-loads stock for that location, and `/batches/expired?location_ids[]=…` totals reflect the selected locations. These endpoints now agree with their `batch_stock` rows and the write-off location. This is an intentional non-inert Push-3 change.
 
 The POS suggestion endpoint validates `location_id` as a UUID independently of the activation flag. Malformed input returns 422 instead of a PostgreSQL UUID error / 500. Backward trace similarly validates partner UUIDs (404) and product/date filters (422).
