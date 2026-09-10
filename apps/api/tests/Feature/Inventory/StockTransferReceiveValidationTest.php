@@ -108,7 +108,7 @@ final class StockTransferReceiveValidationTest extends TransferReceiptFeatureTes
 
     public function test_reserved_sys_namespace_is_refused_and_the_server_key_still_works(): void
     {
-        $this->receive(key: 'SyS:complete:'.$this->transfer->id)->assertStatus(422)->assertJsonPath('error.code', 'VALIDATION_ERROR')->assertJsonValidationErrors('idempotency_key');
+        $this->receive(key: 'SyS:complete:'.$this->transfer->id)->assertStatus(422)->assertJsonPath('error.code', 'VALIDATION_ERROR')->assertJsonValidationErrors('idempotency_key', 'error.errors');
         $this->postJson('/api/v1/stock-transfers/'.$this->transfer->id.'/complete')->assertOk();
         self::assertSame('sys:complete:'.$this->transfer->id, StockTransferReceipt::query()->where('transfer_id', $this->transfer->id)->sole()->idempotency_key);
         $this->postJson('/api/v1/stock-transfers/'.$this->transfer->id.'/complete')->assertOk();

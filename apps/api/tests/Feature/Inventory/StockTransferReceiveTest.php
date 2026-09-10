@@ -195,4 +195,13 @@ final class StockTransferReceiveTest extends TransferReceiptFeatureTestCase
         self::assertArrayNotHasKey('quantity_written_off', $response->json('data.receipt.lines.0'));
         self::assertArrayNotHasKey('quantity_returned', $response->json('data.receipt.lines.0'));
     }
+
+    public function test_reconciliation_reports_received_minus_sent_without_counting_open_remainder_as_a_discrepancy(): void
+    {
+        $this->receive('5.0000')->assertCreated();
+        $response = $this->getJson('/api/v1/stock-transfers/'.$this->transfer->id.'/reconciliation')->assertOk();
+        self::assertSame('-7.0000', bcadd($response->json('data.lines.0.variance'), '0', 4));
+        self::assertSame('7.0000', bcadd($response->json('data.lines.0.remaining'), '0', 4));
+        self::assertSame(0, $response->json('data.summary.lines_with_discrepancy'));
+    }
 }

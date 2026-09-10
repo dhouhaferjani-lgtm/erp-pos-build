@@ -110,4 +110,7 @@ enum StockMovementReferenceType: string
      * constant, preserved verbatim so nothing has to be migrated.
      */
     case BatchLedgerRepair = 'batch_ledger_repair';
+
+    /** A transfer receipt's damage or close write-off stock destruction. */
+    case StockTransferReceipt = 'stock_transfer_receipt';
 }

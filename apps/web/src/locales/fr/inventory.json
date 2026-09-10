@@ -404,6 +404,7 @@
       "goods_receipt": "Bon de réception",
       "delivery_note": "Bon de livraison",
       "stock_transfer": "Transfert de stock",
+      "stock_transfer_receipt": "Réception de transfert",
       "adjustment_batch": "Ajustement",
       "inventory_counting": "Inventaire",
       "pos_receipt_return_scrap": "Rebut sur retour caisse",

@@ -10,21 +10,13 @@ use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockTransfer;
 use App\Modules\Inventory\Domain\StockTransferLine;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\QuantityScale;
 
 /**
- * The transfer-movement seam shared by StockTransferService (initiate/cancel)
- * and StockTransferReceiptService (receive/close).
- *
- * Every method here was `private` on StockTransferService before T-2 and is
- * MOVED, not copied: the private originals are deleted in the same commit, so
- * there is exactly one implementation of each (convention 11).
- *
- * This class writes stock movements and capitalises freight. It NEVER opens a
- * transaction of its own, NEVER acquires an advisory lock and NEVER touches the
- * GL: the caller is the composite root and owns the transaction, the header row
- * lock, the ProductCostLock acquisition and InventoryGlPostingBuffer (§7.8).
+ * Shared transfer stock and freight operations. Callers own the transaction
+ * and product locks; transfer movements carry their final linkage at insertion.
  */
 final class StockTransferMovementSupport
 {
@@ -34,6 +26,7 @@ final class StockTransferMovementSupport
     public function __construct(
         private readonly StockAdjustmentService $stockAdjustmentService,
         private readonly WeightedAverageCostService $wacService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     /**
@@ -63,7 +56,7 @@ final class StockTransferMovementSupport
      */
     public function computeAllocationWeights(StockTransfer $transfer, array $landedQuantityByLineId): array
     {
-        $working = self::ALLOCATION_SCALE;
+        $working = max(self::ALLOCATION_SCALE, $this->scaleResolver->getScaleSafe($transfer->company->currency, 3) + 4);
 
         $weights = [];
         foreach ($transfer->lines as $line) {
@@ -86,17 +79,15 @@ final class StockTransferMovementSupport
      * Allocate `$pool` across the lines on landed weights and capitalise each share
      * into the company-wide WAC of the line's product. The LAST cost-bearing line
      * absorbs the residual so the allocations sum to `$pool` EXACTLY.
-     * Moved from StockTransferService::capitalizeTransferCost() (:631-712); the only
-     * changes are the added `$landedQuantityByLineId` argument it forwards to
-     * computeAllocationWeights(), and that its money argument is the SHRUNK pool of
-     * §7.11 step 3 rather than the raw `transfer_cost`.
+     * Receipt freight uses §7.11 currency-dependent precision and only good-landed
+     * lines. Zero value weights fall back to equal shares among those lines.
      *
      * @param  numeric-string  $pool
      * @param  array<string, numeric-string>  $landedQuantityByLineId
      */
     public function capitalizeTransferCost(StockTransfer $transfer, string $pool, array $landedQuantityByLineId): void
     {
-        $working = self::ALLOCATION_SCALE;
+        $working = max(self::ALLOCATION_SCALE, $this->scaleResolver->getScaleSafe($transfer->company->currency, 3) + 4);
 
         $weights = $this->computeAllocationWeights($transfer, $landedQuantityByLineId);
         /** @var numeric-string $totalWeight */
@@ -105,15 +96,21 @@ final class StockTransferMovementSupport
             $totalWeight = bcadd($totalWeight, $weight, $working);
         }
 
-        $lineCount = max(1, $transfer->lines->count());
+        $lineCount = count(array_filter($landedQuantityByLineId, static fn (string $quantity): bool => bccomp($quantity, '0', QuantityScale::SCALE) > 0));
 
-        // First pass: compute each line's allocation, skipping genuinely-zero
-        // shares. The LAST cost-bearing line absorbs the residual
+        // Select eligible lines before rounding; even tiny shares must retain
+        // a final recipient. The LAST cost-bearing line absorbs the residual
         // (pool − Σ others) so the allocations sum to pool EXACTLY, with no
         // millième lost or gained to independent rounding.
         /** @var list<array{line: StockTransferLine, product: Product, allocated: numeric-string}> $allocations */
         $allocations = [];
         foreach ($transfer->lines as $line) {
+            $eligible = bccomp($totalWeight, '0', $working) > 0
+                ? bccomp($weights[$line->id], '0', $working) > 0
+                : bccomp($landedQuantityByLineId[$line->id] ?? '0', '0', QuantityScale::SCALE) > 0;
+            if (! $eligible) {
+                continue;
+            }
             $product = Product::query()
                 ->where('tenant_id', $transfer->tenant_id)
                 ->where('company_id', $transfer->company_id)
@@ -125,16 +122,12 @@ final class StockTransferMovementSupport
                 $allocated = bcdiv($pool, (string) $lineCount, $working);
             }
 
-            if (bccomp($allocated, '0', $working) <= 0) {
-                continue;
-            }
-
             $allocations[] = ['line' => $line, 'product' => $product, 'allocated' => $allocated];
         }
 
         $lastIndex = count($allocations) - 1;
 
-        // Reconcile at the PERSISTED scale (4), NOT the 6-dp working scale.
+        // Reconcile at the persisted scale (4), after currency-dependent working precision.
         // allocated_transfer_cost is stored at 4 dp and recordCostAdjustment
         // capitalizes the SAME value; reconciling the residual at 6 dp and then
         // truncating to 4 dp on persist loses a millième per line (e.g. 7 equal
@@ -158,6 +151,10 @@ final class StockTransferMovementSupport
 
             $line->allocated_transfer_cost = $allocated4dp;
             $line->save();
+
+            if (bccomp($allocated4dp, '0', QuantityScale::SCALE) === 0) {
+                continue;
+            }
 
             $this->wacService->recordCostAdjustment(
                 product: $product,

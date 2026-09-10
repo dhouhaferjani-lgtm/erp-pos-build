@@ -8,7 +8,9 @@ require_once __DIR__.'/StockTransferReceiveTest.php';
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
+use App\Modules\Inventory\Application\Services\StockTransferMovementSupport;
 use App\Modules\Inventory\Application\Services\StockTransferService;
+use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\TransferCostDistribution;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
@@ -19,9 +21,9 @@ final class StockTransferCloseTest extends TransferReceiptFeatureTestCase
 {
     public function test_close_write_off_posts_one_shrinkage_leg_and_persists_the_freight_residual(): void
     {
-        $this->transfer = $this->initiate('12.0000', '120.0000');
-        $this->receive('5.0000');
-        $this->close();
+        $this->transfer = $this->initiate('10.0000', '140.0000');
+        $this->receive('5.0000')->assertCreated();
+        $this->close()->assertCreated();
         self::assertSame('70.0000', $this->transfer->refresh()->freight_uncapitalized);
         self::assertSame(1, $this->journalCount());
         self::assertSame('5.0000', $this->destinationQuantity());
@@ -64,5 +66,60 @@ final class StockTransferCloseTest extends TransferReceiptFeatureTestCase
         self::assertSame(0, $this->journalCount());
         $this->close('return_to_source')->assertOk()->assertJsonPath('meta.replayed', true);
         self::assertSame(bcadd($before, '12.0000', 4), StockLevel::query()->where('product_id', $this->product->id)->where('location_id', $this->source->id)->sole()->quantity);
+    }
+
+    public function test_freight_uses_company_currency_working_precision(): void
+    {
+        $this->assertAllocationCase(['1.0000', '2.0000'], ['1.0000', '2.0000'], '1200.0000', TransferCostDistribution::ProRataQuantity, ['399.9999', '800.0001']);
+    }
+
+    public function test_zero_value_weights_allocate_only_to_good_landed_lines(): void
+    {
+        $this->assertAllocationCase(['1.0000', '1.0000'], ['1.0000', '0.0000'], '10.0000', TransferCostDistribution::ProRataValue, ['10.0000', '0.0000']);
+    }
+
+    public function test_tiny_pool_is_retained_by_the_last_positive_weight_line(): void
+    {
+        $expected = array_fill(0, 101, '0.0000');
+        $expected[100] = '0.0001';
+        $this->assertAllocationCase(array_fill(0, 101, '1.0000'), array_fill(0, 101, '1.0000'), '0.0001', TransferCostDistribution::EqualPerLine, $expected);
+    }
+
+    /**
+     * @param  list<numeric-string>  $sent
+     * @param  list<numeric-string>  $landed
+     * @param  numeric-string  $pool
+     * @param  list<numeric-string>  $expected
+     */
+    private function assertAllocationCase(array $sent, array $landed, string $pool, TransferCostDistribution $distribution, array $expected): void
+    {
+        $this->transfer->lines()->delete();
+        $this->transfer->transfer_cost_distribution = $distribution;
+        $weights = [];
+        $lines = [];
+        foreach ($sent as $i => $quantity) {
+            $product = Product::factory()->create(['tenant_id' => $this->tenant->id, 'company_id' => $this->company->id, 'cost_price' => '0.000000']);
+            $line = $this->transfer->lines()->create([
+                'tenant_id' => $this->tenant->id, 'company_id' => $this->company->id,
+                'product_id' => $product->id, 'quantity' => $quantity,
+                'unit_cost_snapshot' => '0.000000', 'quantity_received' => $landed[$i],
+            ]);
+            $lines[] = $line;
+            $weights[$line->id] = $landed[$i];
+        }
+        $this->transfer->load('lines', 'company');
+        $captured = [];
+        $wac = \Mockery::mock(WeightedAverageCostService::class);
+        $wac->shouldReceive('recordCostAdjustment')->andReturnUsing(function ($product, $additionalCost) use (&$captured): void {
+            $captured[] = $additionalCost;
+        });
+        $this->app->instance(WeightedAverageCostService::class, $wac);
+        $this->app->make(StockTransferMovementSupport::class)->capitalizeTransferCost($this->transfer, $pool, $weights);
+        self::assertSame($expected, array_map(static fn ($line): string => $line->refresh()->allocated_transfer_cost, $lines));
+        $sum = '0.0000';
+        foreach ($captured as $cost) {
+            $sum = bcadd($sum, $cost, 4);
+        }
+        self::assertSame($pool, $sum);
     }
 }
