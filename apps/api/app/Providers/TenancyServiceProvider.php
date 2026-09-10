@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Modules\Identity\Application\Listeners\RestoreCentralPermissionCache;
 use App\Modules\Identity\Application\Listeners\ScopePermissionCacheToTenant;
+use App\Modules\Identity\Application\Support\PermissionCacheKey;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Stancl\Tenancy\Events\TenancyEnded;
@@ -46,8 +47,21 @@ use Stancl\Tenancy\Listeners\RevertToCentralContext;
  */
 class TenancyServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        // Singleton so the CONFIGURED permission cache key is captured exactly
+        // once. The listeners below rewrite `permission.cache.key` on every
+        // tenancy transition, so any later read of that config entry returns a
+        // tenant key, not the base one.
+        $this->app->singleton(PermissionCacheKey::class);
+    }
+
     public function boot(): void
     {
+        // Resolve eagerly: capture the base key while config still holds the
+        // value the application booted with, before the first TenancyInitialized.
+        $this->app->make(PermissionCacheKey::class);
+
         Event::listen(TenancyInitialized::class, function (TenancyInitialized $event): void {
             if ((bool) config('tenancy_resolver.db_per_tenant', false)) {
                 app(BootstrapTenancy::class)->handle($event);

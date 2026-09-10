@@ -169,10 +169,25 @@ else
         fi
     fi
 
-    # Flush the shared Spatie permission cache (key spatie.permission.cache,
-    # default/redis store, 24h TTL) so role/permission grants applied out of
-    # band to existing tenants take effect immediately after deploy instead of
-    # serving a stale cached snapshot. Never blocks boot.
+    # Flush the Spatie permission cache (default/redis store, 24h TTL) so
+    # role/permission grants applied out of band to existing tenants take effect
+    # immediately after deploy instead of serving a stale cached snapshot.
+    #
+    # RBAC-W0a-S1 (2026-09-10) made that key PER TENANT: while tenancy is
+    # initialized the registrar reads `spatie.permission.cache.<tenant-uuid>`
+    # (App\Modules\Identity\Application\Listeners\ScopePermissionCacheToTenant),
+    # and the unsuffixed base key is used only in central context and in
+    # compatibility (single-schema) mode. A central-context `permission:cache-reset`
+    # therefore forgets the BASE key alone and reaches no tenant. Both forms are
+    # run, in order:
+    #   1. tenants:run — one reset per tenant database, under initialized
+    #      tenancy, so each tenant's own suffixed key is forgotten. This is the
+    #      step that preserves the guarantee above under database-per-tenant.
+    #   2. the bare reset — the base key, which is still the LIVE key in
+    #      compatibility mode and is also the legacy pre-W0a-S1 shared key that
+    #      must be evicted once after the flip.
+    # Neither ever blocks boot.
+    DB_HOST="$DIRECT_DB_HOST" php artisan tenants:run permission:cache-reset 2>/dev/null || true
     php artisan permission:cache-reset 2>/dev/null || true
 
     # Run seeders only if AUTO_SEED is set to true (prevents re-seeding on every restart)

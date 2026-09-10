@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Identity\Application\Listeners;
 
+use App\Modules\Identity\Application\Support\PermissionCacheKey;
 use LogicException;
 use Spatie\Permission\PermissionRegistrar;
 use Stancl\Tenancy\Contracts\Tenant;
@@ -11,9 +12,10 @@ use Stancl\Tenancy\Events\TenancyInitialized;
 
 final class ScopePermissionCacheToTenant
 {
-    public const BASE_KEY = 'spatie.permission.cache';
-
-    public function __construct(private readonly PermissionRegistrar $registrar) {}
+    public function __construct(
+        private readonly PermissionRegistrar $registrar,
+        private readonly PermissionCacheKey $cacheKey,
+    ) {}
 
     public function handle(TenancyInitialized $event): void
     {
@@ -26,7 +28,7 @@ final class ScopePermissionCacheToTenant
         }
 
         $tenantId = (string) $tenant->getTenantKey();
-        config(['permission.cache.key' => self::BASE_KEY.'.'.$tenantId]);
+        config(['permission.cache.key' => $this->cacheKey->forTenant($tenantId)]);
         $this->registrar->initializeCache();
         $this->registrar->clearPermissionsCollection();
     }

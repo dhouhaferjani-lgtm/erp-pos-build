@@ -9,11 +9,13 @@ use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Testing\PendingCommand;
 use PHPUnit\Framework\Attributes\Group;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\ProvisionsTenantDatabases;
@@ -21,6 +23,13 @@ use Tests\Traits\ProvisionsTenantDatabases;
 final class PermissionCacheTenantScopingTest extends TestCase
 {
     use ProvisionsTenantDatabases;
+
+    /**
+     * A permission name that exists in NO tenant migration or seeder, so its
+     * presence under a tenant can only come from that tenant's own database —
+     * or from another tenant's cached snapshot.
+     */
+    private const TENANT_A_ONLY_PERMISSION = 'rbac.w0a.s1.tenant-a-only';
 
     /** @var list<Tenant> */
     private array $tenants = [];
@@ -58,6 +67,14 @@ final class PermissionCacheTenantScopingTest extends TestCase
             parent::tearDown();
 
             return;
+        }
+
+        // The cross-tenant case swaps the default store to `file` (see below),
+        // which unlike `array` outlives the test. Forget exactly the keys this
+        // class can have written; never flush a whole store.
+        Cache::store('file')->forget('spatie.permission.cache');
+        foreach ($this->tenants as $tenant) {
+            Cache::store('file')->forget('spatie.permission.cache.'.$tenant->id);
         }
 
         DB::connection('central')->table('jobs')
@@ -121,7 +138,6 @@ final class PermissionCacheTenantScopingTest extends TestCase
             unset($pending); // deterministically run PendingDispatch::__destruct() before ending tenancy
             tenancy()->end();
             self::assertSame('spatie.permission.cache', $this->registrar->cacheKey);
-            fwrite(STDERR, 'After dispatch '.$label.' tenancy end: '.$this->registrar->cacheKey.PHP_EOL);
         }
 
         $payloads = DB::connection('central')->table('jobs')->orderBy('id')->pluck('payload');
@@ -143,20 +159,72 @@ final class PermissionCacheTenantScopingTest extends TestCase
         $worker->run();
         self::assertFalse(tenancy()->initialized);
         self::assertSame('spatie.permission.cache', $this->registrar->cacheKey);
-        fwrite(STDERR, 'After queue worker: '.$this->registrar->cacheKey.PHP_EOL);
         $worker = $this->artisan('queue:work', ['connection' => 'database', '--once' => true]);
         self::assertInstanceOf(PendingCommand::class, $worker);
         $worker->assertExitCode(0);
         $worker->run();
         self::assertFalse(tenancy()->initialized);
         self::assertSame('spatie.permission.cache', $this->registrar->cacheKey);
-        fwrite(STDERR, 'After queue worker: '.$this->registrar->cacheKey.PHP_EOL);
 
         self::assertSame([
             'a' => 'spatie.permission.cache.'.$tenantA->id,
             'b' => 'spatie.permission.cache.'.$tenantB->id,
         ], PermissionCacheProbeJob::$observedKeys);
         self::assertFalse(tenancy()->initialized);
+        self::assertSame('spatie.permission.cache', $this->registrar->cacheKey);
+    }
+
+    /**
+     * DATA MEANING, not key strings: the defect this lane fixes is that tenant B
+     * could be SERVED tenant A's permission snapshot. The two tests above prove
+     * the registrar's key changes; this one proves what another tenant can see.
+     *
+     * Reproducing the real defect needs one PHYSICAL store both tenant keys land
+     * in. phpunit-pgsql.xml pins CACHE_STORE=array, and the array store is a
+     * per-process bag that would hide a shared-key collision behind the
+     * registrar's in-memory collection alone, so the default store is swapped to
+     * `file` for this test — before the registrar re-initializes, since
+     * PermissionRegistrar::initializeCache() resolves the store once and caches
+     * the Repository on the singleton.
+     */
+    #[Group('pg')]
+    public function test_permission_created_in_one_tenant_is_invisible_to_another_tenant(): void
+    {
+        config(['cache.default' => 'file']);
+        config(['tenancy_resolver.db_per_tenant' => true]);
+        $this->registrar->initializeCache();
+
+        $resolver = app(TenancyResolver::class);
+        $tenantA = $this->provisionTenantDatabaseWithSchema($this->tenant('permission-data-a'));
+        $tenantB = $this->provisionTenantDatabaseWithSchema($this->tenant('permission-data-b'));
+
+        // Tenant A owns a permission that exists in no other tenant database.
+        self::assertTrue($resolver->initializeIfProvisioned($tenantA));
+        self::assertSame(0, DB::table('permissions')->where('name', self::TENANT_A_ONLY_PERMISSION)->count());
+        Permission::create(['name' => self::TENANT_A_ONLY_PERMISSION, 'guard_name' => 'web']);
+
+        // Warm A's registry so its snapshot is actually written to the store.
+        $countInA = $this->registrar->getPermissions()->count();
+        self::assertCount(1, $this->registrar->getPermissions(['name' => self::TENANT_A_ONLY_PERMISSION]));
+        tenancy()->end();
+
+        // Tenant B never had that permission. Under the pre-fix shared key it
+        // reads A's warmed snapshot and answers YES.
+        self::assertTrue($resolver->initializeIfProvisioned($tenantB));
+        self::assertSame(0, DB::table('permissions')->where('name', self::TENANT_A_ONLY_PERMISSION)->count());
+        self::assertCount(0, $this->registrar->getPermissions(['name' => self::TENANT_A_ONLY_PERMISSION]));
+
+        // B's registry is its OWN database, neither polluted nor truncated by A.
+        $countInB = $this->registrar->getPermissions()->count();
+        self::assertSame(DB::table('permissions')->count(), $countInB);
+        self::assertSame($countInA - 1, $countInB);
+        tenancy()->end();
+
+        // Isolation is not achieved by losing A's data.
+        self::assertTrue($resolver->initializeIfProvisioned($tenantA));
+        self::assertCount(1, $this->registrar->getPermissions(['name' => self::TENANT_A_ONLY_PERMISSION]));
+        self::assertSame($countInA, $this->registrar->getPermissions()->count());
+        tenancy()->end();
         self::assertSame('spatie.permission.cache', $this->registrar->cacheKey);
     }
 }
@@ -173,6 +241,5 @@ final class PermissionCacheProbeJob implements ShouldQueue
     public function handle(PermissionRegistrar $registrar): void
     {
         self::$observedKeys[$this->label] = $registrar->cacheKey;
-        fwrite(STDERR, 'Job '.$this->label.': '.$registrar->cacheKey.PHP_EOL);
     }
 }

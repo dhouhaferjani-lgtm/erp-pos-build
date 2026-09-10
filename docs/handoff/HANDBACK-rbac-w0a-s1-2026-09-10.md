@@ -2,7 +2,7 @@
 
 status: review
 
-**Promotion blocker:** broader preflight fails the CI-lane coverage ratchet because this dispatch adds a test class to the parked Identity lane. Implementation/path checks are green; overall preflight is **not green**. CI routing needs an orchestrator-owned follow-up before merge.
+**Promotion blocker (round 0) — RESOLVED in gate r1 fix round 1, see "Gate r1 conditions" at the end of this document.** As dispatched, broader preflight failed the CI-lane coverage ratchet because this dispatch adds a test class to the parked Identity lane, and the class was named in no live CI filter. Fix round 1 routed it into the live `t6-phase0b-pgsql` selection and raised the two manifest ceilings deliberately; `php tools/feature-lane-manifest-check.php` is green.
 
 Branch: `lane/rbac-w0a-s1-permission-cache`  
 Implementation commit: `7fc91c61358fd64b0190465c2660ba43294a1582`  
@@ -208,3 +208,86 @@ This is **caused by the required new test**, not an unrelated baseline failure. 
 A separate SQLite guard check (`php artisan test --group=pg --display-warnings tests/Feature/Identity/PermissionCacheTenantScopingTest.php`) cleanly skipped both methods (0 assertions) with the intended PostgreSQL-only reason, confirming skip teardown is safe. It is not PG lifecycle evidence.
 
 Full local logs: `docs/sessions/rbac-red.log`, `rbac-green.log`, `rbac-treasury.log`, `rbac-phpstan.log`, `rbac-preflight.log`, and `rbac-sqlite-skip.log` (ignored session artifacts).
+
+---
+
+## Gate r1 conditions (fix round 1, 2026-09-10)
+
+Gate register: `docs/superpowers/reviews/2026-09-10-rbac-w0a-s1-gate-r1.md` (verdict MERGE-WITH-CONDITIONS, copied verbatim from the reviewer's scratchpad). Every condition below was applied in this worktree on top of `3ba7fa0eb`; no push, no rebase, no merge.
+
+### 1 — CI routing [BLOCKER] — CLOSED
+
+`PermissionCacheTenantScopingTest` is now named in the **live** `t6-phase0b-pgsql` `--filter` alternation (`.github/workflows/ci.yml:1271`), the job that runs on PR→dev, PR→main, push→main and `workflow_dispatch` against real PostgreSQL 16 with real per-tenant databases. `backend-test-pgsql` (`ci.yml:1130`) was deliberately NOT used: `lane/w-lot-a-1a` and `lane/t2-receipt-spine` are both editing that filter, and `t6-phase0b-pgsql`'s stated charter ("the row-level → database-per-tenant flip must be proven on real PostgreSQL … before merge to dev OR main", `ci.yml:1179-1184`) is exactly this surface.
+
+`apps/api/tests/feature-lane-manifest.json`: `groups.Identity.classes` 32 → 33 (`raise_note_2026_09_10`) and `gated_ceiling` 1253 → 1254 (`gated_ceiling_raise_note_2026_09_10_rbac_w0a_s1`). Both notes record that the class is **dark in the parked `feature-lane-tenancy` lane** until `vars.SELF_HOSTED_RUNNER_READY` flips, but **live via the `t6-phase0b-pgsql` selection** — i.e. it is not a phantom, and the allowlist entry is to be removed when that gate is flipped, not before.
+
+### 2 — Boot-time cache reset [MAJOR] — CLOSED
+
+`apps/api/docker/entrypoint.sh` now runs, in order:
+
+```sh
+DB_HOST="$DIRECT_DB_HOST" php artisan tenants:run permission:cache-reset 2>/dev/null || true
+php artisan permission:cache-reset 2>/dev/null || true
+```
+
+`tenants:run` is Stancl's registered command (`vendor/stancl/tenancy/src/TenancyServiceProvider.php:86`) and initializes tenancy per tenant, so each reset forgets that tenant's own suffixed key. `DB_HOST="$DIRECT_DB_HOST"` follows the surrounding tenant-wide steps (`tenants:migrate-rolling` :150, `tenants:seed` :165); the `2>/dev/null || true` shape and "never blocks boot" property are preserved, and the comment above the step now explains the per-tenant key.
+
+**Finding on the central reset (the reviewer asked for it explicitly): the central context has no permission use, but the bare reset is still NOT dead code, so it was KEPT rather than replaced.** Verified: `create_permission_tables` is a **tenant** migration (`database/migrations/tenant/2025_11_29_231806_create_permission_tables.php`) and there is no central one; the only `HasRoles` consumer in `app/` is `App\Modules\Identity\Domain\User` (`app/Modules/Identity/Domain/User.php:23`), a tenant model; `App\Models\SuperAdmin` uses `CentralConnection` and no permission trait. So nothing reads permissions in central context. The bare reset survives for two other reasons: (a) in **compatibility mode** (`TENANCY_DB_PER_TENANT=false`) both listeners early-return and the unsuffixed base key IS the live key — replacing the step outright would have silently regressed compat deployments; (b) it evicts the **legacy pre-W0a-S1 shared key** left behind by the flip (the lane plan's step 8 one-off), which otherwise lingers for the 24 h TTL (`config/permission.php:186`).
+
+### 3 — Cross-tenant data-meaning assertion [MAJOR] — CLOSED
+
+New case `test_permission_created_in_one_tenant_is_invisible_to_another_tenant`. It creates `rbac.w0a.s1.tenant-a-only` in **tenant A's database only**, warms A's registry, switches to tenant B and asserts `$registrar->getPermissions(['name' => …])` is **empty**, that B's registry count equals B's own `permissions` row count and equals A's count minus one (unaffected), then returns to A and asserts the permission is present again with A's original count — isolation is not achieved by losing data.
+
+`phpunit-pgsql.xml:55` pins `CACHE_STORE=array`, which is a per-process bag and cannot reproduce a shared-store collision. **What was done:** a per-test `config(['cache.default' => 'file'])` **before** `$this->registrar->initializeCache()` — required ordering, because `PermissionRegistrar::initializeCache()` resolves the store once and caches the `Repository` on the singleton (`vendor/spatie/laravel-permission/src/PermissionRegistrar.php:67-99`). `tearDown` forgets exactly the three keys the class can write on that store (base + one per test tenant); no store is ever flushed wholesale.
+
+RED was captured by unregistering the two listeners in `TenancyServiceProvider::boot()` and re-running: `Failed asserting that actual size 1 matches expected size 0` at the tenant-B assertion — tenant B was served tenant A's permission. The listeners were restored immediately and the file committed unmodified in that respect.
+
+### 4 — Debug output [MINOR] — CLOSED
+
+All four `fwrite(STDERR, …)` calls removed from `tests/Feature/Identity/PermissionCacheTenantScopingTest.php`; the green run's log is now clean.
+
+### 5 — Configured cache key [MINOR] — CLOSED
+
+New `App\Modules\Identity\Application\Support\PermissionCacheKey` (`app/Modules/Identity/Application/Support/PermissionCacheKey.php`): a small value object that constructor-injects `Illuminate\Contracts\Config\Repository`, reads `permission.cache.key` **once**, and exposes `base()` / `forTenant(string)`. It is bound as a container **singleton** in `TenancyServiceProvider::register()` and resolved **eagerly** in `boot()`, so the captured value is the one the application booted with — reading the config entry back later is unsafe precisely because the listeners rewrite it on every tenancy transition. Both listeners now inject it and the hardcoded `ScopePermissionCacheToTenant::BASE_KEY` constant is gone. A deployment that customises `permission.cache.key` keeps its value; when the config equals the shipped default (`spatie.permission.cache`) behaviour is byte-identical, which the unchanged key assertions in the two original tests still pin.
+
+### 6 — Residuals recorded [MINOR] — this section
+
+- **Compat-mode guard gap (still open, accepted).** The early return at `ScopePermissionCacheToTenant.php:20-22` / `RestoreCentralPermissionCache.php:16-18` is not exercised by a test. The compat leg at `PermissionCacheTenantScopingTest.php:88-93` drives an **unprovisioned** tenant through `TenancyResolver::initializeIfProvisioned()` (`app/Modules/Tenant/Application/Services/TenancyResolver.php:96-106`), which returns `false` and never fires `TenancyInitialized`, so the shared key is preserved by a path that never reaches the guard. The plan sanctions that shape ("must not manufacture a tenant cache context"). The uncovered case is a **provisioned** tenant reached in compat mode via `$tenant->run()` / `QueueTenancyBootstrapper::initializeTenancyForQueue()` (`vendor/stancl/tenancy/src/Bootstrappers/QueueTenancyBootstrapper.php:93`), which DOES fire the event — there the guard is the only thing keeping the shared key. Closing it is one `$tenant->run()` case; not taken in this round because it was scoped as an alternative to, not a requirement alongside, this record.
+- **Shared-trait blast radius: 11 other classes, none in any CI filter.** The `tests/Traits/ProvisionsTenantDatabases.php:37-52,90-94` PostgreSQL branch (added by the implementation commit) changes behaviour for `TenantScopedCommandForEachTenantTest`, `SubledgerReconciliationCommandTest`, `CheckPendingEnrichmentsDriftDbPerTenantTest`, `PreflightFiscalGateCommandTest`, `BatchExpiryDailyCheckCommandTest`, `MarketplaceScheduledCommandsTest`, `DetectFraudPatternsDriftDbPerTenantTest`, `VerifyFiscalChainGenesisDocumentTest`, `ChannelReconcileCommandDbPerTenantTest`, `VerifyPosChainCommandDbPerTenantTest`, `ExpireStockReservationsCommandTest`. None appears in any `.github/workflows/ci.yml` `--filter`, so today's CI blast radius is nil, and the previous PG path was non-functional anyway (it ran `select … from sqlite_master` on a pgsql connection). **Re-run these on PostgreSQL the day a lane gate flips.**
+- **Bounded in-memory staleness (accepted).** `PermissionRegistrar::$permissions` is cleared only on tenancy transitions (`ScopePermissionCacheToTenant.php:31`, `RestoreCentralPermissionCache.php:21`). A worker mid-job under tenant A does not observe a role edit made concurrently by an HTTP request in the same tenant: `forgetCachedPermissions()` (`vendor/spatie/laravel-permission/src/PermissionRegistrar.php:140-146`) evicts the shared cache entry but cannot reach the worker's in-process collection. It is bounded to the remainder of one job, because `QueueTenancyBootstrapper` ends tenancy after every tenant-aware job (`QueueTenancyBootstrapper.php:96-121`) and `Tenancy::end()` fires `TenancyEnded`.
+- **Ceiling recompute, not textual merge.** `lane/w-lot-a-1a` (`Identity` 32 → 39, `gated_ceiling` 1250 → 1264) and `lane/t2-receipt-spine` both edit `apps/api/tests/feature-lane-manifest.json` and `.github/workflows/ci.yml`. This lane's 1253 → 1254 / 32 → 33 is **union arithmetic against its own base `d418a2656`**. Whoever lands second must RECOMPUTE against dev's current values (dev's ceiling plus this lane's one Identity class), never resolve to a number a lane wrote in an earlier round. The `ci.yml` hunks do not collide: the two in-flight lanes edit the `backend-test-pgsql` filter (`@@ -1130`, `@@ -1138`), this lane edits the `t6-phase0b-pgsql` filter (`:1271`).
+
+### Fix-round verification (all commands from `apps/api`, PHPUnit BY PATH only)
+
+PG leg env on every run: `DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5433 DB_USERNAME=autoerp DB_PASSWORD=autoerp_secret DB_DATABASE=autoerp_test_r DB_CENTRAL_DATABASE=autoerp_test_r`.
+
+```text
+# RED (listeners unregistered), new case only
+F                                                                   1 / 1 (100%)
+1) …::test_permission_created_in_one_tenant_is_invisible_to_another_tenant
+Failed asserting that actual size 1 matches expected size 0.
+tests/Feature/Identity/PermissionCacheTenantScopingTest.php:215
+FAILURES! Tests: 1, Assertions: 6, Failures: 1.
+
+# GREEN (listeners restored), whole class
+...                                                                 3 / 3 (100%)
+Time: 01:00.414, Memory: 155.00 MB
+OK (3 tests, 38 assertions)
+
+# SQLite resolver regressions
+.............                                                     13 / 13 (100%)
+OK (13 tests, 25 assertions)
+
+# PHPStan level 8, six touched paths
+ [OK] No errors
+
+# Pint, same six paths
+{"result":"pass"}
+
+# php tools/feature-lane-manifest-check.php
+tests/Feature lane manifest OK — 1519 Feature classes in 74 groups; every group has a disposition;
+every declared lane is present in ci.yml; every --filter entry is anchored and uniquely matched
+against 1930 test classes across all suites.
+  ⚠ PARKED BEHIND AN EXECUTION GATE: 70 group(s) / 1254 class(es) …
+  ⚠ COVERAGE DEBT: 1 group(s) / 1 class(es) …
+```
