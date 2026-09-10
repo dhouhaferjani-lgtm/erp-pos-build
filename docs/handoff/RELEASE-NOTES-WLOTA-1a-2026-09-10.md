@@ -1,4 +1,4 @@
-# W-LOT-A-1a release notes — fix rounds 1–2
+# W-LOT-A-1a release notes — fix rounds 1–2b
 
 Status: review; no deployment or activation performed.
 
@@ -14,3 +14,5 @@ Legacy NULL-team role identities and assignments remain unchanged. Technician re
 Create/update retain their existing FormRequest permission checks, with no new A-1a `BatchActionAccess` middleware. The staged middleware alignment is recorded in `docs/superpowers/tickets/2026-09-10-batch-create-update-api-enforcement.md` for A-1b.
 
 Push 3 must ship the **web string-tolerance slice** (`apps/web/src/features/batches/types.ts`, `apps/web/src/features/batches/pages/BatchListPage.tsx`, and `apps/web/src/features/batches/pages/__tests__/BatchPermissions.test.tsx`) with the API string contract. The pre-lane list calls `.toFixed()` on the total and crashes on a string during the Push 3 → Push 5 window. The slice accepts both old numbers and new strings; its create-button permission was already granted to the roles that could see that button. Other permission-gating web files remain in Push 5 after Push 4 acceptance.
+
+Per-lot `POST /batches/{uuid}/transfer` is broken pre-lane on PostgreSQL — ticket `docs/superpowers/tickets/2026-09-10-batch-transfer-missing-movement-reference.md`; repair belongs to the inventory movement seam after T-2 S1 merges.

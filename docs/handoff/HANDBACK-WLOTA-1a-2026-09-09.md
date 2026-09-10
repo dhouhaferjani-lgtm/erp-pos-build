@@ -1,16 +1,16 @@
 ---
 status: review
 promotion_ready: false
-blocking_decision: scope ruling for pre-existing transfer writer failure
-promotion_blocker: failing real transfer regression, orchestrator review and staged acceptance
+blocking_decision: none
+promotion_blocker: orchestrator review and staged acceptance
 ---
 
-# W-LOT-A-1a handback — fix round 2, 2026-09-10
+# W-LOT-A-1a handback — fix round 2b, 2026-09-10
 
 Worktree: `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/w-lot-a-1a`. Branch: `lane/w-lot-a-1a`.
 Original dispatch: `4373ba2f60ac6c303e90e4ae47236285f05e648c`; round-1 base: `04e60530c`; round-1 verified source HEAD: `850f7a295bbf53b5ff9ca751d3047ee3134380df`. Historical implementation/ruling evidence remains in the handback at `04e60530c`.
 
-Authority: `CODEX-PROMPT-WLOTA-1a-fix-round-2-2026-09-10.md`, plan rev 11 §00 Round-10 addendum, and all three gate-r2 registers read in full from the main checkout. Round-1 history below remains attributed to its own source HEAD. Round 2 is not fully verified: its new real transfer HTTP regression exposes a pre-existing writer failure; the scope ruling is pending. Reviewer verdicts belong to the orchestrator's registers.
+Authority: `CODEX-PROMPT-WLOTA-1a-fix-round-2-2026-09-10.md`, plan rev 11 §00 Round-10 addendum, and all three gate-r2 registers read in full from the main checkout. Round-1 history below remains attributed to its own source HEAD. The subsequent `CODEX-PROMPT-WLOTA-1a-fix-round-2b-2026-09-10.md` ruling closes the scope decision: the transfer writer failure is a disclosed pre-existing residual owned by the inventory movement seam after T-2 S1, not a lane blocker. Historical round-2 results below remain attributed to their tested source; the Fix round 2b block supersedes their blocker disposition. Reviewer verdicts belong to the orchestrator's registers.
 
 No merge, push, deployment, activation or fleet operation performed. Legacy NULL-team role identities remain unchanged; technician receives no batches.view. Push 4 delta acceptance must precede Push 5 web; never combine them in an automatic deployment. Post-activation browser execution remains orchestrator-owned and was not run against an activated tenant.
 
@@ -45,7 +45,7 @@ No merge, push, deployment, activation or fleet operation performed. Legacy NULL
 | Generated route-manifest follow-up | Preflight detected stale batch permission metadata; regenerated the four rows from source, without changing the generator or routes. Ships in Push 5. | `scripts/factory/manifests/routes-web.yaml:297` |
 | Manifest / CI raise | Approved ceilings 21/18/39/15 and total 1264, with truthful parked-lane notes and twelve exact PG selections. Checker exits 0. | `apps/api/tests/feature-lane-manifest.json:9`; `.github/workflows/ci.yml:1133` |
 
-## Fix round 2
+## Fix round 2 (historical, before the round-2b ruling)
 
 Round-2 base: `2fa724c1d83098e12d05024e5e51b083d5566ed0`; tested source HEAD: `e66ab582392ace4a5d95089a6249809b1a0ce0ab`.
 
@@ -74,7 +74,7 @@ Retry semantics: per-lot write-off has no idempotency key. One successful call c
 
 Actual red evidence: `r2-red-batch.txt` shows denied PATCH notes persisted and unrestricted write-off returned 9 instead of 16; `r2-red-role.txt` shows flag-off assignment returned 422; `r2-red-unit.txt` shows unit 2 emitted as 4; `r2-red-list.txt` shows 3.123 rendered instead of 3.1234. Added recall/write-off and flag-off regression cases are not claimed as new production-red proofs.
 
-## Verification — round 2
+## Verification — round 2 (historical)
 
 49 PostgreSQL tests were run across six files, one file per invocation, sequentially, with both DB_DATABASE and DB_CENTRAL_DATABASE pinned to `autoerp_test_w` on port 5433. **48 pass; the new real transfer test fails.** No full PHPUnit or Vitest suite was run. No additional test class or manifest ceiling was introduced.
 
@@ -95,7 +95,7 @@ React Doctor: same-tool explicit-file baseline 92/100 (two diagnostics), current
 
 Final scoped `./scripts/preflight.sh`: **exit 0** (`r2-preflight.txt`). Pint --test and PHPStan level 8 pass on the touched PHP paths (Pint includes tests; PHPStan checks runtime/seeder files). Full ESLint reports 0 errors / 6413 warnings repository-wide. Generated DTO and permission-map drift checks, detector/manifest checks and the fixed fiscal-parity checks pass. The first attempt caught list-return typing and Laravel's inaccurate non-null console-command PHPDoc; both were fixed without suppressions or baseline changes. The exact environment and scopes are retained in `r2-preflight.sh`.
 
-Preflight retains its explicit BatchActionPermissionsTest and BatchPermissions Vitest scopes; its green result **does not override** the separately run, failing BatchReadLocationScopeTest, which is selected by the CI allowlist. The round remains blocked on real transfer success.
+Preflight retains its explicit BatchActionPermissionsTest and BatchPermissions Vitest scopes; its green result **does not override** the separately run, failing BatchReadLocationScopeTest, which is selected by the CI allowlist. At that historical checkpoint the round remained blocked on real transfer success; round 2b below supersedes that disposition.
 
 Committed browser evidence, Node 20.19.4: **1 pre-activation test passed (11.9s), source line 39:3**. The first three lines of `r2-browser-pre-node20.txt` are:
 
@@ -297,3 +297,25 @@ Generated artifacts:
 
 - `packages/shared/types/generated.d.ts` SHA-256 `f6010d61cdec02da5ed0bfed1940abc074d7e4800c56d18e3f902766d7000dce`.
 - `apps/web/src/hooks/permissionsMap.generated.ts` SHA-256 `2017732065366f5b75491dcde572f56cd31be8ad4fb32c4e1c990214e1286dff`.
+
+
+## Fix round 2b
+
+Authority: orchestrator ruling `CODEX-PROMPT-WLOTA-1a-fix-round-2b-2026-09-10.md` (2026-09-10; owner may overturn). Base `5d847b2ba`. Status remains **review**, `blocking_decision: none`; promotion awaits orchestrator review and staged acceptance only. The pre-existing transfer defect is a disclosed ticketed residual, not a lane blocker. No writer, aggregate service, migration, activation, merge or push change is included.
+
+| Item | Resolution / verification |
+| --- | --- |
+| Scope ruling | Transfer repair belongs to the inventory movement seam after T-2 S1 merges, avoiding its receive/issue transfer-linkage changes. See `docs/superpowers/tickets/2026-09-10-batch-transfer-missing-movement-reference.md`. |
+| Known-red success contract | Existing real HTTP success test is unchanged apart from the exact ticketed skip unless `WLOTA1A_RUN_KNOWN_REDS=1`. No mock or schema relaxation. |
+| Failure-and-rollback pin | New sibling expects SQLSTATE 23502 for missing `inventory_batch_movements.movement_id`. Full before/after snapshots cover the original seven tables plus `stock_levels`, `stock_movements` and `inventory_batch_movements`; all ten, including `inventory_batch_stock`, remain unchanged. Ticket owner removes this pin and the success test’s skip together when repairing the writer. |
+| Default PostgreSQL | `BatchReadLocationScopeTest.php`: **16 tests, 109 assertions, 1 skipped, exit 0**; the failure/rollback pin passes. Evidence: local `docs/sessions/wlota1a/r2b-pg-default.txt`. |
+| Explicit known-red PostgreSQL | Same file with `WLOTA1A_RUN_KNOWN_REDS=1`: **16 tests, 110 assertions, exactly 1 failure, exit 1**. Only `test_transfer_controller_response_uses_all_membership_locations` fails (expected 200, received 500; SQLSTATE 23502). Evidence: local `r2b-pg-known-red.txt`. This intentional opt-in result is not claimed green. |
+| Static checks | Pint --test passes on the changed test file. Scoped PHPStan level 8 passes on `BatchController.php` and `BatchResource.php` (runtime boundary, not test-fixture analysis). Manifest checker exits 0 with existing parked-lane warnings; no class/ceiling change. Local `r2b-pint.txt`, `r2b-phpstan.txt`, `r2b-manifest.txt`. |
+| Caller census / release note | Ticket records the exact web/POS grep and API-module inspection: no first-party per-lot transfer caller; three local picker-helper matches only. Priority consequence is API/mobile exposure only. Release notes disclose the pre-lane PostgreSQL failure. |
+| Push ledger | Existing Push-3 ledger row and assignment remain unchanged. The round-2b test follow-up commit listed below supplements that row’s round-2 provenance; no file moves between pushes. |
+
+Both PostgreSQL runs execute one file at a time, sequentially, with DB_DATABASE and DB_CENTRAL_DATABASE set to `autoerp_test_w`, both ports 5433. From `apps/api`, run `./vendor/bin/phpunit -c phpunit-pgsql.xml tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php` first with the opt-in unset, then with `WLOTA1A_RUN_KNOWN_REDS=1`. Evidence files are local and gitignored. Earlier web/browser evidence remains at its recorded source SHA; no browser rerun or activated-tenant acceptance is claimed for this backend-test/docs-only round.
+
+Round-2b test commit: `52f5ad796 Phase 1.2.9: Gate the known transfer failure and pin rollback`.
+
+Repository-required scoped preflight also completed successfully (`r2b-preflight.txt`: “All preflight checks passed!”). It ran the default PG `BatchReadLocationScopeTest` with the known-red opt-in unset, the existing scoped BatchPermissions Vitest, Pint, runtime/seeder PHPStan, TypeScript, repository-wide ESLint, generated-artifact/manifest checks and fixed fiscal-parity/chokepoint gates. Exact scopes and environment are retained in local `r2b-preflight.sh`; no full application PHPUnit or Vitest suite ran.
