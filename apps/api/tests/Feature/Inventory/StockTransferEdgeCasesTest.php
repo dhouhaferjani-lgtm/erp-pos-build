@@ -30,17 +30,16 @@ use App\Modules\Inventory\Domain\StockTransfer;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\TruncatesRootTransactionDatabase;
 use Tests\TestCase;
 
 final class StockTransferEdgeCasesTest extends TestCase
 {
-    use RefreshDatabase;
+    use TruncatesRootTransactionDatabase;
 
     private Tenant $tenant;
 
@@ -54,15 +53,8 @@ final class StockTransferEdgeCasesTest extends TestCase
 
     private Product $product;
 
-    /** Receipt completion must own the outermost transaction. @return list<string> */
-    protected function connectionsToTransact(): array
-    {
-        return [];
-    }
-
     protected function setUp(): void
     {
-        RefreshDatabaseState::$migrated = false;
         parent::setUp();
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->for($this->tenant)->create(['currency' => 'TND']);
@@ -92,11 +84,11 @@ final class StockTransferEdgeCasesTest extends TestCase
         $transfer = $this->app->make(StockTransferService::class)->initiate($this->data());
         self::assertSame([['transfer_out', StockTransfer::class, $transfer->id]], $created);
         self::assertSame([], $updated);
-        $this->app->make(StockTransferService::class)->complete($transfer->id, $this->user->id);
+        $this->app->make(StockTransferService::class)->complete($transfer, $this->user->id);
         self::assertSame(['transfer_in', StockTransfer::class, $transfer->id], $created[1]);
         self::assertSame([], $updated);
         $cancelled = $this->app->make(StockTransferService::class)->initiate($this->data());
-        $this->app->make(StockTransferService::class)->cancel($cancelled->id, $this->user->id, 'test');
+        $this->app->make(StockTransferService::class)->cancel($cancelled, $this->user->id, 'test');
         self::assertSame(['transfer_in', StockTransfer::class, $cancelled->id], $created[3]);
         self::assertSame([], $updated);
     }
@@ -110,7 +102,7 @@ final class StockTransferEdgeCasesTest extends TestCase
         foreach ($events as $event) {
             Event::assertDispatched($event, static fn ($posted): bool => $posted->movementType === 'transfer_out' && $posted->referenceType === StockTransfer::class && $posted->referenceId === $transfer->id);
         }
-        $this->app->make(StockTransferService::class)->complete($transfer->id, $this->user->id);
+        $this->app->make(StockTransferService::class)->complete($transfer, $this->user->id);
         foreach ($events as $event) {
             Event::assertDispatched($event, static fn ($posted): bool => $posted->movementType === 'transfer_in' && $posted->referenceType === StockTransfer::class && $posted->referenceId === $transfer->id);
         }
@@ -240,7 +232,7 @@ final class StockTransferEdgeCasesTest extends TestCase
         $reader = app(LocationStockQueryService::class);
         $read = fn () => $reader->read($this->tenant->id, $this->company->id, $this->destination->id, null, 1, 50);
         self::assertSame('4.0000', $read()->incoming[0]->incomingTransfer);
-        app(StockTransferService::class)->{$action}($transfer->id, $this->user->id);
+        app(StockTransferService::class)->{$action}($transfer, $this->user->id);
         self::assertSame([], $read()->incoming);
         $this->assertTerminalStock($action);
     }
@@ -255,7 +247,7 @@ final class StockTransferEdgeCasesTest extends TestCase
         $read = fn () => app(LocationStockQueryService::class)->stockDistributionForProduct($this->tenant->id, $this->company->id, $this->product->id, null, $this->destination->id);
         self::assertSame('4.0000', $read()->totalIncomingTransfer);
         self::assertSame('5.0000', $read()->totalOnHand);
-        app(StockTransferService::class)->{$action}($transfer->id, $this->user->id);
+        app(StockTransferService::class)->{$action}($transfer, $this->user->id);
         self::assertSame('0.0000', $read()->totalIncomingTransfer);
         self::assertSame('9.0000', $read()->totalOnHand);
         $this->assertTerminalStock($action);
@@ -269,7 +261,7 @@ final class StockTransferEdgeCasesTest extends TestCase
         $read = fn () => app(StockMatrixQueryService::class)->matrix($this->tenant->id, $this->company->id, [$this->source->id, $this->destination->id], '', 1, 50, true)['data'][0]['cells'];
         self::assertSame('4.0000', $read()[$this->destination->id]['incoming']);
         self::assertSame('6.0000', $read()[$this->source->id]['on_hand']);
-        app(StockTransferService::class)->{$action}($transfer->id, $this->user->id);
+        app(StockTransferService::class)->{$action}($transfer, $this->user->id);
         self::assertSame('0.0000', $read()[$this->destination->id]['incoming']);
         self::assertSame($action === 'cancel' ? '0.0000' : '4.0000', $read()[$this->destination->id]['on_hand']);
         $this->assertTerminalStock($action);
@@ -287,7 +279,7 @@ final class StockTransferEdgeCasesTest extends TestCase
         $adjust();
         self::assertSame($journalsBefore, DB::table('journal_entries')->count());
         self::assertSame('6.000000', $this->product->refresh()->cost_price);
-        app(StockTransferService::class)->{$action}($transfer->id, $this->user->id);
+        app(StockTransferService::class)->{$action}($transfer, $this->user->id);
         $adjust();
         self::assertSame($journalsBefore, DB::table('journal_entries')->count());
         self::assertSame('7.000000', $this->product->refresh()->cost_price);

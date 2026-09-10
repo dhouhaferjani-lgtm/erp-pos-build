@@ -7,8 +7,10 @@ namespace Tests\Feature\Inventory;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Inventory\Application\Services\StockTransferReceiptService;
+use App\Modules\Inventory\Application\Services\StockTransferService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 require_once __DIR__.'/StockTransferReceiveTest.php';
 
@@ -46,6 +48,24 @@ final class TransferReceiptAuthorityGateTest extends TransferReceiptFeatureTestC
             self::fail('A foreign company transfer must not resolve.');
         } catch (ModelNotFoundException) {
             self::assertSame($before, $this->denialSnapshot());
+        }
+    }
+
+    public function test_compatibility_callers_preserve_the_resolved_identity_scope(): void
+    {
+        $otherCompany = Company::factory()->for($this->tenant)->create();
+        foreach (['tenant_id', 'company_id'] as $scope) {
+            $identity = clone $this->transfer;
+            $identity->{$scope} = $scope === 'tenant_id' ? (string) Str::uuid() : $otherCompany->id;
+            foreach (['complete', 'cancel'] as $action) {
+                $before = $this->denialSnapshot();
+                try {
+                    $this->app->make(StockTransferService::class)->{$action}($identity, $this->user->id);
+                    self::fail('The resolved identity scope must not be derived again from its id.');
+                } catch (ModelNotFoundException) {
+                    self::assertSame($before, $this->denialSnapshot());
+                }
+            }
         }
     }
 

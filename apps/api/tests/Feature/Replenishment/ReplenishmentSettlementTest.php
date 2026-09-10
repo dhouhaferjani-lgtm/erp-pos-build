@@ -153,7 +153,7 @@ final class ReplenishmentSettlementTest extends TestCase
         $transfer = $this->initiate([new InitiateTransferLineData(productId: $this->product->id, quantity: '1')]);
         $this->assertSame(ReplenishmentStatus::Fulfilled, $request->refresh()->status);
 
-        app(StockTransferService::class)->cancel($transfer->id, $this->user->id, 'Vehicle breakdown');
+        app(StockTransferService::class)->cancel($transfer, $this->user->id, 'Vehicle breakdown');
 
         $request->refresh();
         $this->assertSame(ReplenishmentStatus::Pending, $request->status);
@@ -169,7 +169,7 @@ final class ReplenishmentSettlementTest extends TestCase
         $this->assertSame(ReplenishmentStatus::Fulfilled, $fulfilled->refresh()->status);
         $newOpen = $this->capture($this->product, requestedQty: '3', note: 'Requested again');
 
-        app(StockTransferService::class)->cancel($transfer->id, $this->user->id, 'Cancelled');
+        app(StockTransferService::class)->cancel($transfer, $this->user->id, 'Cancelled');
 
         $newOpen->refresh();
         $fulfilled->refresh();

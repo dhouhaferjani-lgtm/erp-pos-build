@@ -237,7 +237,7 @@ class StockTransferController extends Controller
         }
 
         try {
-            $completed = $this->service->complete($existing->id, $user->id);
+            $completed = $this->service->complete($existing, $user->id);
         } catch (TransferReceiptFailureException $e) {
             return $this->receiptFailureResponse($e);
         } catch (TransferStateException $e) {
@@ -277,7 +277,7 @@ class StockTransferController extends Controller
 
         try {
             $cancelled = $this->service->cancel(
-                transferId: $existing->id,
+                identity: $existing,
                 userId: $user->id,
                 reason: $validated['reason'] ?? null,
             );

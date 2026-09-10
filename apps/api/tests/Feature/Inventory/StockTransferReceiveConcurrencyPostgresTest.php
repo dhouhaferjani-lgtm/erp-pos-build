@@ -83,7 +83,7 @@ $app->make(App\Modules\Company\Services\CompanyContext::class)->setCompanyId($ar
 try {
     $action = $argv[5];
     if ($action === 'complete') {
-        $app->make(App\Modules\Inventory\Application\Services\StockTransferService::class)->complete($argv[1], $argv[2]);
+        $app->make(App\Modules\Inventory\Application\Services\StockTransferService::class)->complete(App\Modules\Inventory\Domain\StockTransfer::query()->where('tenant_id', $app->make(App\Modules\Company\Services\CompanyContext::class)->requireCompany()->tenant_id)->where('company_id', $argv[3])->findOrFail($argv[1]), $argv[2]);
         echo json_encode(['status' => 200]);
     } else {
         $payload = $action === 'receive'

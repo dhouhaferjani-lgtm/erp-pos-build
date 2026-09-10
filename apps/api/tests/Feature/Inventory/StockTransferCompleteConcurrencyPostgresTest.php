@@ -100,7 +100,7 @@ final class StockTransferCompleteConcurrencyPostgresTest extends TestCase
     Illuminate\Support\Facades\DB::select("SELECT set_config('application_name', ?, false)", [$argv[4]]);
     $app->make(App\Modules\Company\Services\CompanyContext::class)->setCompanyId($argv[3]);
     try {
-        $transfer = $app->make(App\Modules\Inventory\Application\Services\StockTransferService::class)->complete($argv[1], $argv[2]);
+        $transfer = $app->make(App\Modules\Inventory\Application\Services\StockTransferService::class)->complete(App\Modules\Inventory\Domain\StockTransfer::query()->where('tenant_id', $app->make(App\Modules\Company\Services\CompanyContext::class)->requireCompany()->tenant_id)->where('company_id', $argv[3])->findOrFail($argv[1]), $argv[2]);
         echo json_encode(['status' => $transfer->status->value, 'receipt_count' => $transfer->receipts()->count()], JSON_THROW_ON_ERROR);
     } catch (App\Modules\Inventory\Domain\Exceptions\TransferStateException $e) {
         echo json_encode(['status' => $e->currentStatus->value, 'action' => $e->attemptedAction], JSON_THROW_ON_ERROR);
@@ -121,7 +121,7 @@ final class StockTransferCompleteConcurrencyPostgresTest extends TestCase
             } while (microtime(true) < $deadline);
             self::assertTrue($blocked, 'Second process must actually block on PostgreSQL lock: '.$this->contender->getErrorOutput().$this->contender->getOutput());
         });
-        app(StockTransferService::class)->complete($transfer->id, $this->user->id);
+        app(StockTransferService::class)->complete($transfer, $this->user->id);
         self::assertSame(0, $this->contender->wait(), $this->contender->getErrorOutput());
         self::assertSame(['status' => 'completed', 'receipt_count' => 1], json_decode($this->contender->getOutput(), true, flags: JSON_THROW_ON_ERROR));
         self::assertSame('4.0000', StockLevel::query()->where('product_id', $this->product->id)->where('location_id', $this->destination->id)->sole()->quantity);
@@ -136,7 +136,7 @@ final class StockTransferCompleteConcurrencyPostgresTest extends TestCase
         $transfer = $this->transfer('10.000');
         $journalsBefore = DB::table('journal_entries')->count();
         self::assertSame(0, $journalsBefore);
-        app(StockTransferService::class)->complete($transfer->id, $this->user->id);
+        app(StockTransferService::class)->complete($transfer, $this->user->id);
         self::assertSame($journalsBefore, DB::table('journal_entries')->count());
         self::assertSame(0, DB::transactionLevel());
         self::assertSame(TransferStatus::Completed, $transfer->refresh()->status);

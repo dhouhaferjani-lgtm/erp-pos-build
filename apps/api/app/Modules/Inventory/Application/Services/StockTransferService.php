@@ -157,7 +157,7 @@ class StockTransferService
                 }
 
                 // Move stock into in_transit immediately.
-                return $this->moveSourceToInTransit($transfer->id, $data->initiatedByUserId);
+                return $this->moveSourceToInTransit($transfer, $data->initiatedByUserId);
             }, attempts: 3);
         } catch (UniqueConstraintViolationException $exception) {
             // ID-4: a concurrent caller committed the same logical transfer while
@@ -307,9 +307,9 @@ class StockTransferService
      * @throws TransferStateException when transfer is not in_transit
      * @throws TransferReceiptFailureException
      */
-    public function complete(string $transferId, string $userId): StockTransfer
+    public function complete(StockTransfer $identity, string $userId): StockTransfer
     {
-        $identity = StockTransfer::query()->findOrFail($transferId);
+        $transferId = $identity->id;
 
         return $this->receiptService
             ->receiveAllRemaining($transferId, $userId, 'sys:complete:'.$transferId, $identity->tenant_id, $identity->company_id)
@@ -322,10 +322,10 @@ class StockTransferService
      *
      * @throws TransferStateException when transfer is already terminal
      */
-    public function cancel(string $transferId, string $userId, ?string $reason = null): StockTransfer
+    public function cancel(StockTransfer $identity, string $userId, ?string $reason = null): StockTransfer
     {
-        return DB::transaction(function () use ($transferId, $userId, $reason): StockTransfer {
-            $transfer = $this->movementSupport->lockTransfer(StockTransfer::query()->findOrFail($transferId));
+        return DB::transaction(function () use ($identity, $userId, $reason): StockTransfer {
+            $transfer = $this->movementSupport->lockTransfer($identity);
 
             if (! $transfer->status->canBeCancelled()) {
                 throw new TransferStateException($transfer->id, $transfer->status, 'cancel');
@@ -392,9 +392,9 @@ class StockTransferService
      * Called from initiate() — separated so the WAC snapshot / source-lock
      * loop stays focused.
      */
-    private function moveSourceToInTransit(string $transferId, string $userId): StockTransfer
+    private function moveSourceToInTransit(StockTransfer $identity, string $userId): StockTransfer
     {
-        $transfer = $this->movementSupport->lockTransfer(StockTransfer::query()->findOrFail($transferId));
+        $transfer = $this->movementSupport->lockTransfer($identity);
 
         if (! $transfer->status->canBeInitiated()) {
             throw new TransferStateException($transfer->id, $transfer->status, 'initiate');

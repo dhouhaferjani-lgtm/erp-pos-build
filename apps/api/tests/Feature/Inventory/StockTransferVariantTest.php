@@ -27,14 +27,14 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use InvalidArgumentException;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\TruncatesRootTransactionDatabase;
 use Tests\TestCase;
 
 class StockTransferVariantTest extends TestCase
 {
-    use RefreshDatabase;
+    use TruncatesRootTransactionDatabase;
 
     private Tenant $tenant;
 
@@ -317,7 +317,7 @@ class StockTransferVariantTest extends TestCase
             transferCost: '40',
         ));
 
-        $completed = $this->service->complete($transfer->id, $this->user->id);
+        $completed = $this->service->complete($transfer, $this->user->id);
 
         $this->assertSame(TransferStatus::Completed, $completed->status);
         // Destination variant-A row got the 4 units; variant B never appears at the shop.
@@ -347,7 +347,7 @@ class StockTransferVariantTest extends TestCase
         ));
         $this->assertSame('6.0000', $this->variantStockQty($this->variantA, $this->warehouse));
 
-        $cancelled = $this->service->cancel($transfer->id, $this->user->id, 'changed mind');
+        $cancelled = $this->service->cancel($transfer, $this->user->id, 'changed mind');
 
         $this->assertSame(TransferStatus::Cancelled, $cancelled->status);
         // The 4 in-flight units returned to the source variant row.
