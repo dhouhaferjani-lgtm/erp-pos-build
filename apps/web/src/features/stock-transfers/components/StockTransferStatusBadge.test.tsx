@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { act, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { renderWithProviders } from '@/test/renderWithProviders'
-import i18n from '@/lib/i18n'
 import { StockTransferStatusBadge } from './StockTransferStatusBadge'
 import type { StockTransferStatus } from '../types'
 
@@ -16,16 +15,6 @@ const statuses: [StockTransferStatus, string][] = [
 ]
 
 describe('StockTransferStatusBadge', () => {
-  it('loads the new Arabic status labels', async () => {
-    await act(async () => { await i18n.changeLanguage('ar') })
-    try {
-      renderWithProviders(<StockTransferStatusBadge status="partially_received" />)
-      expect(screen.getByText('مستلم جزئيًا')).toBeInTheDocument()
-    } finally {
-      await act(async () => { await i18n.changeLanguage('en') })
-    }
-  })
-
   it.each(statuses)('renders the %s status label', (status, label) => {
     renderWithProviders(<StockTransferStatusBadge status={status} />)
     expect(screen.getByText(label)).toBeInTheDocument()

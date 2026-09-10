@@ -1,7 +1,0 @@
-{
-  "status": {
-    "partially_received": "مستلم جزئيًا",
-    "closed_with_writeoff": "مغلق مع شطب",
-    "closed_returned": "مغلق مع إرجاع"
-  }
-}
