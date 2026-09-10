@@ -8,13 +8,17 @@ feedback_push_dev_autodeploys_migrations). Every step below runs AFTER that depl
 
 ## S1 review disclosures
 
-- T-4: The backend list/show gate accepts any of view, complete or reconcile. Until S4, the web route guard still requires `inventory.transfers.view` and has no Inventory module gate; complete-only and reconcile-only actors cannot reach those pages.
+- T-4: The backend list/show gate accepts any of view, complete or reconcile. Until S4, the web route guard still requires `inventory.transfers.view` and has no `hasModule('Inventory')` FE counterpart to the backend `module:Inventory` group gate; complete-only and reconcile-only actors cannot reach those pages.
 - G-2: Before launch, verify that both `inventory` and `inventory_shrinkage_expense` account purposes resolve for every launch company. Destructive receipt/close actions refuse with `GL_ACCOUNTS_UNMAPPED` before any stock or GL write otherwise.
 - G-4: Lost-in-transit close write-offs are landed and scrapped at the destination; movement feeds and per-location shrinkage therefore attribute the loss to the destination.
 - G-7: Freight capitalization raises inventory-subledger WAC without a matching GL debit, while damage/write-off credits GL Inventory. The resulting GL-versus-subledger freight divergence remains owned by `docs/superpowers/tickets/2026-09-09-t1-freight-capitalization-no-gl.md`.
 
 - I-11/F-4: Until S4, a short shipment is closed via `POST /close` (`disposition=write_off|return_to_source`); the web Complete on a `partially_received` transfer books the entire outstanding remainder as received-good. Its confirmation states short-line and total-line counts.
 - F-3 / R5: S4 must mask sent/remaining behind `canSeeExpected`/`blind` on `StockTransferDetailPage` before any terminal affordance on a partial. `StockTransferData` needs a receiver-shape discriminant in S2.
+
+- T-6/T-15: `LOCATION_ACCESS_DENIED` intentionally returns 403 with `location_id` and caller `user_id` for receive/close, matching complete/cancel. S4 owns any change to 404 hiding.
+- T-9: Arabic stock-transfer labels retain the whole-namespace English alias. Full Arabic coverage is deferred to `docs/superpowers/tickets/2026-09-10-stock-transfers-arabic-namespace.md`; the protected i18n baseline/pin remain untouched.
+- F-2/F-9: S4 owns migration to the canonical `StatusBadge` and translated transfer-type/cost-distribution values.
 
 ## 1. Tenant permission seeding  (spec §11.4 item 1)
 - [ ] `php artisan tenants:seed --force --class='Database\Seeders\RolesAndPermissionsSeeder'`

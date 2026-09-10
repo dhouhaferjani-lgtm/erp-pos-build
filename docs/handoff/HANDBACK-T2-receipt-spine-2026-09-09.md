@@ -5,15 +5,15 @@ status: review
 Original source implementation: `c30dcdf9c`, branch `lane/t2-receipt-spine`, worktree `.worktrees/t2-receipt-spine`.
 Original DISPATCH_SHA: `9d6bc75c12d7dd9ed8c4226d0b3e7608754a5f28`.
 Amendment DISPATCH_SHA: `de3007fe9` (documentation-only fast-forward; no production drift).
-Authority: plan rev 9 §0AA, spec rev 11, the movement-creation ruling, and the 2026-09-10 fix-round-1 prompt. The original implementation evidence below is historical; the Fix round 1 section records the current changes and verification.
+Authority: plan rev 10 §0AB (shared-root orchestrator copy), rev 9 §0AA for round 1, spec rev 11, and the fix-round-2 prompt. Earlier evidence and line references are historical; Fix round 2 records the current changes and verification.
 
-**Fix round 1 is not fully cleared: the Arabic completeness gate awaits a scope ruling.** S1 implements setting-off receipts, partial receipt/replay, damage land-then-scrap, terminal write-off/return, freight residuals, reconciliation, legacy backfill and remainder readers. No blind setting, masking, receiver-view route, notification listener, merge, push or deployment. All PostgreSQL legs were serial on exclusive `autoerp_test_u`, with BOTH DB_DATABASE and DB_CENTRAL_DATABASE set. No full PHPUnit or Vitest suite was run. Shared root dev was not edited.
+**The round-1 Arabic blocker is resolved by the exact rev-10 revert; fix round 2 is submitted for review.** S1 implements setting-off receipts, partial receipt/replay, damage land-then-scrap, terminal write-off/return, freight residuals, reconciliation, legacy backfill and remainder readers. No blind setting, masking, receiver-view route, notification listener, merge, push or deployment. All PostgreSQL legs were serial on exclusive `autoerp_test_u`, with BOTH DB_DATABASE and DB_CENTRAL_DATABASE set. No full PHPUnit or Vitest suite was run. Shared root dev was not edited.
 
 ## Verification commands and green results
 
 All logs named below are under `docs/sessions/t2-receipt-spine/` in this worktree (ignored local evidence); the relevant outcomes and failing assertions are preserved here for a fresh checkout.
 
-PostgreSQL reproduction command (port now pinned for T-8). The original runs below omitted DB_PORT and resolved to native PostgreSQL 16 on 5432; fix-round-1 runs explicitly set it. Substitute one listed file at a time:
+PostgreSQL reproduction command (port now pinned for T-8). The original runs below omitted DB_PORT and resolved to native PostgreSQL 15.15 on 5432; fix-round-1 runs explicitly set it. Substitute one listed file at a time:
 
 ```sh
 DB_DATABASE=autoerp_test_u DB_CENTRAL_DATABASE=autoerp_test_u DB_USERNAME=houssamr DB_HOST=127.0.0.1 DB_PORT=5432 DB_PASSWORD='' apps/api/vendor/bin/phpunit -c apps/api/phpunit-pgsql.xml FILE
@@ -220,7 +220,7 @@ REALIGNMENT-LOG lines owed to the orchestrator (not written to the shared root):
 
 Owed owner/orchestrator operations: review this source slice, merge only after review, perform promotion checklist tenant migration/permission verification when authorized, then later S2–S4 integration and activation. This task ran no deployment or live-tenant migration, and made no observed-CI claim.
 
-## Exact source file / carrying-commit ledger
+## Historical round-1 source file / carrying-commit ledger
 
 One row per actual source file relative to ERP root, including amendment and compatibility deltas. The handback itself is the subsequent evidence-only commit and is outside this source ledger. Latest carrying commit is shown; the earlier baseline/test/extraction commits remain in history for incremental review.
 
@@ -328,11 +328,11 @@ One row per actual source file relative to ERP root, including amendment and com
 
 ## Resume recipe
 
-Open `.worktrees/t2-receipt-spine` on `lane/t2-receipt-spine`, read this handback and plan rev 9 §0AA, and inspect `git diff de3007fe9..HEAD`. Do not regenerate the historical baseline. Use the named-file commands above with both PostgreSQL database variables fixed to autoerp_test_u; never run a full PHPUnit/Vitest suite. Reviewer gates: see the orchestrator's registers. Fix-round verification and any unresolved gate are recorded below; this slice remains at status review. No merge or push is authorized here.
+Open `.worktrees/t2-receipt-spine` on `lane/t2-receipt-spine`, read this handback and the shared-root plan rev 10 §0AB, and inspect `git diff de3007fe9..HEAD`. Do not regenerate the historical baseline. Use the named-file commands above with both PostgreSQL database variables fixed to autoerp_test_u; never run a full PHPUnit/Vitest suite. Reviewer gates: see the orchestrator's registers. Fix-round verification and any unresolved gate are recorded below; this slice remains at status review. No merge or push is authorized here.
 
 ## Fix round 1
 
-Authority: rev 9 §0AA and the three orchestrator gate registers. Base: `93b106461`. Fix-round source tip: `ede6a990a`. All references below are one-based lines in the final worktree files; source files are committed before the documentation handback. Status remains `review`; no push, merge, tenant rollout or observed-CI claim.
+Authority: rev 9 §0AA and the three orchestrator gate registers. Base: `93b106461`. Fix-round source tip: `ede6a990a`. References in this historical section are one-based lines at the round-1 source tip; source files are committed before the documentation handback. Status remains `review`; no push, merge, tenant rollout or observed-CI claim.
 
 | Item | Disposition and evidence | Current path:line |
 |---|---|---|
@@ -343,9 +343,9 @@ Authority: rev 9 §0AA and the three orchestrator gate registers. Base: `93b1064
 | T-5 | Fixed; receive/close/receiveAllRemaining require explicit tenant and company; transact predicates both. The lock helper accepts a scoped identity, validates UUID and predicates both again. Direct foreign-company call throws ModelNotFoundException with unchanged data. Existing complete/cancel/initiate compatibility callers supply their resolved identity; no CompanyContext is introduced into receipt/lock code. | `apps/api/app/Modules/Inventory/Application/Services/StockTransferReceiptService.php:95`; `apps/api/app/Modules/Inventory/Application/Services/StockTransferMovementSupport.php:41`; `apps/api/tests/Feature/Inventory/TransferReceiptAuthorityGateTest.php:37` |
 | T-6 | Intentional for S1: the existing LOCATION_ACCESS_DENIED 403 body retains location_id and caller user_id, shared with complete/cancel. S4 decides 403 details versus 404 hiding. | `apps/api/app/Modules/Inventory/Presentation/Controllers/StockTransferController.php:395` |
 | T-7 | Removed the ignored 7,016,448-byte SQLite file apps/api/autoerp_test_u after verifying its SQLite format header. Trap: DB_DATABASE alone does not select the driver; all PG legs use phpunit-pgsql.xml and all SQLite legs use :memory:. | `.gitignore:81` |
-| T-8 | All fix-round PostgreSQL invocations explicitly set DB_PORT=5432, both database names, host and user. Native PostgreSQL 16, exclusive autoerp_test_u; one file at a time. | `docs/handoff/HANDBACK-T2-receipt-spine-2026-09-09.md:19` |
+| T-8 | All fix-round PostgreSQL invocations explicitly set DB_PORT=5432, both database names, host and user. Native PostgreSQL 15.15, exclusive autoerp_test_u; one file at a time. | `docs/handoff/HANDBACK-T2-receipt-spine-2026-09-09.md:19` |
 | M-1 | Fixed; cancel records transfer_cost as uncapitalized freight. Initiate 10 units with 140.0000 freight, cancel, allocated + residual = 140.0000. | `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php:365`; `apps/api/tests/Feature/Inventory/StockTransferCloseTest.php:22` |
-| M-2 | Option (a) implemented: generated TransferStatus alias, seven token-based badges, all status filters and partial completion; en/fr/ar status keys and Arabic registration. Arabic namespace completeness requires the pending scope decision (118 older keys). No receive/close UI added. | `apps/web/src/features/stock-transfers/types/index.ts:2`; `apps/web/src/features/stock-transfers/components/StockTransferStatusBadge.tsx:5`; `apps/web/src/features/stock-transfers/pages/StockTransferDetailPage.tsx:38`; `apps/web/src/features/stock-transfers/pages/StockTransferListPage.tsx:15` |
+| M-2 | Option (a) implemented: generated TransferStatus alias, seven token-based badges, all status filters and partial completion; en/fr/ar status keys and Arabic registration. At this historical pin the Arabic gate awaited a decision; rev 10 resolves it in Fix round 2 below. No receive/close UI added. | `apps/web/src/features/stock-transfers/types/index.ts:2`; `apps/web/src/features/stock-transfers/components/StockTransferStatusBadge.tsx:5`; `apps/web/src/features/stock-transfers/pages/StockTransferDetailPage.tsx:38`; `apps/web/src/features/stock-transfers/pages/StockTransferListPage.tsx:15` |
 | I-1 | Fixed; MONEY_SCALE names the two four-decimal freight columns. Positive pools/allocations truncate toward zero; uncapitalized freight or the last eligible allocation receives the exact residual. | `apps/api/app/Modules/Inventory/Application/Services/StockTransferMovementSupport.php:29`; `apps/api/app/Modules/Inventory/Application/Services/StockTransferReceiptService.php:501` |
 | I-2 | Recorded S4 decision: join receipt/close lines on transfer_line_id to full transfer line quantity_decimals; receipt DTOs remain scale-4 strings. | `docs/superpowers/plans/2026-09-09-T2T3-transfer-receipt-blind-receiving-plan-rev-9.md:2742` |
 | I-3 | Fixed; counts are per site (LocationStockQueryService 2, matrix 1, WAC 1). Negative controls remove either required token at either location site. | `apps/api/tests/Architecture/TransferInTransitReadersUseRemainderTest.php:27` |
@@ -443,8 +443,128 @@ ede6a990a Phase 2.3.19: Tighten receipt precision and regression evidence
 - Named Vitest invocations ran separately: `StockTransferStatusBadge.test.tsx` 8 passed (all seven statuses plus Arabic registration); `StockTransferDetailPage.test.tsx` 3 passed (including partially received → Confirm receipt); `StockTransferListPage.test.tsx` 2 passed. Scoped ESLint on touched web code exited 0 with one existing route-string warning on an untouched list link.
 - React Doctor skill regression check: `npx react-doctor@latest --verbose --diff`, before and after, reports exactly 49/100, 10 errors and 376 warnings (386 findings) against origin/main. Both commands exit 1 for pre-existing repository diagnostics; score and finding counts did not regress. No diagnostics were suppressed, no tool configuration changed, and no unrelated React cleanup was performed.
 
-**Unresolved scope decision (M-2 / i18n):** the pre-existing Arabic resource was a whole-namespace English alias. The permitted three new translations now load correctly, but activating an Arabic bundle exposes 118 old missing keys to the existing completeness ratchet. The user was asked whether to widen the three-key scope or retain it and report the failure; no answer or approval is assumed. The i18n baseline, protected blob and detector remain unchanged.
+**Historical round-1 scope decision (resolved in round 2):** the pre-existing Arabic resource was a whole-namespace English alias. The permitted three new translations now load correctly, but activating an Arabic bundle exposes 118 old missing keys to the existing completeness ratchet. The user was asked whether to widen the three-key scope or retain it and report the failure; no answer or approval is assumed. The i18n baseline, protected blob and detector remain unchanged.
 
-A concrete draft is available locally at `docs/sessions/t2-receipt-spine/fix-round-1/stock-transfers.ar.proposed.json` (ignored, not applied to the app). It covers all 121 English source keys plus five required Arabic plural variants; key coverage and interpolation names were verified. If approved, apply that draft to `apps/web/src/locales/ar/stock-transfers.json`, run the i18n gate and named web checks, then finish the remaining preflight gates and refresh this handback. Without that scope ruling, this is not a fully green handback.
+The ignored round-1 Arabic draft remains unreviewed and unapplied. Rev 10 explicitly resolves this decision by restoring the English alias; the deferred translation ticket now owns full namespace coverage.
 
 Orchestrator review remains owed, including the added frontend-conventions reviewer for rev 9 option (a). Reviewer gates: see the orchestrator’s registers. No reviewer verdict is assigned here. No merge or push was performed.
+
+## Fix round 2
+
+Authority: shared-root rev 10 §0AB and all four gate-r2 registers, read in full. Base: `d7123fa30`; source tip: `2dc690554`. Status: `review`. No shared-root edits, plan/review edits, full PHPUnit/Vitest run, push, merge or rollout.
+
+| Item | Resolution and evidence | Current path:line |
+|---|---|---|
+| T-9 / F-7 / F-12 | Restored i18n.ts byte-identical to 93b106461, deleted the Arabic overlay and its test; protected blob remains fd6dbe3952cc3daaec15dc432e6b99e007f50dd6. Audit: 2816 known gaps, exit 0. Badge tests moved to __tests__. | `apps/web/src/lib/i18n.ts:475`; `apps/web/src/features/stock-transfers/__tests__/StockTransferStatusBadge.test.tsx:17` |
+| F-1 / F-10 | Three transport aliases now use generated DTOs; list/batch fixtures carry the actual wire fields and the dead batch-number fallback is removed. | `apps/web/src/features/stock-transfers/types/index.ts:11` |
+| F-2 / T-14 | Restored Badge atom and its BadgeVariant map; seven statuses, original palette. StatusBadge migration belongs to S4. | `apps/web/src/features/stock-transfers/components/StockTransferStatusBadge.tsx:5` |
+| I-11 / F-3 / F-4 | Partial-only confirmation counts short lines by exact string comparison; the in-transit copy is unchanged. Receive 5/12 then POST /complete proves destination 12.0000, completed, zero residual freight and the freight identity. | `apps/web/src/features/stock-transfers/pages/StockTransferDetailPage.tsx:277`; `apps/api/tests/Feature/Inventory/StockTransferCloseTest.php:37` |
+| T-5 | complete/cancel/private initiate transition accept the caller-resolved StockTransfer, and downstream queries retain both identity predicates. Controller and subprocess fixtures pass scoped models; foreign tenant/company identities fail without writes. | `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php:310`; `apps/api/tests/Feature/Inventory/TransferReceiptAuthorityGateTest.php:54` |
+| T-12 | One migration per class, then row cleanup with no wrapping transaction. Receipt nest guard is unchanged. CI comment forbids --parallel. Edge: 27 tests / 115 assertions / two existing skips in 01:28.290. | `apps/api/tests/Support/TruncatesRootTransactionDatabase.php:12` |
+| T-13 | Corrected the version record: SHOW server_version returned 15.15 (Homebrew), port 5432. This is not PG-16 execution evidence. | `docs/handoff/HANDBACK-T2-receipt-spine-2026-09-09.md:16` |
+| T-15 / F-11 | Checklist carries the intentional location-denial details and the missing hasModule(Inventory) FE counterpart. | `docs/handoff/PROMOTION-CHECKLIST-2026-09-09-t2t3.md:11` |
+| I-12 | Removed cross-unit summary quantities; only line counts and freight remain. §7.12 decision for orchestrator transcription: quantity values stay on unit-bearing lines/lots; never sum mixed units. | `apps/api/app/Modules/Inventory/Application/DTOs/TransferReconciliationSummaryData.php:15` |
+| I-13 | Transfer line precision now uses the shared null-safe decimalPlacesForUnit resolver. | `apps/api/app/Modules/Inventory/Application/DTOs/StockTransferLineData.php:68` |
+| I-14 | Reader ratchet failure identifies the required exact site count; detector and negative controls are unchanged. | `apps/api/tests/Architecture/TransferInTransitReadersUseRemainderTest.php:17` |
+| G-9 | Close write-off with an unmapped shrinkage purpose returns GL_ACCOUNTS_UNMAPPED and leaves all seven snapshot tables unchanged. | `apps/api/tests/Feature/Inventory/StockTransferCloseTest.php:61` |
+| G-10 | The same mixed-lot receipt now asserts destination stock_levels and batch stock both equal 3.0000. | `apps/api/tests/Feature/Inventory/StockTransferReceiveDamageTest.php:61` |
+| G-11 | Comment names canBeCancelled() as the freight-assignment precondition; partial receipt cancellation is refused and destination stock stays unchanged. | `apps/api/tests/Feature/Inventory/StockTransferCloseTest.php:53` |
+| F-5 / F-6 | Filter record is exhaustive against the generated enum and follows lifecycle order. | `apps/web/src/features/stock-transfers/pages/StockTransferListPage.tsx:15` |
+| F-8 | Typed fixture copied per test; no module-level fixture mutation. The partial and in-transit dialog cases both pass. | `apps/web/src/features/stock-transfers/__tests__/StockTransferDetailPage.test.tsx:73` |
+| T-11 | No plan or review file was modified in round 2. All plan-level decisions are recorded here for the orchestrator. | `docs/handoff/HANDBACK-T2-receipt-spine-2026-09-09.md:8` |
+| T-10 | Verification outcomes and scoped preflight status are recorded below; no CI result is inferred from local runs. | `docs/handoff/HANDBACK-T2-receipt-spine-2026-09-09.md:3` |
+
+### Isolation and scope consequences
+
+The edge and inventory service classes previously rebuilt the schema before every test. They now migrate once per class and clear rows between tests, preserving absolute transaction level zero. PostgreSQL cleanup temporarily sets `session_replication_role=replica` solely during row deletion because immutable ledger triggers reject cleanup; a `finally` restores the previous role before fixture creation/test execution. Cleanup refuses non-testing environments and database names without `_test`. Sequences need not restart because assertions refer to fixture identities. This requires the privileged test database role already used by the local/CI fixture harness. Never run these classes concurrently against one database. SQLite retains its in-memory PDO and uses the framework cleanup path.
+
+A first native TRUNCATE implementation passed but took longer than the old migrations because it rewrote every relation. The final server-side row cleanup reduced EdgeCases to 01:28.290 (27/115, the same two ticket skips), versus round-1 02:32.698 and reviewer 02:17.996. The receipt service guard at lines 97–99 remains byte-identical.
+
+Changing compatibility methods to accept models necessarily updates the existing complete/receive concurrency subprocesses, StockTransferVariantTest, and ReplenishmentSettlementTest in addition to the named fixtures/controller. Their assertions were retained. StockTransferVariantTest also needs root-transaction isolation when it invokes completion. No new test class or manifest ceiling/alternation change was needed; the shared cleanup helper is a trait.
+
+S4 owns R5 masking on the detail page, the receiver-shape discriminant in S2, StatusBadge migration, raw type/distribution value translations (F-9), and receipt/close UI. G-12 is optional and deferred: event dispatch assertions do not establish downstream audit-chain consumption. No additional event consumer or fake was introduced.
+
+### Round-2 verification
+
+Logs: `docs/sessions/t2-receipt-spine/fix-round-2/` (ignored). All PG calls use the reproduction command above, BOTH databases `autoerp_test_u`, port 5432, serial named files. Frontend commands use Node 20.19.4.
+
+| PostgreSQL file (one per process) | Result | Runtime |
+|---|---|---|
+| `StockTransferEdgeCasesTest.php` | Tests: 27, Assertions: 115, Skipped: 2. | 01:28.290 |
+| `TransferReceiptAuthorityGateTest.php` | OK (9 tests, 23 assertions) | 01:34.770 |
+| `StockTransferCloseTest.php` | OK (10 tests, 44 assertions) | 03:27.973 |
+| `StockTransferReceiveDamageTest.php` | OK (6 tests, 23 assertions) | 01:32.512 |
+| `InventoryTransferServiceTest.php` | OK (22 tests, 72 assertions) | 01:26.518 |
+| `StockTransferCompleteConcurrencyPostgresTest.php` | OK (2 tests, 20 assertions) | 00:06.443 |
+| `StockTransferReceiveConcurrencyPostgresTest.php` | OK (3 tests, 43 assertions) | 00:59.427 |
+| `StockTransferVariantTest.php` | OK (12 tests, 42 assertions) | 00:28.594 |
+| `ReplenishmentSettlementTest.php` | OK (6 tests, 26 assertions) | 00:18.735 |
+| `TransferInTransitReadersUseRemainderTest.php` | OK (3 tests, 9 assertions) | 00:00.012 |
+
+Both concurrency files ran after `pg_stat_activity` showed zero other client sessions on `autoerp_test_u`. InventoryTransferServiceTest now takes 01:26.518 versus round-1 02:07.604. Runtimes were observed under variable laptop swap pressure; the migration reduction is structural and assertions are retained.
+
+- SQLite: protected DPA ratchet 2 tests / 109 assertions; remainder reader ratchet 3 / 9; two successive root-isolation cases 2 / 10 (00:14.584), proving the cached in-memory PDO and cleanup path work across cases. SQLite does not establish PostgreSQL CHECK or numeric-reader behavior.
+- Node 20.19.4, one Vitest file per invocation: badge 7 passed; detail 4 passed; batch allocations 2 passed; list 2 passed. The new partial-dialog test first failed on the absent line-count message and passed after the en/fr change; the in-transit message remains pinned.
+- Scoped ESLint: zero errors, one existing hardcoded-route warning on the untouched list link. No new warnings. Shared i18n wiring is byte-identical to 93b106461; the completeness gate exits 0 with 2816 known gaps held. Baseline/mirror/protected pin untouched.
+- Scoped preflight completed with all checks passed. Scope is recorded in `preflight-scope.txt`: Pint on 16 touched PHP files, PHPStan level 8 on five production files, only the reader ratchet as the PHP feature selection, only the badge as the application Vitest selection. Both generated artifacts regenerated byte-identically after the source commits. Web TypeScript passed; global ESLint has zero errors / 6410 warnings. An earlier standalone TypeScript process ended with SIGTERM; the later canonical preflight run passed it.
+- Preflight continued beyond the formerly blocked i18n step: query-key audit zero; design audit 802 acknowledged / zero new / zero stale; quantity audit zero; feature manifest exit 0 with no ceiling change; manifest liveness 76/431 and local harness 10/52; web/POS ESLint-rule tests, web detector tools (9 files / 213 tests), route-manifest drift, selected badge Vitest, fiscal parity (2 files / 29 tests), and chokepoint completeness (6 manifest entries / 11 call sites) all passed. No full application PHPUnit or Vitest suite ran.
+- React Doctor skill check (`npx react-doctor@latest --verbose --diff`) reports 49/100, matching round 1. Its current detector reports 521 repository issues (16 errors / 505 warnings), versus 386 with the earlier tool run; finding counts are not claimed identical across runs. No detector, suppression or unrelated React code was changed. Its nonzero diagnostic result is retained; it is not a green repository-health claim.
+- Historical reader baseline and the entire receipt service (including the nest guard) remain byte-identical. The old promotion checklist remains a one-line successor pointer. No stray `apps/api/autoerp_test_u` SQLite file exists.
+
+Root `pnpm lint:ratchet` output (baseline not changed):
+
+```text
+> autoerp@0.1.0 lint:ratchet /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/t2-receipt-spine
+> node scripts/lint-ratchet.mjs
+
+=== Lint-warning ratchet ===
+
+  @autoerp/web     baseline=  6448  current=  6410  improved — warnings fell 6448 → 6410 (-38)
+  @autoerp/pos     baseline=    84  current=    84  held — 84 warnings
+
+Improvements detected. Lock them in:
+  node scripts/lint-ratchet.mjs --update-baseline
+
+RESULT: PASS — no lint-warning regression against baseline.
+```
+
+
+### Round-2 source ledger
+
+Each row names the latest commit carrying that round-2 path (deleted paths retained as deletion evidence). The preceding round-1 ledger is historical. Documentation changes are carried by this handback's documentation commit.
+
+| Path | Latest source commit |
+|---|---|
+| `.github/workflows/ci.yml` | `c139e47cc` |
+| `apps/api/app/Modules/Inventory/Application/DTOs/StockTransferLineData.php` | `2dc690554` |
+| `apps/api/app/Modules/Inventory/Application/DTOs/TransferReconciliationSummaryData.php` | `2dc690554` |
+| `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php` | `2dc690554` |
+| `apps/api/app/Modules/Inventory/Application/Services/TransferReconciliationService.php` | `2dc690554` |
+| `apps/api/app/Modules/Inventory/Presentation/Controllers/StockTransferController.php` | `c139e47cc` |
+| `apps/api/tests/Architecture/TransferInTransitReadersUseRemainderTest.php` | `2dc690554` |
+| `apps/api/tests/Feature/Inventory/InventoryTransferServiceTest.php` | `c139e47cc` |
+| `apps/api/tests/Feature/Inventory/StockTransferCloseTest.php` | `2dc690554` |
+| `apps/api/tests/Feature/Inventory/StockTransferCompleteConcurrencyPostgresTest.php` | `c139e47cc` |
+| `apps/api/tests/Feature/Inventory/StockTransferEdgeCasesTest.php` | `c139e47cc` |
+| `apps/api/tests/Feature/Inventory/StockTransferReceiveConcurrencyPostgresTest.php` | `c139e47cc` |
+| `apps/api/tests/Feature/Inventory/StockTransferReceiveDamageTest.php` | `2dc690554` |
+| `apps/api/tests/Feature/Inventory/StockTransferVariantTest.php` | `c139e47cc` |
+| `apps/api/tests/Feature/Inventory/TransferReceiptAuthorityGateTest.php` | `c139e47cc` |
+| `apps/api/tests/Feature/Replenishment/ReplenishmentSettlementTest.php` | `c139e47cc` |
+| `apps/api/tests/Support/TruncatesRootTransactionDatabase.php` | `c139e47cc` |
+| `apps/web/src/features/stock-transfers/__tests__/StockTransferDetailPage.batchAllocations.test.tsx` | `298e7e199` |
+| `apps/web/src/features/stock-transfers/__tests__/StockTransferDetailPage.test.tsx` | `2dc690554` |
+| `apps/web/src/features/stock-transfers/__tests__/StockTransferListPage.test.tsx` | `298e7e199` |
+| `apps/web/src/features/stock-transfers/__tests__/StockTransferStatusBadge.test.tsx` | `2dc690554` |
+| `apps/web/src/features/stock-transfers/components/StockTransferStatusBadge.tsx` | `298e7e199` |
+| `apps/web/src/features/stock-transfers/pages/StockTransferDetailPage.tsx` | `951a7637e` |
+| `apps/web/src/features/stock-transfers/pages/StockTransferListPage.tsx` | `2dc690554` |
+| `apps/web/src/features/stock-transfers/types/index.ts` | `298e7e199` |
+| `apps/web/src/lib/i18n.ts` | `488e68334` |
+| `apps/web/src/locales/ar/stock-transfers.json` | `488e68334` |
+| `apps/web/src/locales/en/stock-transfers.json` | `951a7637e` |
+| `apps/web/src/locales/fr/stock-transfers.json` | `951a7637e` |
+| `docs/handoff/PROMOTION-CHECKLIST-2026-09-09-t2t3.md` | `951a7637e` |
+| `packages/shared/types/generated.d.ts` | `2dc690554` |
+
+Reviewer verdicts remain in the orchestrator registers. No reviewer verdict is assigned by this handback.
