@@ -113,7 +113,7 @@ The local `r1-preflight.sh` records the exact environment used for `./scripts/pr
 | --- | --- |
 | features/batches/types.ts Batch totals | Changed number to string. |
 | ExpiredBatch / ExpiredBatchStock plus comments | Changed to four-decimal string contract; removed false float claims. |
-| BatchListPage | Existing formatQuantity accepts strings; new 3.1234 render proof. Currency-vs-unit precision deferred in ticket. |
+| BatchListPage | Pre-lane `.toFixed()` crashes on Push-3 string totals. Ship the list, types and its Vitest together in Push 3 as the web string-tolerance slice; permission-gating web files remain Push 5. Product-unit precision is fixed in round 2. |
 | ExpiryWriteOffPage | Existing decimal helpers accept strings, including quantity selection/max/guard. New rendered and submission proof retains 3.1234. |
 | BatchDetailPage stock levels | Different stock endpoint already declares strings; pre-existing parseFloat deferred in ticket. |
 | CreateStockTransferPage | Existing String + bccomp is compatible; per-location availability remains a string. No change required. |
@@ -131,7 +131,7 @@ A-1b: add staged create/update BatchActionAccess allow-list/routes as ticketed. 
 
 Original provenance: Push 2 `aeb594f21`, `66c7068ef`; Push 3 `892b30110`, `ed1ef81fe`; Push 5 `2a6ba01ea`, `532fe5627`. Apply the original implementation before follow-up patches. The earlier review-metadata commits were `3046ca872` and `04e60530c`.
 
-Round-1 commits are grouped by review concern; the ledger below assigns files to the deployment push. The minors commit contains both backend and the web fingerprint comment: assemble by the per-file ledger, never auto-deploy the entire branch. Pushes 1 and 4 remain operations-only. Push 4 acceptance precedes every Push 5 source promotion. The new manifest and CI files are explicitly Push 3.
+Round-1 commits are grouped by review concern; the ledger below assigns files to the deployment push. The minors commit contains both backend and the web fingerprint comment: assemble by the per-file ledger, never auto-deploy the entire branch. Pushes 1 and 4 remain operations-only. Push 4 acceptance precedes every Push 5 source promotion. The new manifest and CI files are explicitly Push 3. Push 3 also includes the web string-tolerance slice (BatchListPage, batches/types and BatchPermissions Vitest), which must be live when the API begins emitting strings. Its formatter accepts both prior numbers and new strings; the existing batches.create grants make its create-button gate safe before activation.
 
 - `7b870f253 Phase 1.1.1: Validate backward trace inputs and preserve nullable references`
 - `1cdf05257 Phase 1.1.2: Declare string permissions in the role DTO`
@@ -202,12 +202,12 @@ Round-1 commits are grouped by review concern; the ledger below assigns files to
 | Push 5 | `apps/web/src/components/organisms/Sidebar/__tests__/Sidebar.test.tsx` | `2a6ba01ea` |
 | Push 5 | `apps/web/src/features/batches/hooks/__tests__/tenantScope.test.tsx` | `61fd45cf3` |
 | Push 5 | `apps/web/src/features/batches/pages/BatchDetailPage.tsx` | `2a6ba01ea` |
-| Push 5 | `apps/web/src/features/batches/pages/BatchListPage.tsx` | `2a6ba01ea` |
+| Push 3 | `apps/web/src/features/batches/pages/BatchListPage.tsx` | `2a6ba01ea` |
 | Push 5 | `apps/web/src/features/batches/pages/ExpiryWriteOffPage.test.tsx` | `61fd45cf3` |
 | Push 5 | `apps/web/src/features/batches/pages/ExpiryWriteOffPage.tsx` | `61fd45cf3` |
-| Push 5 | `apps/web/src/features/batches/pages/__tests__/BatchPermissions.test.tsx` | `61fd45cf3` |
+| Push 3 | `apps/web/src/features/batches/pages/__tests__/BatchPermissions.test.tsx` | `61fd45cf3` |
 | Push 5 | `apps/web/src/features/batches/pages/__tests__/BatchSeededPermissionMap.test.ts` | `2a6ba01ea` |
-| Push 5 | `apps/web/src/features/batches/types.ts` | `61fd45cf3` |
+| Push 3 | `apps/web/src/features/batches/types.ts` | `61fd45cf3` |
 | Push 5 | `apps/web/src/features/settings/RolesPage.test.tsx` | `a50230cb2` |
 | Push 5 | `apps/web/src/features/settings/RolesPage.tsx` | `a50230cb2` |
 | Push 5 | `apps/web/src/hooks/__tests__/usePermissions.moduleAccess.test.tsx` | `2a6ba01ea` |
