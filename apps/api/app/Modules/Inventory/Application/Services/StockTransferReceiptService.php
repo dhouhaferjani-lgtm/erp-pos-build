@@ -440,7 +440,7 @@ final class StockTransferReceiptService
         $ids = ['in_movement_id' => null, 'scrap_movement_id' => null, 'return_movement_id' => null];
         if (bccomp($quantities['returned'], '0', QuantityScale::SCALE) > 0) {
             $returns = $this->movementSupport->restockAtSource($transfer, $line, $quantities['returned'], $allocation === null ? [] : [$allocation->batch_id => $quantities['returned']], $receipt->received_by_user_id, $transfer->transfer_number.'-RETURN');
-            $ids['return_movement_id'] = $returns[$allocation->batch_id ?? ''];
+            $ids['return_movement_id'] = $returns[$allocation === null ? '' : $allocation->batch_id];
 
             return $ids;
         }
@@ -498,10 +498,11 @@ final class StockTransferReceiptService
             $good = bcadd($good, $line->quantity_received, QuantityScale::SCALE);
             $landed[$line->id] = $line->quantity_received;
         }
-        $pool = bccomp($sent, '0', QuantityScale::SCALE) > 0 ? bcmul($transfer->transfer_cost, bcdiv($good, $sent, $working), QuantityScale::SCALE) : '0.0000';
-        $transfer->freight_uncapitalized = bcsub($transfer->transfer_cost, $pool, QuantityScale::SCALE);
+        // Truncate the nonnegative freight pool toward zero; retain the remainder as uncapitalized.
+        $pool = bccomp($sent, '0', QuantityScale::SCALE) > 0 ? bcmul($transfer->transfer_cost, bcdiv($good, $sent, $working), StockTransferMovementSupport::MONEY_SCALE) : '0.0000';
+        $transfer->freight_uncapitalized = bcsub($transfer->transfer_cost, $pool, StockTransferMovementSupport::MONEY_SCALE);
         $transfer->save();
-        if (bccomp($pool, '0', QuantityScale::SCALE) > 0) {
+        if (bccomp($pool, '0', StockTransferMovementSupport::MONEY_SCALE) > 0) {
             $this->movementSupport->capitalizeTransferCost($transfer, $pool, $landed);
         }
     }

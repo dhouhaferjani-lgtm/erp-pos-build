@@ -10,6 +10,7 @@ use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Events\StockTransferReceiptPosted;
 use App\Modules\Inventory\Domain\StockMovement;
@@ -45,6 +46,18 @@ final class StockTransferReceiveDamageTest extends TransferReceiptFeatureTestCas
         self::assertSame('0.0000', $this->destinationQuantity());
         $response->assertJsonPath('data.receipt.has_discrepancy', true);
         self::assertSame('2.0000', $this->transfer->lines->sole()->refresh()->quantity_damaged);
+    }
+
+    public function test_damage_preserves_wac_and_lot_stock_equals_good_quantity(): void
+    {
+        $batch = $this->shippedBatch();
+        $cost = $this->product->refresh()->cost_price;
+        $body = $this->receiptBody('3.0000', '2.0000');
+        $body['lines'][0]['discrepancy_reason'] = 'damaged_in_transit';
+        $body['lines'][0]['lots'] = [['batch_id' => $batch->id, 'quantity_received' => '3.0000', 'quantity_damaged' => '2.0000']];
+        $this->postJson('/api/v1/stock-transfers/'.$this->transfer->id.'/receive', $body)->assertCreated();
+        self::assertSame($cost, $this->product->refresh()->cost_price);
+        self::assertSame('3.0000', BatchStock::query()->where('batch_id', $batch->id)->where('location_id', $this->destination->id)->sole()->quantity);
     }
 
     public function test_declared_reason_never_changes_the_movement_reason(): void

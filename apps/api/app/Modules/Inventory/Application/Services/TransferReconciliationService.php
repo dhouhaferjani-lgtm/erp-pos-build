@@ -42,7 +42,7 @@ SQL;
         $withDiscrepancy = 0;
         $totals = ['sent' => '0', 'received' => '0', 'damaged' => '0', 'written_off' => '0', 'returned' => '0', 'remaining' => '0'];
         foreach ($transfer->lines as $line) {
-            $decimals = $line->product->unitOfMeasure->decimal_places ?? QuantityScale::SCALE;
+            $decimals = QuantityScale::decimalPlacesForUnit($line->product->unitOfMeasure?->decimal_places);
             $format = static function (string $q) use ($decimals): string {
                 if (! is_numeric($q)) {
                     throw new \LogicException('Reconciliation quantities must be decimals.');

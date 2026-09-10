@@ -61,6 +61,12 @@ final class QuantityScale
         return bcdiv($rounded, $multiplier, $decimalPlaces);
     }
 
+    /** Resolve the same unit precision for both formatting and presentation metadata. */
+    public static function decimalPlacesForUnit(?int $decimalPlaces): int
+    {
+        return $decimalPlaces ?? self::SCALE;
+    }
+
     /**
      * Format a canonical scale-4 quantity for human display at a unit's precision.
      * Primitives only (Shared must not depend on module entities): callers pass
@@ -71,7 +77,7 @@ final class QuantityScale
      */
     public static function formatForUnit(string $value, ?int $decimalPlaces, ?string $roundingMethod = null): string
     {
-        return self::round($value, $decimalPlaces ?? self::SCALE, $roundingMethod ?? self::HALF_UP);
+        return self::round($value, self::decimalPlacesForUnit($decimalPlaces), $roundingMethod ?? self::HALF_UP);
     }
 
     /**

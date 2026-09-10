@@ -800,13 +800,6 @@ class StockTransferService
     }
 
     /**
-     * Unique product ids across a transfer's lines, as a typed list of strings
-     * for the ProductCostLock sorted-acquire (deadlock defense).
-     *
-     * @return list<string>
-     */
-
-    /**
      * @param  list<InitiateTransferLineData>  $lines
      * @return list<string>
      */

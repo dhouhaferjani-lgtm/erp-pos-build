@@ -9,6 +9,15 @@ use PHPUnit\Framework\TestCase;
 
 final class QuantityScaleFormatForUnitTest extends TestCase
 {
+    public function test_unit_precision_metadata_matches_formatted_quantities(): void
+    {
+        foreach ([null, 0, 2, 6] as $decimals) {
+            $formatted = QuantityScale::formatForUnit('1', $decimals);
+            $fraction = explode('.', $formatted)[1] ?? '';
+            self::assertSame(strlen($fraction), QuantityScale::decimalPlacesForUnit($decimals));
+        }
+    }
+
     public function test_zero_decimals_renders_whole_number(): void
     {
         self::assertSame('1', QuantityScale::formatForUnit('1.0000', 0));

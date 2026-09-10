@@ -25,6 +25,9 @@ final class StockTransferMovementSupport
     /** Intermediate scale for transfer-cost allocation arithmetic; moved from StockTransferService:70. */
     public const int ALLOCATION_SCALE = 6;
 
+    /** Storage scale shared by allocated_transfer_cost and freight_uncapitalized. */
+    public const int MONEY_SCALE = 4;
+
     public function __construct(
         private readonly StockAdjustmentService $stockAdjustmentService,
         private readonly WeightedAverageCostService $wacService,
@@ -134,7 +137,8 @@ final class StockTransferMovementSupport
 
         $lastIndex = count($allocations) - 1;
 
-        // Reconcile at the persisted scale (4), after currency-dependent working precision.
+        // Truncate positive allocations toward zero at the four-decimal money boundary.
+        // The final eligible line receives the residual, preserving the pool exactly.
         // allocated_transfer_cost is stored at 4 dp and recordCostAdjustment
         // capitalizes the SAME value; reconciling the residual at 6 dp and then
         // truncating to 4 dp on persist loses a millième per line (e.g. 7 equal
@@ -142,7 +146,7 @@ final class StockTransferMovementSupport
         // is formatted to 4 dp; the last absorbs (pool − Σ others) at 4 dp so
         // Σ persisted == pool EXACTLY at the stored scale.
         /** @var numeric-string $pool4dp */
-        $pool4dp = CurrencyScale::bcformat($pool, QuantityScale::SCALE);
+        $pool4dp = CurrencyScale::bcformat($pool, self::MONEY_SCALE);
         /** @var numeric-string $runningSumOfOthers4dp */
         $runningSumOfOthers4dp = '0';
 
@@ -151,15 +155,15 @@ final class StockTransferMovementSupport
             $product = $allocation['product'];
 
             $allocated4dp = $index === $lastIndex
-                ? bcsub($pool4dp, $runningSumOfOthers4dp, QuantityScale::SCALE)
-                : CurrencyScale::bcformat($allocation['allocated'], QuantityScale::SCALE);
+                ? bcsub($pool4dp, $runningSumOfOthers4dp, self::MONEY_SCALE)
+                : CurrencyScale::bcformat($allocation['allocated'], self::MONEY_SCALE);
 
-            $runningSumOfOthers4dp = bcadd($runningSumOfOthers4dp, $allocated4dp, QuantityScale::SCALE);
+            $runningSumOfOthers4dp = bcadd($runningSumOfOthers4dp, $allocated4dp, self::MONEY_SCALE);
 
             $line->allocated_transfer_cost = $allocated4dp;
             $line->save();
 
-            if (bccomp($allocated4dp, '0', QuantityScale::SCALE) === 0) {
+            if (bccomp($allocated4dp, '0', self::MONEY_SCALE) === 0) {
                 continue;
             }
 
