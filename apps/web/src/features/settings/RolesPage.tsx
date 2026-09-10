@@ -8,7 +8,7 @@ import { tenantScopedKey } from '../../lib/tenantScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { cn } from '../../lib/utils'
-import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
+import { tokens, textColors, borderColors, colors, semanticColorTokens } from '../../lib/designTokens'
 import { Button, Checkbox, FormField, Input } from '../../components/atoms'
 import { Modal, ModalContent, ModalFooter } from '../../components/organisms/Modal'
 import { toast } from 'sonner'
@@ -252,7 +252,7 @@ export function RolesPage() {
                 key={role.id}
                 className={cn(
                   'rounded-lg border p-4 transition-shadow',
-                  tokens.card.base,
+                  semanticColorTokens.surface.base,
                   (isSystemRole(role.name) || isReadOnlyRole(role))
                     ? cn(borderColors.primary, colors.primary[50])
                     : cn(borderColors.light, 'hover:shadow-md cursor-pointer'),
@@ -273,7 +273,7 @@ export function RolesPage() {
                         {role.name}
                         {(isSystemRole(role.name) || isReadOnlyRole(role)) && (
                           <span className={cn('text-xs font-normal', tokens.badge.base, tokens.badge.blue)}>
-                            {t('roles.systemRole')}
+                            {t(isReadOnlyRole(role) ? 'roles.provisionedReadOnly' : 'roles.systemRole')}
                           </span>
                         )}
                       </h3>

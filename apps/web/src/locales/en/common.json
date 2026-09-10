@@ -1093,6 +1093,7 @@
     "selectPermissions": "Select permissions for this role",
     "usersAssigned": "{{count}} user(s) assigned",
     "noUsers": "No users assigned",
+    "provisionedReadOnly": "Provisioned · read only",
     "systemRole": "System Role",
     "systemRoleHint": "System roles cannot be renamed or deleted",
     "clickToEdit": "Click to edit",

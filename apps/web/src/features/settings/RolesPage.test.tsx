@@ -105,6 +105,7 @@ describe('W-LOT-A-1a provisioned role read-only contract', () => {
     currentRole.is_provisioned_read_only = true
     render(<RolesPage />, { wrapper: wrapper() })
     await screen.findByRole('heading', { name: /general_manager/ })
+    expect(screen.getByText('roles.provisionedReadOnly')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'roles.editRole' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'roles.deleteRole' })).not.toBeInTheDocument()
   })
@@ -113,11 +114,11 @@ describe('W-LOT-A-1a provisioned role read-only contract', () => {
     render(<RolesPage />, { wrapper: wrapper() })
     expect(await screen.findByRole('button', { name: 'roles.editRole' })).toBeInTheDocument()
   })
-  it('prevents update submission when a protected role reaches modal state', async () => {
+  it('prevents update submission when the selected modal role object is tampered to be protected', async () => {
     currentRole.is_provisioned_read_only = false
     render(<RolesPage />, { wrapper: wrapper() })
     await userEvent.click(await screen.findByRole('button', { name: 'roles.editRole' }))
-    // Simulate a server refresh protecting the same object while editing.
+    // Tamper with the selected modal object; this is not a refetch (which would create a new object).
     currentRole.is_provisioned_read_only = true
     await userEvent.click(screen.getByRole('button', { name: 'actions.save' }))
     expect(mockApiPatch).not.toHaveBeenCalled()
