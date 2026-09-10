@@ -1,30 +1,30 @@
 ---
 status: review
 promotion_ready: false
-blocking_decision: none
-promotion_blocker: orchestrator review and staged acceptance
+blocking_decision: scope ruling for pre-existing transfer writer failure
+promotion_blocker: failing real transfer regression, orchestrator review and staged acceptance
 ---
 
-# W-LOT-A-1a handback — fix round 1, 2026-09-10
+# W-LOT-A-1a handback — fix round 2, 2026-09-10
 
 Worktree: `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/w-lot-a-1a`. Branch: `lane/w-lot-a-1a`.
-Original dispatch: `4373ba2f60ac6c303e90e4ae47236285f05e648c`; round-1 base: `04e60530c`; verified source HEAD: `850f7a295bbf53b5ff9ca751d3047ee3134380df`. Historical implementation/ruling evidence remains in the handback at `04e60530c`.
+Original dispatch: `4373ba2f60ac6c303e90e4ae47236285f05e648c`; round-1 base: `04e60530c`; round-1 verified source HEAD: `850f7a295bbf53b5ff9ca751d3047ee3134380df`. Historical implementation/ruling evidence remains in the handback at `04e60530c`.
 
-Authority: the owner's `CODEX-PROMPT-WLOTA-1a-fix-round-1-2026-09-10.md`, plan rev 10 §0 Round-9 addendum and the three 2026-09-10 r1 gate registers, read from the main checkout. This handback supersedes the previous consolidated test commands and parked-ceiling blocker.
+Authority: `CODEX-PROMPT-WLOTA-1a-fix-round-2-2026-09-10.md`, plan rev 11 §00 Round-10 addendum, and all three gate-r2 registers read in full from the main checkout. Round-1 history below remains attributed to its own source HEAD. Round 2 is not fully verified: its new real transfer HTTP regression exposes a pre-existing writer failure; the scope ruling is pending. Reviewer verdicts belong to the orchestrator's registers.
 
 No merge, push, deployment, activation or fleet operation performed. Legacy NULL-team role identities remain unchanged; technician receives no batches.view. Push 4 delta acceptance must precede Push 5 web; never combine them in an automatic deployment. Post-activation browser execution remains orchestrator-owned and was not run against an activated tenant.
 
-## Fix round 1
+## Fix round 1 (historical; source citations below updated where round 2 moved them)
 
 | Finding | Resolution | Current source citation |
 | --- | --- | --- |
 | Tenancy B-1 | Shared race harness skips non-PG drivers; private DB-name assertion removed. Both callers pass on PG and skip only their race on SQLite. | `apps/api/tests/Feature/Identity/LotActionPermissionDeltaTest.php:32` |
-| Tenancy B-2 / M-1; inventory I-1 / I-2 / I-3 | Option B retained. All five mutation/create resource paths load scoped stock; unloaded resource throws. Real flag-off HTTP tests assert full payloads and work without batches.view. | `apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchController.php:105`; `apps/api/app/Modules/BatchExpiry/Presentation/Resources/BatchResource.php:24`; `apps/api/tests/Feature/BatchExpiry/BatchActionPermissionsTest.php:43` |
-| Tenancy M-2 | Technician remains ungranted, with the owner ruling named beside grants. | `apps/api/database/seeders/RolesAndPermissionsSeeder.php:99` |
+| Tenancy B-2 / M-1; inventory I-1 / I-2 / I-3 | Option B retained. All five mutation/create resource paths load scoped stock; unloaded resource throws. Real flag-off HTTP tests assert full payloads and work without batches.view. | `apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchController.php:130`; `apps/api/app/Modules/BatchExpiry/Presentation/Resources/BatchResource.php:24`; `apps/api/tests/Feature/BatchExpiry/BatchActionPermissionsTest.php:43` |
+| Tenancy M-2 | Technician remains ungranted, with the owner ruling named beside grants. | `apps/api/database/seeders/RolesAndPermissionsSeeder.php:103` |
 | Tenancy M-3 / frontend B-4 | PHP transformer attribute emits Array<string>; generated file regenerated. The RolesPage unsafe spread warning is gone. | `apps/api/app/Modules/Identity/Application/DTOs/RoleData.php:20`; `packages/shared/types/generated.d.ts:1012` |
 | Tenancy M-4 | Malformed partner UUID returns 404; malformed product/date filters return 422 using the existing API validation envelope. | `apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchTraceabilityController.php:106`; `apps/api/tests/Feature/BatchExpiry/BatchTraceReaderContractTest.php:87` |
 | Tenancy M-5 / inventory I-5 | Document number is nullable in both DTOs; backward product ID is nullable; adapter casts removed. Forward DTO has no productId field, so no new wire field was invented. Draft/null HTTP coverage passes. | `apps/api/app/Shared/Contracts/BatchTraceability/BackwardDocumentBatchTraceData.php:16`; `apps/api/app/Shared/Contracts/BatchTraceability/ForwardDocumentBatchTraceData.php:11`; `apps/api/tests/Feature/BatchExpiry/BatchTraceReaderContractTest.php:97` |
-| Inventory I-4 | Restricted POS foreign-location denial preserves seven tables; unrestricted POS JSON is identical across activation; backward trace discriminates two companies sharing a partner fixture. | `apps/api/tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php:157`; `apps/api/tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php:169`; `apps/api/tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php:272` |
+| Inventory I-4 | Restricted POS foreign-location denial preserves seven tables; unrestricted POS JSON is identical across activation; backward trace discriminates two companies sharing a partner fixture. | `apps/api/tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php:280`; `apps/api/tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php:292`; `apps/api/tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php:393` |
 | Frontend B-1 | Committed env-driven harness, isolated port, CI Node 20; exact requested command passes at committed source line 39:3. | `apps/web/playwright.config.ts:4`; `apps/web/e2e/batch-permissions.spec.ts:39` |
 | Frontend B-2 | Post-activation suite skips without the explicit opt-in, before any fixture side effects. | `apps/web/e2e/batch-permissions.spec.ts:82` |
 | Frontend B-3 | Browser denial loop uses the real /inventory/batches/new route. | `apps/web/e2e/batch-permissions.spec.ts:51` |
@@ -33,19 +33,81 @@ No merge, push, deployment, activation or fleet operation performed. Legacy NULL
 | Frontend B-7 | Deferred staged-middleware alignment ticket, with factual qualification: create/update already enforce permission via FormRequests. No new Task-1 middleware added. | `docs/superpowers/tickets/2026-09-10-batch-create-update-api-enforcement.md:1` |
 | Tenancy N-1 | Flag-independent POS UUID-validation behavior documented in release notes. | `docs/handoff/RELEASE-NOTES-WLOTA-1a-2026-09-10.md:10` |
 | Tenancy N-2 | Example environment declares activation false. | `apps/api/.env.example:193` |
-| Tenancy N-3 / N-4 | Stderr marker limited to marked/activated paths. Missing tenant/team context takes legacy fallback with a logged reason. Real seeder tests cover all paths. | `apps/api/database/seeders/RolesAndPermissionsSeeder.php:35`; `apps/api/tests/Feature/Console/LotActionReseedMarkerTest.php:135` |
+| Tenancy N-3 / N-4 | Stderr marker limited to marked/activated paths. Missing tenant/team context takes legacy fallback with a logged reason. Real seeder tests cover all paths. | `apps/api/database/seeders/RolesAndPermissionsSeeder.php:48`; `apps/api/database/seeders/RolesAndPermissionsSeeder.php:53`; `apps/api/tests/Feature/Console/LotActionReseedMarkerTest.php:135` |
 | Tenancy N-5 / frontend fixture minor | Fixture has an ID and satisfies Batch; no undefined-key warning. | `apps/web/src/features/batches/pages/__tests__/BatchPermissions.test.tsx:13` |
-| Inventory I-6 | Positive-stock-only picker behavior documented and pinned against a depleted but historically visible lot. | `apps/api/app/Modules/BatchExpiry/Infrastructure/Persistence/BatchRepository.php:109`; `apps/api/tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php:215` |
+| Inventory I-6 | Positive-stock-only picker behavior documented and pinned against a depleted but historically visible lot. | `apps/api/app/Modules/BatchExpiry/Infrastructure/Persistence/BatchRepository.php:109`; `apps/api/tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php:339` |
 | Inventory I-7 | Boundary ratchet scans every BatchExpiry presentation controller. | `apps/api/tests/Architecture/BatchTraceabilityModuleBoundaryTest.php:13` |
-| Inventory I-8 / frontend precision minor | Deferred detail parseFloat and list currency-vs-unit precision ticket; display behavior unchanged. | `docs/superpowers/tickets/2026-09-10-batch-detail-parsefloat-quantities.md:1` |
-| Inventory I-9 | Stock lookup resolves the read locations once and passes the result to both readers; null remains unrestricted. | `apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchController.php:342` |
+| Inventory I-8 / frontend precision minor | Detail parseFloat and expiry-page deprecated formatting remain deferred; list unit precision is fixed in round 2. | `docs/superpowers/tickets/2026-09-10-batch-detail-parsefloat-quantities.md:1` |
+| Inventory I-9 | Stock lookup resolves the read locations once and passes the result to both readers; null remains unrestricted. | `apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchController.php:371`; `:372`; `:377` |
 | Frontend provisioned-copy minor | Marker-derived badge uses roles.provisionedReadOnly in en/fr/ar; legacy system badge retained. | `apps/web/src/features/settings/RolesPage.tsx:276`; `apps/web/src/locales/en/common.json:1096`; `apps/web/src/locales/fr/common.json:1113`; `apps/web/src/locales/ar/common.json:1079` |
 | Frontend modal-state minor | Title and comment explicitly identify tampering with the selected object, not a simulated refetch. | `apps/web/src/features/settings/RolesPage.test.tsx:117` |
 | Frontend fingerprint minor | Comment explains why the route handle retains the literal in the served bundle. | `apps/web/src/routes/index.tsx:1205` |
 | Generated route-manifest follow-up | Preflight detected stale batch permission metadata; regenerated the four rows from source, without changing the generator or routes. Ships in Push 5. | `scripts/factory/manifests/routes-web.yaml:297` |
 | Manifest / CI raise | Approved ceilings 21/18/39/15 and total 1264, with truthful parked-lane notes and twelve exact PG selections. Checker exits 0. | `apps/api/tests/feature-lane-manifest.json:9`; `.github/workflows/ci.yml:1133` |
 
-## Verification
+## Fix round 2
+
+Round-2 base: `2fa724c1d83098e12d05024e5e51b083d5566ed0`; tested source HEAD: `e66ab582392ace4a5d95089a6249809b1a0ce0ab`.
+
+The three original r2 blockers have implementation fixes. MAJOR 1 remains **partially blocked**: its real transfer success case reaches a pre-existing PostgreSQL failure before response serialization. The failing test is retained without a mock, schema relaxation or skip; this handback does not claim acceptance or full green verification. Scope expansion was requested; no stock-writer repair has been applied.
+
+| Finding | Resolution / remaining issue | Current source citation |
+| --- | --- | --- |
+| Tenancy B-1 / inventory B-1 / tenancy M-2 | All five mutations capture membership scope once before writing; explicit location targets are authorized before mutation. Response loading accepts only the captured scope and cannot perform authorization. Restricted PATCH/write-off denial and retries preserve nine tables (original seven plus stock levels/movements); unrestricted totals remain company-wide. | `apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchController.php:111`; `:130`; `apps/api/tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php:155`; `:176` |
+| Tenancy B-2 | Inject activation service; require active current-company membership only with enforcement on. Nullable membership is safe while flag off. Real HTTP succeeds off and returns the specified 422 on. | `apps/api/app/Modules/Identity/Presentation/Controllers/RoleController.php:68`; `:378`; `apps/api/tests/Feature/Identity/GeneralManagerAssignmentTest.php:18` |
+| Frontend B-1 | Move types, BatchListPage and its Vitest into Push 3 as the web string-tolerance slice; other web gates stay Push 5. Correct the pre-lane consumer census and release-window warning. Each source file occurs exactly once in the ledger. | Source-push ledger below; `docs/handoff/RELEASE-NOTES-WLOTA-1a-2026-09-10.md:16` |
+| Tenancy M-1 / inventory M-1 | Real recall/write-off response tests and flag-off expiry-query/create-stock contracts added to the already-allowlisted class. **Transfer remains blocked:** new real HTTP test expects scoped success but returns 500 because the legacy writer omits required movement_id. | `apps/api/tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php:199`; `:212`; `:230`; `:248`; `docs/superpowers/tickets/2026-09-10-batch-transfer-missing-movement-reference.md:1` |
+| Frontend M-1 / inventory I-1, I-2 / frontend F-2, F-5 | Product unit eager-loaded for list/detail/mutations; required quantity_decimals declared; list formats with getQuantityDecimals and no numeric fallback. UI test proves unit 4 against currency 3; PHP exact-JSON fixture uses unit 2. | `apps/api/app/Modules/BatchExpiry/Infrastructure/Persistence/BatchRepository.php:34`; `:153`; `apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchController.php:132`; `apps/web/src/features/batches/pages/BatchListPage.tsx:218`; `apps/web/src/features/batches/types.ts:48`; `apps/web/src/features/batches/pages/__tests__/BatchPermissions.test.tsx:35`; `apps/api/tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php:94` |
+| Tenancy M-3 | Declare create's explicit batch_stock: [] replacing the omitted key, flag-independently. Extend the existing parent batch-totals entry; parent edit stays uncommitted for the orchestrator's path-scoped merge commit. | `docs/handoff/RELEASE-NOTES-WLOTA-1a-2026-09-10.md:7`; `/Users/houssamr/Projects/syneriva/docs/03-ERP-INTEGRATION/REALIGNMENT-LOG.md:14` |
+| Tenancy N-1 | Marker citations now identify both actual emitter call sites rather than missing-context fallback. | `apps/api/database/seeders/RolesAndPermissionsSeeder.php:48`; `:53` |
+| Tenancy N-2 | Fresh PG/SQLite counts recorded in round-2 verification below. Race assertion totals vary with fixture/process execution and are not a stable fingerprint. | Local `docs/sessions/wlota1a/r2-pg-*.txt` and `r2-sqlite-*.txt` |
+| Tenancy N-3 | Remove redundant whenLoaded guard; direct batchStock map follows the mandatory loaded-relation invariant. | `apps/api/app/Modules/BatchExpiry/Presentation/Resources/BatchResource.php:24`; `:60` |
+| Tenancy N-4 / frontend F-1 | Batch.variant_id matches the wire; all four Batch.batch_stock members are strings; ExpiredBatchStock location is a UUID string; fixtures corrected. | `apps/web/src/features/batches/types.ts:18`; `:51`; `:276`; `apps/web/src/features/batches/pages/ExpiryWriteOffPage.test.tsx:104`; `:119`; `:163`; `apps/web/src/features/batches/hooks/__tests__/tenantScope.test.tsx:143` |
+| Tenancy N-5 | Marker emitter tolerates a seeder invoked without a console command; a local Command|null annotation corrects Laravel’s non-null PHPDoc without suppressing PHPStan. | `apps/api/database/seeders/RolesAndPermissionsSeeder.php:84`; `:86` |
+| Inventory I-3 | Cite the actual scope hoist and both consumers, plus the depleted picker assertion. | `apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchController.php:371`; `:372`; `:377`; `apps/api/tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php:339` |
+| Inventory I-4 | Record float accessor/helper debt; entity remains unchanged. | `docs/superpowers/tickets/2026-09-10-batch-stock-dead-float-accessors.md:1` |
+| Frontend F-3 | Display ticket retains detail parseFloat, adds all three deprecated expiry-page formatters and the silent unit-default trap; list is removed from deferred scope. | `docs/superpowers/tickets/2026-09-10-batch-detail-parsefloat-quantities.md:6` |
+| Frontend F-4 | Fresh Node 20.19.4 pre-activation browser evidence carries source SHA, exact command and node version as its first three lines. | Local `docs/sessions/wlota1a/r2-browser-pre-node20.txt`; exact header and result below |
+| Frontend F-6 | Only literal WLOTA1A_POST_ACTIVATION=1 opts into post-activation execution; absent or 0 remains skipped before side effects. | `apps/web/e2e/batch-permissions.spec.ts:82` |
+
+Retry semantics: per-lot write-off has no idempotency key. One successful call creates one stock movement; two deliberately repeated successes are two new writes (17 → 16 → 15 total, with company-wide available totals 16 → 15 → 14). Denied retries create no movements. These fixtures prove real aggregate/lot stock writes; GL tables are included in denial snapshots, but successful journal posting is not claimed for fixtures without configured GL accounts.
+
+Actual red evidence: `r2-red-batch.txt` shows denied PATCH notes persisted and unrestricted write-off returned 9 instead of 16; `r2-red-role.txt` shows flag-off assignment returned 422; `r2-red-unit.txt` shows unit 2 emitted as 4; `r2-red-list.txt` shows 3.123 rendered instead of 3.1234. Added recall/write-off and flag-off regression cases are not claimed as new production-red proofs.
+
+## Verification — round 2
+
+49 PostgreSQL tests were run across six files, one file per invocation, sequentially, with both DB_DATABASE and DB_CENTRAL_DATABASE pinned to `autoerp_test_w` on port 5433. **48 pass; the new real transfer test fails.** No full PHPUnit or Vitest suite was run. No additional test class or manifest ceiling was introduced.
+
+| PostgreSQL file | Fresh result | Evidence under local `docs/sessions/wlota1a/` |
+| --- | --- | --- |
+| `BatchActionPermissionsTest.php` | 6 tests / 34 assertions, pass | `r2-pg-BatchActionPermissionsTest.txt` |
+| `BatchReadLocationScopeTest.php` | 15 tests / 106 assertions, **1 failure** (transfer 500, required movement_id missing); other 14 pass | `r2-pg-BatchReadLocationScopeTest.txt` |
+| `LotActionPermissionDeltaTest.php` | 12 tests / 132 assertions, pass | `r2-pg-LotActionPermissionDeltaTest.txt` |
+| `GeneralManagerAssignmentTest.php` | 8 tests / 118 assertions, pass | `r2-pg-GeneralManagerAssignmentTest.txt` |
+| `LotActionReseedMarkerTest.php` | 6 tests / 24 assertions, pass | `r2-pg-LotActionReseedMarkerTest.txt` |
+| `RolesAndPermissionsSeederMarkedTenantTest.php` | 2 tests / 4 assertions, pass | `r2-pg-RolesAndPermissionsSeederMarkedTenantTest.txt` |
+
+SQLite `phpunit.xml`: Delta 12 tests / 45 assertions / 1 PG race skipped; GeneralManagerAssignment 8 tests / 26 assertions / 1 PG race skipped. Both exit 0 (18 executable tests pass, two races skip). PG race assertion counts vary between runs and are recorded as observations, not a stable source fingerprint.
+
+Eight separate Vitest invocations: BatchRoutePermissions 7, BatchPermissions 9, BatchSeededPermissionMap 1, RolesPage 3, Sidebar 56, usePermissions.moduleAccess 12, ExpiryWriteOffPage 8, tenantScope 3 = **99 passed**. Main/e2e typechecks pass. Audits: keys 0 new / 0 stale; design system 802 acknowledged / 0 new / 0 stale; quantity 0 total / 0 new / 0 stale. No baseline changed. Route-manifest generator check and feature-lane-manifest checker both exit 0; existing parked-lane warnings remain. The 75-file source ledger has no duplicate, missing or extra row (`r2-ledger-check.json`).
+
+React Doctor: same-tool explicit-file baseline 92/100 (two diagnostics), current list 93/100 (one pre-existing complexity warning). Changed-scope scan also 93/100. No score regression or suppression.
+
+Final scoped `./scripts/preflight.sh`: **exit 0** (`r2-preflight.txt`). Pint --test and PHPStan level 8 pass on the touched PHP paths (Pint includes tests; PHPStan checks runtime/seeder files). Full ESLint reports 0 errors / 6413 warnings repository-wide. Generated DTO and permission-map drift checks, detector/manifest checks and the fixed fiscal-parity checks pass. The first attempt caught list-return typing and Laravel's inaccurate non-null console-command PHPDoc; both were fixed without suppressions or baseline changes. The exact environment and scopes are retained in `r2-preflight.sh`.
+
+Preflight retains its explicit BatchActionPermissionsTest and BatchPermissions Vitest scopes; its green result **does not override** the separately run, failing BatchReadLocationScopeTest, which is selected by the CI allowlist. The round remains blocked on real transfer success.
+
+Committed browser evidence, Node 20.19.4: **1 pre-activation test passed (11.9s), source line 39:3**. The first three lines of `r2-browser-pre-node20.txt` are:
+
+```text
+e66ab582392ace4a5d95089a6249809b1a0ce0ab
+PLAYWRIGHT_PORT=5198 PLAYWRIGHT_HTML_OPEN=never pnpm exec playwright test e2e/batch-permissions.spec.ts --project=chromium --grep 'pre-activation web gating'
+v20.19.4
+```
+
+The command runs from this worktree's `apps/web` with `/Users/houssamr/.nvm/versions/node/v20.19.4/bin` first on PATH. The committed env-driven config starts an isolated Vite server. The protected-role screenshot was inspected and retained at `docs/sessions/wlota1a/r2-protected-role.png`. A separate `WLOTA1A_POST_ACTIVATION=0` run reports **1 skipped**, source line 83:3 (`r2-browser-post-zero-skipped.txt`); no activated tenant was used. Logs are local and gitignored; no remote CI or reviewer acceptance is claimed.
+
+## Verification — round 1 historical
 
 59 PostgreSQL tests / 471 assertions passed across twelve files, **one file per invocation, sequentially**. Both DB_DATABASE and DB_CENTRAL_DATABASE were pinned to `autoerp_test_w`, port 5433. The registration test creates and deletes its own disposable physical tenant database through the application manager. No full PHPUnit or Vitest suite ran.
 
@@ -76,7 +138,7 @@ Evidence logs are retained locally under ignored `docs/sessions/wlota1a/r1-*`; n
 
 ### Committed browser evidence
 
-Verified source HEAD is the SHA above. `apps/web/e2e/batch-permissions.spec.ts` and `apps/web/playwright.config.ts` have no working-copy changes. Using CI's Node 20.19.4 and the committed config:
+Round-1 verified source HEAD is `850f7a295bbf53b5ff9ca751d3047ee3134380df`. `apps/web/e2e/batch-permissions.spec.ts` and `apps/web/playwright.config.ts` have no working-copy changes. Using CI's Node 20.19.4 and the committed config:
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v20.19.4/bin:$PATH"
@@ -87,7 +149,7 @@ pnpm exec playwright test e2e/batch-permissions.spec.ts --project=chromium --gre
 
 Run from this worktree's `apps/web`. Exact result in `docs/sessions/wlota1a/r1-browser-pre-node20.txt`: **`[chromium] › e2e/batch-permissions.spec.ts:39:3`**, **`1 passed`**. Explicit port uses an isolated Vite instance with strictPort and reuseExistingServer=false. No ignored custom config is used.
 
-The earlier source-line discrepancy is reproducible without any source edit: Node 25.2.1 reports compiled line 88, including with a fresh Playwright cache; Node 20.19.4 reports original line 39. The cold-cache source-map sourcesContent is byte-identical to the committed spec, and line 88 is the test declaration in the generated JavaScript. This supports a local runtime/source-map reporting issue; a mismatched reported line alone did not prove an uncommitted spec was executed. The current accepted evidence uses the correct original-source location.
+The earlier source-line discrepancy is reproducible without any source edit: Node 25.2.1 reports compiled line 88, including with a fresh Playwright cache; Node 20.19.4 reports original line 39. The cold-cache source-map sourcesContent is byte-identical to the committed spec, and line 88 is the test declaration in the generated JavaScript. This supports a local runtime/source-map reporting issue; a mismatched reported line alone did not prove an uncommitted spec was executed. The retained round-1 evidence uses the correct original-source location.
 
 Post-activation remains opt-in and requires the real ON evidence, disposable activated tenant, canonical DB mapping and credentials described in the committed spec. With no WLOTA1A_POST_ACTIVATION it skips before any side effects; a separate opt-out run reports 1 skipped (r1-browser-post-skipped.txt).
 
@@ -143,6 +205,16 @@ Round-1 commits are grouped by review concern; the ledger below assigns files to
 - `f2d79c9a8 Phase 1.1.8: Guard PostgreSQL races and arm the approved CI classes`
 - `850f7a295 Phase 1.1.9: Regenerate the batch permission route manifest`
 
+Round-2 source/contract commits:
+
+- `b1ed81388 Phase 1.2.3: Ship batch string tolerance with the API contract`
+- `a48274456 Phase 1.2.6: Declare the empty batch stock create response`
+- `8028324e0 Phase 1.2.1: Authorize mutation targets before writing batch stock`
+- `8a7777816 Phase 1.2.2: Preserve role assignment before permission activation`
+- `3ad468c30 Phase 1.2.5: Display batch quantities at product unit precision`
+- `1aee614c5 Phase 1.2.7: Align batch wire types and tighten evidence opt-in`
+- `e66ab5823 Phase 1.2.4: Pin mutation responses and expose the legacy transfer failure`
+
 | Push | File | Latest source commit |
 | --- | --- | --- |
 | Push 3 | `.github/workflows/ci.yml` | `f2d79c9a8` |
@@ -152,11 +224,11 @@ Round-1 commits are grouped by review concern; the ledger below assigns files to
 | Push 3 | `apps/api/app/Modules/BatchExpiry/BatchExpiryServiceProvider.php` | `892b30110` |
 | Push 3 | `apps/api/app/Modules/BatchExpiry/Domain/Repositories/BatchRepositoryInterface.php` | `892b30110` |
 | Push 3 | `apps/api/app/Modules/BatchExpiry/Domain/Services/FEFOInventoryService.php` | `892b30110` |
-| Push 3 | `apps/api/app/Modules/BatchExpiry/Infrastructure/Persistence/BatchRepository.php` | `7c50e28bf` |
-| Push 3 | `apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchController.php` | `a491b5415` |
+| Push 3 | `apps/api/app/Modules/BatchExpiry/Infrastructure/Persistence/BatchRepository.php` | `3ad468c30` |
+| Push 3 | `apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchController.php` | `3ad468c30` |
 | Push 3 | `apps/api/app/Modules/BatchExpiry/Presentation/Controllers/BatchTraceabilityController.php` | `7b870f253` |
 | Push 3 | `apps/api/app/Modules/BatchExpiry/Presentation/Middleware/BatchActionAccess.php` | `892b30110` |
-| Push 3 | `apps/api/app/Modules/BatchExpiry/Presentation/Resources/BatchResource.php` | `a491b5415` |
+| Push 3 | `apps/api/app/Modules/BatchExpiry/Presentation/Resources/BatchResource.php` | `1aee614c5` |
 | Push 3 | `apps/api/app/Modules/BatchExpiry/Presentation/routes.php` | `892b30110` |
 | Push 3 | `apps/api/app/Modules/Document/Infrastructure/BatchTraceability/DocumentBatchTraceReaderAdapter.php` | `7b870f253` |
 | Push 3 | `apps/api/app/Modules/Document/Providers/DocumentServiceProvider.php` | `892b30110` |
@@ -167,7 +239,7 @@ Round-1 commits are grouped by review concern; the ledger below assigns files to
 | Push 3 | `apps/api/app/Modules/Identity/Domain/Enums/LotActionPermissionDeltaOutcome.php` | `892b30110` |
 | Push 3 | `apps/api/app/Modules/Identity/Domain/Enums/RoleProvisioningSource.php` | `892b30110` |
 | Push 3 | `apps/api/app/Modules/Identity/Domain/Enums/SystemRoleName.php` | `892b30110` |
-| Push 3 | `apps/api/app/Modules/Identity/Presentation/Controllers/RoleController.php` | `892b30110` |
+| Push 3 | `apps/api/app/Modules/Identity/Presentation/Controllers/RoleController.php` | `8a7777816` |
 | Push 3 | `apps/api/app/Modules/Identity/Presentation/Controllers/UserController.php` | `892b30110` |
 | Push 3 | `apps/api/app/Modules/POS/Infrastructure/BatchTraceability/PosBatchTraceReaderAdapter.php` | `892b30110` |
 | Push 3 | `apps/api/app/Modules/POS/Providers/POSServiceProvider.php` | `892b30110` |
@@ -178,16 +250,16 @@ Round-1 commits are grouped by review concern; the ledger below assigns files to
 | Push 3 | `apps/api/app/Shared/Contracts/BatchTraceability/PosBatchTraceReader.php` | `892b30110` |
 | Push 3 | `apps/api/config/lot_action_permissions.php` | `892b30110` |
 | Push 2 | `apps/api/database/migrations/tenant/2026_09_06_205000_add_provisioning_source_to_roles.php` | `aeb594f21` |
-| Push 3 | `apps/api/database/seeders/RolesAndPermissionsSeeder.php` | `7c50e28bf` |
+| Push 3 | `apps/api/database/seeders/RolesAndPermissionsSeeder.php` | `1aee614c5` |
 | Push 3 | `apps/api/tests/Architecture/BatchTraceabilityModuleBoundaryTest.php` | `7c50e28bf` |
-| Push 3 | `apps/api/tests/Feature/BatchExpiry/BatchActionPermissionsTest.php` | `a491b5415` |
+| Push 3 | `apps/api/tests/Feature/BatchExpiry/BatchActionPermissionsTest.php` | `3ad468c30` |
 | Push 3 | `apps/api/tests/Feature/BatchExpiry/BatchExpiringLocationScopeTest.php` | `892b30110` |
-| Push 3 | `apps/api/tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php` | `a491b5415` |
+| Push 3 | `apps/api/tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php` | `e66ab5823` |
 | Push 3 | `apps/api/tests/Feature/BatchExpiry/BatchTraceReaderContractTest.php` | `7b870f253` |
 | Push 3 | `apps/api/tests/Feature/Console/ApplyLotActionPermissionDeltaCommandTest.php` | `ed1ef81fe` |
 | Push 3 | `apps/api/tests/Feature/Console/ExportFrontendPermissionsMapCommandTest.php` | `892b30110` |
 | Push 3 | `apps/api/tests/Feature/Console/LotActionReseedMarkerTest.php` | `7c50e28bf` |
-| Push 3 | `apps/api/tests/Feature/Identity/GeneralManagerAssignmentTest.php` | `ed1ef81fe` |
+| Push 3 | `apps/api/tests/Feature/Identity/GeneralManagerAssignmentTest.php` | `8a7777816` |
 | Push 3 | `apps/api/tests/Feature/Identity/GeneralManagerAssignmentWriterCensusTest.php` | `ed1ef81fe` |
 | Push 3 | `apps/api/tests/Feature/Identity/GeneralManagerRoleProtectionTest.php` | `ed1ef81fe` |
 | Push 3 | `apps/api/tests/Feature/Identity/LotActionPermissionDeltaTest.php` | `f2d79c9a8` |
@@ -196,18 +268,18 @@ Round-1 commits are grouped by review concern; the ledger below assigns files to
 | Push 3 | `apps/api/tests/Feature/Identity/RolesAndPermissionsSeederMarkedTenantTest.php` | `892b30110` |
 | Push 2 | `apps/api/tests/Feature/Migrations/RoleProvisioningSourceSchemaTest.php` | `66c7068ef` |
 | Push 3 | `apps/api/tests/feature-lane-manifest.json` | `f2d79c9a8` |
-| Push 5 | `apps/web/e2e/batch-permissions.spec.ts` | `08b5c21cf` |
+| Push 5 | `apps/web/e2e/batch-permissions.spec.ts` | `1aee614c5` |
 | Push 5 | `apps/web/playwright.config.ts` | `08b5c21cf` |
 | Push 5 | `apps/web/src/components/organisms/Sidebar/Sidebar.tsx` | `2a6ba01ea` |
 | Push 5 | `apps/web/src/components/organisms/Sidebar/__tests__/Sidebar.test.tsx` | `2a6ba01ea` |
-| Push 5 | `apps/web/src/features/batches/hooks/__tests__/tenantScope.test.tsx` | `61fd45cf3` |
+| Push 5 | `apps/web/src/features/batches/hooks/__tests__/tenantScope.test.tsx` | `1aee614c5` |
 | Push 5 | `apps/web/src/features/batches/pages/BatchDetailPage.tsx` | `2a6ba01ea` |
-| Push 3 | `apps/web/src/features/batches/pages/BatchListPage.tsx` | `2a6ba01ea` |
-| Push 5 | `apps/web/src/features/batches/pages/ExpiryWriteOffPage.test.tsx` | `61fd45cf3` |
+| Push 3 | `apps/web/src/features/batches/pages/BatchListPage.tsx` | `3ad468c30` |
+| Push 5 | `apps/web/src/features/batches/pages/ExpiryWriteOffPage.test.tsx` | `1aee614c5` |
 | Push 5 | `apps/web/src/features/batches/pages/ExpiryWriteOffPage.tsx` | `61fd45cf3` |
-| Push 3 | `apps/web/src/features/batches/pages/__tests__/BatchPermissions.test.tsx` | `61fd45cf3` |
+| Push 3 | `apps/web/src/features/batches/pages/__tests__/BatchPermissions.test.tsx` | `1aee614c5` |
 | Push 5 | `apps/web/src/features/batches/pages/__tests__/BatchSeededPermissionMap.test.ts` | `2a6ba01ea` |
-| Push 3 | `apps/web/src/features/batches/types.ts` | `61fd45cf3` |
+| Push 3 | `apps/web/src/features/batches/types.ts` | `1aee614c5` |
 | Push 5 | `apps/web/src/features/settings/RolesPage.test.tsx` | `a50230cb2` |
 | Push 5 | `apps/web/src/features/settings/RolesPage.tsx` | `a50230cb2` |
 | Push 5 | `apps/web/src/hooks/__tests__/usePermissions.moduleAccess.test.tsx` | `2a6ba01ea` |
