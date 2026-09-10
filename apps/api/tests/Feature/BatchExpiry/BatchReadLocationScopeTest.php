@@ -18,6 +18,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -145,6 +146,50 @@ final class BatchReadLocationScopeTest extends BatchPermissionFixture
             ->assertJsonPath('data.available_quantity', '3.0234')
             ->assertJsonCount(1, 'data.batch_stock')
             ->assertJsonPath('data.batch_stock.0.location_id', $this->location->id);
+    }
+
+    public function test_foreign_mutation_target_is_denied_before_any_write_even_on_retry(): void
+    {
+        $batch = $this->lot();
+        $other = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->stockAt($batch, $other, '10.0000');
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id, 'company_id' => $this->company->id,
+            'product_id' => $this->product->id, 'location_id' => $other->id,
+            'quantity' => '10.0000', 'reserved' => '0.0000',
+        ]);
+        $this->restrict([$this->location->id]);
+        $snapshot = static fn (): array => array_map(static fn (string $table): array => DB::table($table)->orderBy('id')->get()->map(static fn ($row): array => (array) $row)->all(), ['product_batches', 'inventory_batch_stock', 'stock_levels', 'stock_movements', 'stock_reservations', 'document_lines', 'pos_receipt_line_batch_allocations', 'journal_entries', 'journal_lines']);
+        $before = $snapshot();
+        $this->patchJson('/api/v1/batches/'.$batch->uuid, ['notes' => 'Must not persist', 'location_id' => $other->id])->assertForbidden();
+        self::assertSame($before, $snapshot());
+        foreach ([1, 2] as $attempt) {
+            $this->postJson('/api/v1/batches/'.$batch->uuid.'/write-off', ['location_id' => $other->id, 'quantity' => '1.0000', 'reason' => 'damage'])->assertForbidden();
+            self::assertSame($before, $snapshot());
+        }
+    }
+
+    public function test_unrestricted_mutation_totals_are_company_wide_and_each_success_writes_once(): void
+    {
+        $batch = $this->lot();
+        $other = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->stockAt($batch, $other, '10.0000');
+        $this->stockAt($batch, $this->location, '7.0000', '1.0000');
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id, 'company_id' => $this->company->id,
+            'product_id' => $this->product->id, 'location_id' => $other->id,
+            'quantity' => '10.0000', 'reserved' => '0.0000',
+        ]);
+        $this->restrict(null);
+        // This endpoint has no idempotency key: each deliberately repeated success is a new write.
+        foreach (['16.0000' => '15.0000', '15.0000' => '14.0000'] as $total => $available) {
+            $before = DB::table('stock_movements')->count();
+            $this->postJson('/api/v1/batches/'.$batch->uuid.'/write-off', ['location_id' => $other->id, 'quantity' => '1.0000', 'reason' => 'damage'])
+                ->assertOk()->assertJsonPath('data.total_quantity', $total)->assertJsonPath('data.available_quantity', $available)->assertJsonCount(2, 'data.batch_stock');
+            self::assertSame($before + 1, DB::table('stock_movements')->count());
+            $this->patchJson('/api/v1/batches/'.$batch->uuid, ['notes' => 'Company response', 'location_id' => $other->id])
+                ->assertOk()->assertJsonPath('data.total_quantity', $total)->assertJsonPath('data.available_quantity', $available)->assertJsonCount(2, 'data.batch_stock');
+        }
     }
 
     public function test_unloaded_resource_cannot_silently_emit_zero_stock(): void

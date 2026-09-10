@@ -102,9 +102,33 @@ class BatchController extends Controller
         return $batch ?? response()->json(['error' => ['code' => 'BATCH_NOT_FOUND', 'message' => 'Batch not found']], 404);
     }
 
-    private function loadScopedResourceRelations(Request $request, Batch $batch): void
+    /**
+     * Resolve membership scope and authorize explicit write targets before mutation.
+     * Request targets never narrow the response for an unrestricted membership.
+     *
+     * @return list<string>|null
+     */
+    private function mutationLocationIds(Request $request): ?array
     {
-        $locations = $this->resolvedReadLocationIds($request);
+        if (! $this->activation->enforced()) {
+            return null;
+        }
+        /** @var User $user */
+        $user = $request->user();
+        $locations = $this->locationContext->getAllowedLocationIds($this->companyContext->requireCompanyId(), $user);
+        if ($locations !== null) {
+            foreach (['location_id', 'from_location_id', 'to_location_id'] as $target) {
+                $location = $request->input($target);
+                abort_if($location !== null && ! in_array($location, $locations, true), 403, 'Location access denied.');
+            }
+        }
+
+        return $locations === null ? null : array_values($locations);
+    }
+
+    /** @param list<string>|null $locations */
+    private function loadScopedResourceRelations(Batch $batch, ?array $locations): void
+    {
         $batch->load(['product', 'batchStock' => fn ($stock) => $locations === null
             ? $stock : $stock->whereIn('location_id', $locations)]);
     }
@@ -195,6 +219,7 @@ class BatchController extends Controller
      */
     public function store(CreateBatchRequest $request): JsonResponse
     {
+        $locations = $this->mutationLocationIds($request);
         $company = $this->companyContext->requireCompany();
         $companyId = $company->id;
 
@@ -220,7 +245,7 @@ class BatchController extends Controller
         }
 
         $batch = $this->batchRepository->create($data);
-        $this->loadScopedResourceRelations($request, $batch);
+        $this->loadScopedResourceRelations($batch, $locations);
 
         return response()->json([
             'data' => new BatchResource($batch),
@@ -232,13 +257,14 @@ class BatchController extends Controller
      */
     public function update(UpdateBatchRequest $request, string $uuid): JsonResponse
     {
+        $locations = $this->mutationLocationIds($request);
         $result = $this->findBatchOrFail($uuid);
         if ($result instanceof JsonResponse) {
             return $result;
         }
 
         $this->batchRepository->update($result, $request->validated());
-        $this->loadScopedResourceRelations($request, $result->refresh());
+        $this->loadScopedResourceRelations($result->refresh(), $locations);
 
         return response()->json([
             'data' => new BatchResource($result),
@@ -267,6 +293,7 @@ class BatchController extends Controller
      */
     public function recall(Request $request, string $uuid): JsonResponse
     {
+        $locations = $this->mutationLocationIds($request);
         $request->validate([
             'reason' => ['required', 'string', 'max:255'],
         ]);
@@ -277,7 +304,7 @@ class BatchController extends Controller
         }
 
         $result->recall($request->input('reason'));
-        $this->loadScopedResourceRelations($request, $result->refresh());
+        $this->loadScopedResourceRelations($result->refresh(), $locations);
 
         return response()->json([
             'data' => new BatchResource($result),
@@ -446,6 +473,7 @@ class BatchController extends Controller
      */
     public function transfer(TransferBatchStockRequest $request, string $uuid): JsonResponse
     {
+        $locations = $this->mutationLocationIds($request);
         $result = $this->findBatchOrFail($uuid);
         if ($result instanceof JsonResponse) {
             return $result;
@@ -474,7 +502,7 @@ class BatchController extends Controller
             ], 422);
         }
 
-        $this->loadScopedResourceRelations($request, $result->refresh());
+        $this->loadScopedResourceRelations($result->refresh(), $locations);
 
         return response()->json([
             'data' => new BatchResource($result),
@@ -488,6 +516,7 @@ class BatchController extends Controller
      */
     public function writeOff(WriteOffBatchRequest $request, string $uuid): JsonResponse
     {
+        $locations = $this->mutationLocationIds($request);
         $result = $this->findBatchOrFail($uuid);
         if ($result instanceof JsonResponse) {
             return $result;
@@ -513,7 +542,7 @@ class BatchController extends Controller
             ], 422);
         }
 
-        $this->loadScopedResourceRelations($request, $result->refresh());
+        $this->loadScopedResourceRelations($result->refresh(), $locations);
 
         return response()->json([
             'data' => new BatchResource($result),
