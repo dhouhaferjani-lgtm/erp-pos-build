@@ -163,3 +163,8 @@ This is the "gates on BOTH layers" rule (agent rule 12 / `docs/architecture/vert
 - No `PageHeader` / raw-form-control / raw-`<table>` / `StickyFormFooter` / picker regressions; no `colorClasses` use; no new hand-rolled FE type beside a generated DTO except the `Array<any>` consequence in B-4.
 
 VERDICT: CHANGES-REQUIRED
+
+
+## Retractions recorded at gate r2 (orchestrator, 2026-09-10)
+- **B-1 RETRACTED**: the `39:3` vs `88:3` discrepancy was a Node 25 vs Node 20 source-map artefact on identical committed bytes (reproduced at r2 with `playwright test --list` under both runtimes); the spec was committed. The committed env-driven harness requested by B-1 was still delivered.
+- **B-7 RETRACTED in its premise**: `CreateBatchRequest::authorize()` / `UpdateBatchRequest::authorize()` already enforce `batches.create` / `batches.update` (pre-lane). The FE gates map onto a real API check. Only the *middleware* asymmetry remains (ticket A-1b).
