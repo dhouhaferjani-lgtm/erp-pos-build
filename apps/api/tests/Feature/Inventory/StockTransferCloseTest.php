@@ -19,6 +19,18 @@ use App\Modules\Product\Domain\Product;
 
 final class StockTransferCloseTest extends TransferReceiptFeatureTestCase
 {
+    public function test_cancel_retains_all_freight_as_uncapitalized(): void
+    {
+        $this->transfer = $this->initiate('10.0000', '140.0000');
+        $this->postJson('/api/v1/stock-transfers/'.$this->transfer->id.'/cancel')->assertOk();
+        $this->transfer->refresh()->load('lines');
+        $allocated = '0.0000';
+        foreach ($this->transfer->lines as $line) {
+            $allocated = bcadd($allocated, $line->allocated_transfer_cost, 4);
+        }
+        self::assertSame('140.0000', bcadd($allocated, $this->transfer->freight_uncapitalized, 4));
+    }
+
     public function test_close_write_off_posts_one_shrinkage_leg_and_persists_the_freight_residual(): void
     {
         $this->transfer = $this->initiate('10.0000', '140.0000');
