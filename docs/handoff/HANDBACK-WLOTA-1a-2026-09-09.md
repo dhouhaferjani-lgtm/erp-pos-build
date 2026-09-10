@@ -1,99 +1,157 @@
 ---
 status: review
 promotion_ready: false
-blocking_decision: legacy null-team role ownership
+blocking_decision: none
+promotion_blocker: parked CI lane coverage guard and orchestrator acceptance
 ---
 
-# W-LOT-A-1a handback — implementation checkpoint, not promotion approval
+# W-LOT-A-1a handback — legacy-role ruling implemented, 2026-09-10
 
 Worktree: `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/w-lot-a-1a`.
 Branch: `lane/w-lot-a-1a`.
-DISPATCH_SHA: `4373ba2f60ac6c303e90e4ae47236285f05e648c`.
+Original DISPATCH_SHA: `4373ba2f60ac6c303e90e4ae47236285f05e648c`.
+Ruling-resume SHA: `3046ca87204f69dc6819a73ac60a56a0d68bbe78`.
 Planning SHA: `c76435df4a98193dfacb80ad9c25839169179509`.
-The intervening diff was documentation-only. The named-symbol census was rerun and is in local `docs/sessions/wlota1a/census.txt`.
+The original named-symbol census is retained in ignored `docs/sessions/wlota1a/census.txt`.
 
-Only Tasks 1, 2, and 6 were edited. No origin push, merge, Dokploy call, deployment, staging activation, or fleet operation occurred. The process environment retained `LOT_ACTION_PERMISSIONS_ENFORCE=false`; PHPUnit cases explicitly set the Laravel config true to exercise enforcement. PostgreSQL used the dedicated `autoerp_test_w` database on port 5433 with both database environment names pinned. Tests ran by file, never the full PHPUnit/Vitest suite. The mandated web lint command runs its own tools tests.
+Authority: `CODEX-PROMPT-WLOTA-1a-ruling-legacy-null-team-roles-2026-09-09.md`, supplied by the owner on 2026-09-10. **No ownership adoption or re-homing.** This replaces the ownership question in the previous handback.
 
-## Blocking plan assumption
+No merge, origin push, Dokploy call, deployment, activation, or fleet operation occurred. The environment kept `LOT_ACTION_PERMISSIONS_ENFORCE=false`. PHPUnit sets Laravel configuration true only in enforcement test cases and their isolated worker processes. Every PG command pins both `DB_DATABASE` and `DB_CENTRAL_DATABASE` to `autoerp_test_w`, port 5433. The real registration test creates and removes its own physical tenant database through the application's database manager; it asserts the canonical database name no longer exists after cleanup. No full PHPUnit or Vitest suite ran.
 
-The actual legacy seeder uses `Role::firstOrCreate(['name' => ..., 'guard_name' => 'sanctum'])`. That query-builder path does **not** invoke Spatie's static `Role::create()` and creates roles whose configured `tenant_id` is NULL. The delta's explicit tenant predicate finds no existing admin/manager/etc. Creating a tenant-scoped admin with Spatie's static method then raises:
+## Delivered
 
-> Spatie\Permission\Exceptions\RoleAlreadyExists: A role `admin` already exists for guard `sanctum`.
+- The delta resolves each edited catalogue role with `name/guard` plus `(tenant_id IS NULL OR tenant_id = current tenant)`. It preserves existing IDs, team values, custom grants, and assignments. A mixed NULL/scoped match returns `FAILED reason=ambiguous_legacy_role_collision` before any partial write. NULL-team and scoped unmarked `general_manager` rows both fail closed. Only the new GM receives the provisioning marker and its mandatory tenant team.
+- Apply and verify use the same resolution. The transactional advisory lock covers read, write, and verification. Team restoration precedes cache invalidation, including exception paths. The existing exact-marked-GM seeder branch stays before legacy synchronization; it skips synchronization altogether and preserves the real NULL-team catalogue. Both mandatory flag-off preservation cases now pass against that catalogue.
+- Schema coverage explicitly allows an unmarked NULL-team manager while retaining marked-row rejection. Matrix coverage compares every legacy role's grants against hashes derived from the actual dispatch-base seeder, then verifies the complete canonical catalogue, fresh provisioning, and reruns.
+- Added real `tenants:run` string-`1` apply/verify tests; exact missing-schema/unmarked/mixed-collision CLI failure markers; two-team discrimination; one marker per team; role identity after rejected API edits/rerun; and a real registration HTTP → buffered Artisan seeder → stderr marker test.
+- Added barrier-controlled, bounded PostgreSQL process races for first apply and assignment versus scope narrowing. Workers use committed disposable schema copies of test fixtures, real application code and, for assignment/narrowing, the HTTP kernel. Both workers must reach the DB lock barrier. Results are one `APPLIED` plus one `ALREADY_APPLIED`, or one HTTP 200 plus one invariant-specific 422; no restricted GM final state survives. Temporary schemas are removed in `finally`.
+- The runtime writer census scans executable PHP tokens across `app/`: three dynamic assignment sites require the guard/team/transaction boundaries; two other sites assign only literal `admin`. The sole direct pivot reference is classified as the existing read-only role-user count.
+- Roles response coverage exercises marked and same-name unmarked roles with separate tenant actors and index/show wire keys. This does not claim the deferred query-wide team isolation exists.
+- The post-activation browser half now creates company B, B1/B2, matching-SKU lots across companies, identifiable B2 stock/history, restricted viewer/manager and unrestricted GM fixtures, duplicate-create state comparisons, and UI/action assertions. It contains no mocked API responses. It was **not run locally**, as required. The pre-activation browser half remains separate and passed against the worktree's Vite bundle with response fixtures.
 
-This is reproduced using the real legacy seeder in the PostgreSQL fixture, not a manufactured collision. The transaction rolls back. Fresh provisioning with an empty role catalogue works; upgrading the actual legacy catalogue does not. No role IDs, tenant ownership, or grants were migrated to hide this mismatch.
+The explicitly deferred RoleController annotation issue is recorded in [the requested ticket](../superpowers/tickets/2026-09-09-role-controller-team-scope-annotations.md): controller lines 158, 189, 236, 280, with line 206 distinguished as static-create team stamping. No controller scope policy was changed by this ruling follow-up.
 
-§8.4 permits “only allowed additions and the explicit manager recall removal.” It supplies no rule for adopting/re-homing a null-team legacy role. A question is pending with the owner: authorize adoption only after proving every assignment belongs to the current tenant (preserving IDs and custom grants), or explicitly fail closed and revise the plan. An unmarked `general_manager` remains a non-adoptable collision under either option.
+## Verification
 
-There is a related incorrect assumption in the existing RoleController CrossTenantRoute annotations: ordinary Spatie `Role::with()` / `findOrFail()` queries have no automatic team global scope. The new delta uses explicit tenant predicates, but existing Roles API lookup annotations still overstate their isolation. This needs a reviewed team/global-role policy and a cross-team response/mutation regression test before promotion.
+Evidence lives in ignored `docs/sessions/wlota1a/` and is local development evidence, not staging proof.
 
-## Implemented behavior
-
-- Additive, self-guarding role marker migration with PostgreSQL check/index and SQLite triggers/index; rollback refuses marked rows. Schema compatibility is checked before accepting existing objects.
-- Dormant action middleware, exact BatchExpiry route permissions, scoped stock and attributable-history visibility, four-decimal string aggregates, shared trace contracts with owning Document/POS adapters, and field-compatible trace responses.
-- Canonical/legacy matrices; transaction/advisory-lock delta; marker preservation branch before legacy synchronization; buffered-console plus stderr markers; CLI apply/verify modes; marker-derived snake-case RoleData; role protection; assignment guard around creation, update, and dedicated assignment with membership locks and postconditions.
-- Batch route/navigation/action gating, server-authoritative batch permissions, generated map and RoleData, marker-derived Roles UI protection and modal-submit backstop, served bundle fingerprint, and a pre-activation browser test.
-
-Task 2 is an incomplete integration because of the legacy-role blocker. Task 6's post-activation browser half is still owed. These commits are checkpoints for review, **not deployable approval**.
-
-## Verification and red-first evidence
-
-Local detailed logs are under ignored `docs/sessions/wlota1a/`. They are not production evidence and contain no staging read-back. The table records actual captured failures; it does not claim every later-added case was written before implementation. In particular, the expanded trace/second-company coverage, several assignment cases, route/map/sidebar tests, and browser case were added after the relevant runtime changes. This does not satisfy the dispatch's strict every-test-red-first requirement; do not describe it as fully TDD-compliant.
-
-| Area / test | First captured failure | Verified run / remaining outcome |
+| Check | Result | Evidence |
 | --- | --- | --- |
-| RoleProvisioningSourceSchemaTest | Migration file did not exist (`schema-red-pg.txt`, SQLite equivalent) | Both DB drivers: 8 tests, 40 assertions each; `schema-final-pg.txt`, `schema-final-sqlite.txt` |
-| BatchActionPermissionsTest route matrix / flag-off | Missing BatchActionAccess binding and absent `:batches.view` middleware (`action-boundary-red.txt`) | PostgreSQL consolidated run listed below |
-| BatchReadLocationScopeTest initial three cases | Other-location stock / empty-scope / zero-stock visibility assertions failed (`read-red-pg.txt`) | Five cases passed; later A2 history and full snapshot additions are covered in final run |
-| BatchTraceReaderContractTest | Missing shared-reader binding (`trace-red.txt`) | Expanded real Document/POS data: 3 tests, 23 assertions (`trace-complete-pg.txt`) |
-| BatchTraceabilityModuleBoundaryTest | Forbidden persistence imports (`action-boundary-red.txt`) | Boundary check passes |
-| LotActionSeededRoleMatrixTest | Missing viewer view; manager still had recall; absent GM key (`matrix-red.txt`) | Static matrix cases pass; full legacy/fresh matrix fixture coverage still owed |
-| LotActionPermissionDeltaTest | Missing service (`delta-red-pg.txt`) | Upgrade blocked by actual null-team legacy roles; `delta-green-pg.txt` is misleadingly named and **contains failures** |
-| Role protection / assignment / response | Expected 422, received 200; response key mismatch; missing command (`role-api-red-pg.txt`) | Marked-role API tests use explicitly provisioned marked fixtures, independently of failed delta. Six assignment tests passed (21 assertions); three protection tests and response case passed |
-| GeneralManagerAssignmentWriterCensusTest | Creation lacked `lockForUpdate()` (`writer-census-red.txt`) | 1 test, 21 assertions (`writer-census-green.txt`); covers the three named controller methods, not a whole-repository writer census |
-| LotActionReseedMarkerTest | Added after runtime implementation; no red-first claim | 3 tests, 11 assertions. Fresh empty-catalogue apply and buffered Artisan/stderr verified; real registration-request marker case still owed |
-| Web action/role/server-authority tests | Unexpected edit controls; protected submit called PATCH; missing batches ModuleKey; decimal `.toFixed` failure (`web-red.txt`) | All six requested Vitest files: 87 tests passed (`web-final.txt`) |
-| Pre-activation browser | Initial harness failed to bootstrap auth; not a production-red assertion (`browser-first.txt`) | 1 Chromium test passed (`browser-next.txt`); actual worktree Vite on port 5198, API response fixtures |
+| Consolidated Task-1/Task-2 PostgreSQL files, schema, boundary/census, exporter | **75 tests, 0 errors, 0 failures**; final run 3,778 assertions (race polling makes assertion counts timing-dependent) | `ruling-final-pg.txt` |
+| Both mandatory marked-tenant preservation cases | Green within consolidated run; real legacy seeder fixtures | `ruling-final-pg.txt` |
+| Real registration HTTP/stderr case | Green; standalone 1 test / 7 assertions, also green in consolidated run | `ruling-registration.txt` |
+| Concurrent first apply and assignment/narrowing | Both green, also included in final consolidated run | `ruling-concurrency-next.txt`, `ruling-final-pg.txt` |
+| SQLite schema | 9 tests / 43 assertions | `ruling-schema-sqlite.txt` |
+| Changed runtime PHPStan | No errors | `ruling-phpstan.txt`, `ruling-preflight.txt` |
+| Pint / whitespace | Passed | `ruling-pint.txt`, `ruling-preflight.txt`, `git diff --check` |
+| Six Task-6 Vitest files | 87 tests passed | `ruling-web-vitest.txt` |
+| `pnpm typecheck`, `pnpm typecheck:e2e` | Passed | `ruling-web-typecheck.txt`, `ruling-typecheck-e2e.txt`, `ruling-preflight.txt` |
+| `pnpm lint` | Exit 0, including audits and tool/rule liveness tests; existing warnings remain | `ruling-lint-complete.txt` (tool output was truncated), task transcript |
+| Pre-activation Chromium browser | 1 test passed | `ruling-browser-pre.txt` |
+| React Doctor, changes since resume SHA | 100/100, no issues (one changed web test file) | `ruling-react-doctor-scoped.txt` |
+| Shared DTO and permission generation | Regenerated; byte-identical to committed artifacts; two independent map exports identical | `ruling-preflight.txt`, `ruling-artifacts.txt` |
+| Scoped `./scripts/preflight.sh` | **Not green:** stops at parked CI lane coverage guard | `ruling-preflight.txt` |
 
-Final consolidated PostgreSQL run: **56 tests / 224 assertions: 7 errors and 2 failures** (`backend-final-pg.txt`). It includes all implemented Task-1 and Task-2 test files, both architecture/census checks, the migration test, and the existing permission exporter test. It intentionally leaves the real legacy-upgrade failures visible. One failure was an existing exporter expectation that omitted general_manager; it was updated for the new canonical grants, and that file then passed separately (3 tests / 19 assertions, `exporter-final.txt`). The remaining seven errors plus one command failure all originate from the legacy admin collision. Task-1 tests, including the expanded A2 trace/duplicate snapshots, passed in the consolidated run.
+The first lint attempt was terminated (143); the separate retry of the full `pnpm lint` command completed with exit 0. The unpinned React Doctor default compared the branch to `origin/main` and included unrelated historical changes; it is not regression evidence. The pinned resume comparison above is the relevant result.
 
-Other checks:
+Artifact SHA-256:
 
-- Changed backend runtime PHPStan: zero errors (`backend-phpstan-final.json`). Pint and `git diff --check` passed.
-- `pnpm typecheck` and `pnpm typecheck:e2e`: passed.
-- `pnpm lint`: **passed** (including 213 tools tests).
-- React Doctor `--verbose --diff dev`: 88/100, no errors, three high-complexity warnings. Same three component files independently scanned at DISPATCH_SHA/current: 46/100 and 23 issues in both, with the same category counts; no score regression. These isolated-file scores differ from the scoped-project score and must not be conflated. The shared advisory pre-commit hook emitted “React Doctor found staged regressions” while allowing the commit; its detailed output is discarded by that hook. The independent scans above retain the three complexity warnings rather than claiming a warning-free hook gate. No shared hook was edited or bypassed.
-- `php artisan typescript:transform` reproduced the generated DTO declaration unchanged. Two independently generated permission-map files matched each other and the working artifact byte-for-byte.
-- SHA-256 generated DTO: `ba8e862a6398b9ca04f6693090a4d5c91a79fa6eee9304ce5a1138f121e7b874`.
-- SHA-256 permission map: `2017732065366f5b75491dcde572f56cd31be8ad4fb32c4e1c990214e1286dff`.
+- `generated.d.ts`: `ba8e862a6398b9ca04f6693090a4d5c91a79fa6eee9304ce5a1138f121e7b874`.
+- `permissionsMap.generated.ts`: `2017732065366f5b75491dcde572f56cd31be8ad4fb32c4e1c990214e1286dff`.
 
-## Work still owed before acceptance
+## Red-first record and limits
 
-1. Resolve the legacy NULL-team role ownership policy. Complete the upgrade delta and rerun both mandatory marked-tenant flag-off preservation cases. Confirm explicit failure results and cache invalidation behavior after exceptions/reruns.
-2. Prove team discrimination and one marker per team; add real concurrent-first-apply and concurrent-assignment/narrowing tests. Current locking code is not concurrency evidence. The existing team-restoration delta test does not exercise both success and exception paths.
-3. Finish RoleIndexResponseContractTest with an unmarked same-name role in another tenant and actual tenant-isolation assertions. Resolve the false Spatie-global-scope annotations/lookup behavior noted above.
-4. Add the mandatory real registration HTTP request → buffered seeder → stderr marker test. The current buffered Artisan test is **not** a substitute. Add command wrapper `tenants:run` string-one tests, missing-schema and collision command cases, and exact legacy/fresh seeded-role matrix tests.
-5. Complete the writer census beyond the three explicit methods; add role-protection identity/rerun coverage. API fixture tests must not be reported as proof that the blocked delta provisions real legacy tenants.
-6. Complete `e2e/batch-permissions.spec.ts` with the post-activation isolation describe/test, real B2 stock/history, duplicate-create snapshots, viewer/GM assertions, and absent hold/request-recall surfaces. The current file contains only the pre-activation half. Do not run post-activation locally with the flag off. The pre-activation test uses mocked API responses and does not claim live backend enforcement-off read-back.
-7. Reconcile strict red-first compliance with the reviewer. Existing write-route middleware equality is tested; full write behavior regression and fully populated reservation/GL denied-mutation fixtures remain weaker than the requested proof.
-8. Run required targeted checks again after resolving the above, then the orchestrator-owned three-reviewer gate. No reviewer acceptance, full PG lane, full browser lane, staging evidence, or promotion is claimed here.
+| Test / area | First actual captured failure | Green command / evidence |
+| --- | --- | --- |
+| `RoleProvisioningSourceSchemaTest` (initial implementation) | Migration file did not exist | PG consolidated command below; SQLite schema command below |
+| `BatchActionPermissionsTest` / module-boundary test (initial implementation) | Missing middleware/binding; forbidden persistence imports | PG consolidated command below |
+| `BatchReadLocationScopeTest` (initial implementation) | Other-location stock, empty-scope and zero-stock visibility assertions | PG consolidated command below |
+| `BatchTraceReaderContractTest` (initial implementation) | Missing shared-reader binding | PG consolidated command below |
+| `LotActionPermissionDeltaTest::test_real_legacy_catalogue_keeps_null_teams_ids_assignments_and_custom_grants` and both marked-tenant preservation cases | `RoleAlreadyExists: A role admin already exists for guard sanctum` prevented the expected successful delta | `ruling-red-pg.txt` → PG consolidated command below |
+| NULL-GM and mixed-catalogue collision tests | Legacy admin collision occurred before the expected `FAILED` result | `ruling-red-pg.txt` → PG consolidated command below |
+| `test_tenants_run_apply_string_one_selects_apply_mode` | Output lacked `mode=APPLY outcome=APPLIED reason=canonical_delta_applied` | `ruling-command-matrix-red.txt` → PG consolidated command below |
+| `test_tenants_run_verify_string_one_selects_verify_mode` | Legacy admin collision prevented apply/setup and verify assertion | Same command/log pair |
+| CLI NULL-GM / mixed legacy collision tests | Output lacked the exact `unmarked_general_manager_collision` / `ambiguous_legacy_role_collision` marker | Same command/log pair |
+| Web action/role/server-authority tests (initial implementation) | Unexpected edit controls, protected PATCH submission, missing batches ModuleKey, decimal `.toFixed` failure | `web-red.txt` → six-file Vitest command below |
 
-## Resume recipe
+Do not retroactively claim every coverage addition was production-red-first. The original handback already disclosed later-added trace/assignment/route/sidebar coverage. This follow-up's allowed-unmarked schema test, exact legacy hash pin, seeded/marker/writer coverage of already-working behavior, and browser specification are additional evidence, not invented production-red results. The first matrix fixture incorrectly expected legacy cashier to lack batch-view; the actual shipped seeder already grants it, so that fixture was corrected. The first process-race harness needed `pg_stat_clear_snapshot()` to observe both workers at the barrier; that was a test-harness failure. The registration test's first logger mock lacked an initialized LogManager; the corrected proxy observes the real registration path. These are not runtime feature failures.
 
-1. Stay in this worktree and branch. Inspect the three source commit groups below and this handback before changing scope.
-2. Use the dedicated PostgreSQL lane only. The local ignored `docs/sessions/wlota1a/test-env.sh` pins both DB names and keeps the feature-flag environment false. Do not copy it to production or commit it.
-3. Reproduce the blocker with `cd apps/api && ./vendor/bin/phpunit -c phpunit-pgsql.xml tests/Feature/Identity/LotActionPermissionDeltaTest.php tests/Feature/Identity/RolesAndPermissionsSeederMarkedTenantTest.php` after sourcing that environment from the worktree root.
-4. Implement the owner-selected policy with real legacy-seeder fixtures. Never adopt an unmarked existing general_manager and never silently move cross-tenant assignments.
-5. Run §13 by file. For the local browser harness, from `apps/web`: `pnpm exec playwright test --config ../../docs/sessions/wlota1a/playwright.config.ts --project=chromium --grep 'pre-activation web gating'`. This starts the worktree's own Vite instance instead of reusing another task's port 5173 server.
-6. Regenerate both artifacts; require byte identity; retain Push-2/Push-3/Push-5 boundaries in follow-up commits. Stop at review. The orchestrator owns review dispatch, merging, pushing, and all activation/promotion work.
+## Promotion blocker and reviewer caveats
 
-## Source-push ledger
+Preflight's CI lane-manifest guard rejects the test classes introduced by the original dispatch implementation:
 
-Push 1 and Push 4 are operations only; no source files. Every changed source file is listed exactly once below. This handback is a separate review-metadata commit.
+| Parked group | Actual classes | Ceiling |
+| --- | ---: | ---: |
+| BatchExpiry | 21 | 17 |
+| Console | 18 | 16 |
+| Identity | 39 | 32 |
+| Migrations | 15 | 14 |
+| All gated lanes | 1,264 | 1,250 |
 
-| Push group | File | Commit SHA |
+No new test class was added in this ruling follow-up; it extends existing dispatch classes. The manifest, its ceilings, and execution gates are unchanged. The orchestrator must resolve actual CI execution coverage under its promotion policy; this handback does not raise ceilings to conceal the guard failure. Checks after that preflight stop are not claimed to have run through preflight. Required targeted checks were run independently as recorded above.
+
+The orchestrator still owns the three-reviewer acceptance, strict historical TDD evidence disposition, the deferred RoleController ticket, post-activation browser execution and all staging proof. Original Task-1 denied-mutation tests compare reservations/history/GL snapshots but populate stock most strongly; reviewers should retain the previous handback's caveat about the depth of those fixtures. No reviewer ACCEPT or promotion approval is claimed.
+
+## Resume and exact local commands
+
+Stay in this worktree. Source `docs/sessions/wlota1a/test-env.sh` at its root; it is ignored local configuration and must not be committed or copied to staging.
+
+```bash
+cd apps/api
+./vendor/bin/phpunit -c phpunit-pgsql.xml \
+  tests/Feature/BatchExpiry/BatchActionPermissionsTest.php \
+  tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php \
+  tests/Feature/BatchExpiry/BatchExpiringLocationScopeTest.php \
+  tests/Feature/BatchExpiry/BatchTraceReaderContractTest.php \
+  tests/Architecture/BatchTraceabilityModuleBoundaryTest.php \
+  tests/Feature/Identity/LotActionSeededRoleMatrixTest.php \
+  tests/Feature/Identity/RolesAndPermissionsSeederMarkedTenantTest.php \
+  tests/Feature/Identity/LotActionPermissionDeltaTest.php \
+  tests/Feature/Identity/GeneralManagerAssignmentTest.php \
+  tests/Feature/Identity/GeneralManagerRoleProtectionTest.php \
+  tests/Feature/Identity/RoleIndexResponseContractTest.php \
+  tests/Feature/Identity/GeneralManagerAssignmentWriterCensusTest.php \
+  tests/Feature/Console/LotActionReseedMarkerTest.php \
+  tests/Feature/Console/ApplyLotActionPermissionDeltaCommandTest.php \
+  tests/Feature/Migrations/RoleProvisioningSourceSchemaTest.php \
+  tests/Feature/Console/ExportFrontendPermissionsMapCommandTest.php
+./vendor/bin/phpunit -c phpunit.xml tests/Feature/Migrations/RoleProvisioningSourceSchemaTest.php
+
+cd ../web
+pnpm vitest run \
+  src/routes/__tests__/BatchRoutePermissions.test.tsx \
+  src/features/batches/pages/__tests__/BatchPermissions.test.tsx \
+  src/features/batches/pages/__tests__/BatchSeededPermissionMap.test.ts \
+  src/features/settings/RolesPage.test.tsx \
+  src/components/organisms/Sidebar/__tests__/Sidebar.test.tsx \
+  src/hooks/__tests__/usePermissions.moduleAccess.test.tsx
+pnpm typecheck
+pnpm typecheck:e2e
+pnpm lint
+pnpm exec playwright test --config ../../docs/sessions/wlota1a/playwright.config.ts \
+  --project=chromium --grep 'pre-activation web gating'
+```
+
+Preflight was invoked with `PREFLIGHT_SCOPE=paths`, explicit schema/matrix test files (`-c phpunit-pgsql.xml`), the changed PHP runtime/Pint paths, and the same six explicit Vitest files. Keep those scopes; never invoke a full local suite.
+
+For the **orchestrator-only post-activation browser run**, use a disposable activated tenant with BatchExpiry enabled, an unrestricted admin, capacity for company B and three test users, and an exclusive fixture database. Configure the browser base URL for the deployed web. Supply `WLOTA1A_POST_ACTIVATION=1`, `WLOTA1A_API_BASE` ending in `/api/v1`, `WLOTA1A_TENANT_ID`, `WLOTA1A_ADMIN_EMAIL`, `WLOTA1A_ADMIN_PASSWORD`, and `WLOTA1A_TENANT_DATABASE` from the canonical tenant mapping. Standard `PG*` variables/credentials must target that exact tenant database; `psql` must be installed on the runner. The test asserts `current_database()` equality and rejects foreign-tenant user rows.
+
+`WLOTA1A_ON_EVIDENCE` points to an orchestrator-produced normalized copy of the validated §11 ON evidence containing exactly `worker ON`, `api ON`, and `scheduler ON` (one per line). This test consumes that evidence; it neither produces activation proof nor changes configuration. Then run the same spec with `--grep 'post-activation isolation'`. It creates API catalogue/users plus clearly named non-fiscal SQL stock/history fixtures and leaves them in the disposable tenant for evidence review; dispose of that test tenant through the orchestrator's normal cleanup afterward. Never aim it at a real customer tenant. This run is still owed after actual activation.
+
+## Commit groups and source-push ledger
+
+Assemble each group in this order; do not cherry-pick only the follow-up patches onto a tree missing the original implementation:
+
+- Push 2: `aeb594f21bd48b87e12ac02a34608d7b8ffb1020`, then `66c7068ef8bcea1d64b73e484ab5d908fac3230a`.
+- Push 3: `892b30110cf0bb7155da0ca7020abb994cdf8ebd`, then `ed1ef81fe9f23a8ac07d6d4930007a4cebefd48e`.
+- Push 5: `2a6ba01eab17549ff2433d913fb9ee43a4c90e5d`, then `532fe5627558e9d04d7facc4ab8f23b2b556f5d3`.
+
+Pushes 1 and 4 remain operations-only. Every source file appears once below with the latest source commit carrying it; the groups above preserve full provenance. This handback is a separate review-metadata commit, outside those source groups.
+
+| Push group | File | Latest source commit |
 | --- | --- | --- |
 | Push 2 | `apps/api/database/migrations/tenant/2026_09_06_205000_add_provisioning_source_to_roles.php` | `aeb594f21bd48b87e12ac02a34608d7b8ffb1020` |
-| Push 2 | `apps/api/tests/Feature/Migrations/RoleProvisioningSourceSchemaTest.php` | `aeb594f21bd48b87e12ac02a34608d7b8ffb1020` |
+| Push 2 | `apps/api/tests/Feature/Migrations/RoleProvisioningSourceSchemaTest.php` | `66c7068ef8bcea1d64b73e484ab5d908fac3230a` |
 | Push 3 | `apps/api/app/Console/Commands/ApplyLotActionPermissionDelta.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
 | Push 3 | `apps/api/app/Modules/BatchExpiry/Application/Services/LotActionPermissionActivation.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
 | Push 3 | `apps/api/app/Modules/BatchExpiry/BatchExpiryServiceProvider.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
@@ -110,7 +168,7 @@ Push 1 and Push 4 are operations only; no source files. Every changed source fil
 | Push 3 | `apps/api/app/Modules/Identity/Application/DTOs/LotActionPermissionDeltaResult.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
 | Push 3 | `apps/api/app/Modules/Identity/Application/DTOs/RoleData.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
 | Push 3 | `apps/api/app/Modules/Identity/Application/Services/GeneralManagerAssignmentGuard.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
-| Push 3 | `apps/api/app/Modules/Identity/Application/Services/LotActionPermissionDelta.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
+| Push 3 | `apps/api/app/Modules/Identity/Application/Services/LotActionPermissionDelta.php` | `ed1ef81fe9f23a8ac07d6d4930007a4cebefd48e` |
 | Push 3 | `apps/api/app/Modules/Identity/Domain/Enums/LotActionPermissionDeltaOutcome.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
 | Push 3 | `apps/api/app/Modules/Identity/Domain/Enums/RoleProvisioningSource.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
 | Push 3 | `apps/api/app/Modules/Identity/Domain/Enums/SystemRoleName.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
@@ -130,18 +188,19 @@ Push 1 and Push 4 are operations only; no source files. Every changed source fil
 | Push 3 | `apps/api/tests/Feature/BatchExpiry/BatchExpiringLocationScopeTest.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
 | Push 3 | `apps/api/tests/Feature/BatchExpiry/BatchReadLocationScopeTest.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
 | Push 3 | `apps/api/tests/Feature/BatchExpiry/BatchTraceReaderContractTest.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
-| Push 3 | `apps/api/tests/Feature/Console/ApplyLotActionPermissionDeltaCommandTest.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
+| Push 3 | `apps/api/tests/Feature/Console/ApplyLotActionPermissionDeltaCommandTest.php` | `ed1ef81fe9f23a8ac07d6d4930007a4cebefd48e` |
 | Push 3 | `apps/api/tests/Feature/Console/ExportFrontendPermissionsMapCommandTest.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
-| Push 3 | `apps/api/tests/Feature/Console/LotActionReseedMarkerTest.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
-| Push 3 | `apps/api/tests/Feature/Identity/GeneralManagerAssignmentTest.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
-| Push 3 | `apps/api/tests/Feature/Identity/GeneralManagerAssignmentWriterCensusTest.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
-| Push 3 | `apps/api/tests/Feature/Identity/GeneralManagerRoleProtectionTest.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
-| Push 3 | `apps/api/tests/Feature/Identity/LotActionPermissionDeltaTest.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
-| Push 3 | `apps/api/tests/Feature/Identity/LotActionSeededRoleMatrixTest.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
-| Push 3 | `apps/api/tests/Feature/Identity/RoleIndexResponseContractTest.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
+| Push 3 | `apps/api/tests/Feature/Console/LotActionReseedMarkerTest.php` | `ed1ef81fe9f23a8ac07d6d4930007a4cebefd48e` |
+| Push 3 | `apps/api/tests/Feature/Identity/GeneralManagerAssignmentTest.php` | `ed1ef81fe9f23a8ac07d6d4930007a4cebefd48e` |
+| Push 3 | `apps/api/tests/Feature/Identity/GeneralManagerAssignmentWriterCensusTest.php` | `ed1ef81fe9f23a8ac07d6d4930007a4cebefd48e` |
+| Push 3 | `apps/api/tests/Feature/Identity/GeneralManagerRoleProtectionTest.php` | `ed1ef81fe9f23a8ac07d6d4930007a4cebefd48e` |
+| Push 3 | `apps/api/tests/Feature/Identity/LotActionPermissionDeltaTest.php` | `ed1ef81fe9f23a8ac07d6d4930007a4cebefd48e` |
+| Push 3 | `apps/api/tests/Feature/Identity/LotActionSeededRoleMatrixTest.php` | `ed1ef81fe9f23a8ac07d6d4930007a4cebefd48e` |
+| Push 3 | `apps/api/tests/Feature/Identity/RoleIndexResponseContractTest.php` | `ed1ef81fe9f23a8ac07d6d4930007a4cebefd48e` |
 | Push 3 | `apps/api/tests/Feature/Identity/RolesAndPermissionsSeederMarkedTenantTest.php` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
 | Push 3 | `docs/glossary.md` | `892b30110cf0bb7155da0ca7020abb994cdf8ebd` |
-| Push 5 | `apps/web/e2e/batch-permissions.spec.ts` | `2a6ba01eab17549ff2433d913fb9ee43a4c90e5d` |
+| Push 3 | `docs/superpowers/tickets/2026-09-09-role-controller-team-scope-annotations.md` | `ed1ef81fe9f23a8ac07d6d4930007a4cebefd48e` |
+| Push 5 | `apps/web/e2e/batch-permissions.spec.ts` | `532fe5627558e9d04d7facc4ab8f23b2b556f5d3` |
 | Push 5 | `apps/web/src/components/organisms/Sidebar/Sidebar.tsx` | `2a6ba01eab17549ff2433d913fb9ee43a4c90e5d` |
 | Push 5 | `apps/web/src/components/organisms/Sidebar/__tests__/Sidebar.test.tsx` | `2a6ba01eab17549ff2433d913fb9ee43a4c90e5d` |
 | Push 5 | `apps/web/src/features/batches/pages/BatchDetailPage.tsx` | `2a6ba01eab17549ff2433d913fb9ee43a4c90e5d` |
