@@ -1,6 +1,6 @@
 # Promotion checklist — T-2 / T-3 transfer receipt + blind receiving (lane t2t3-transfer-receipt-blind-receiving)
 
-Plan: docs/superpowers/plans/2026-09-09-T2T3-transfer-receipt-blind-receiving-plan-rev-9.md
+Plan: docs/superpowers/plans/2026-09-09-T2T3-transfer-receipt-blind-receiving-plan-rev-10.md
 Spec: docs/superpowers/specs/2026-09-09-transfer-destination-receipt-and-blind-receiving-design-rev-11.md (§11 rollout)
 Applies to: source Push 1 (S1). Pushes 2-4 add no permission and no backfill.
 Promoting to origin/dev = staging auto-deploy including `tenants:migrate` (memory
@@ -12,6 +12,9 @@ feedback_push_dev_autodeploys_migrations). Every step below runs AFTER that depl
 - G-2: Before launch, verify that both `inventory` and `inventory_shrinkage_expense` account purposes resolve for every launch company. Destructive receipt/close actions refuse with `GL_ACCOUNTS_UNMAPPED` before any stock or GL write otherwise.
 - G-4: Lost-in-transit close write-offs are landed and scrapped at the destination; movement feeds and per-location shrinkage therefore attribute the loss to the destination.
 - G-7: Freight capitalization raises inventory-subledger WAC without a matching GL debit, while damage/write-off credits GL Inventory. The resulting GL-versus-subledger freight divergence remains owned by `docs/superpowers/tickets/2026-09-09-t1-freight-capitalization-no-gl.md`.
+
+- I-11/F-4: Until S4, a short shipment is closed via `POST /close` (`disposition=write_off|return_to_source`); the web Complete on a `partially_received` transfer books the entire outstanding remainder as received-good. Its confirmation states short-line and total-line counts.
+- F-3 / R5: S4 must mask sent/remaining behind `canSeeExpected`/`blind` on `StockTransferDetailPage` before any terminal affordance on a partial. `StockTransferData` needs a receiver-shape discriminant in S2.
 
 ## 1. Tenant permission seeding  (spec §11.4 item 1)
 - [ ] `php artisan tenants:seed --force --class='Database\Seeders\RolesAndPermissionsSeeder'`

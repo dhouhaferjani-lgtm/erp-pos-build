@@ -31,6 +31,22 @@ final class StockTransferCloseTest extends TransferReceiptFeatureTestCase
         self::assertSame('140.0000', bcadd($allocated, $this->transfer->freight_uncapitalized, 4));
     }
 
+    public function test_complete_after_partial_receipt_books_the_entire_remainder_and_capitalizes_all_freight(): void
+    {
+        $this->transfer = $this->initiate('12.0000', '140.0000');
+        $this->receive('5.0000')->assertCreated();
+        $this->postJson('/api/v1/stock-transfers/'.$this->transfer->id.'/complete')->assertOk();
+        $this->transfer->refresh()->load('lines');
+        self::assertSame('12.0000', $this->destinationQuantity());
+        self::assertSame('completed', $this->transfer->status->value);
+        self::assertSame('0.0000', $this->transfer->freight_uncapitalized);
+        $allocated = '0.0000';
+        foreach ($this->transfer->lines as $line) {
+            $allocated = bcadd($allocated, $line->allocated_transfer_cost, 4);
+        }
+        self::assertSame($this->transfer->transfer_cost, bcadd($allocated, $this->transfer->freight_uncapitalized, 4));
+    }
+
     public function test_close_write_off_posts_one_shrinkage_leg_and_persists_the_freight_residual(): void
     {
         $this->transfer = $this->initiate('10.0000', '140.0000');

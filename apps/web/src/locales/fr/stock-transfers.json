@@ -148,7 +148,8 @@
     },
     "confirmComplete": {
       "title": "Confirmer la réception ?",
-      "description": "Le stock de destination sera incrémenté et le coût moyen pondéré recalculé si des frais additionnels existent."
+      "description": "{{shortLines}} lignes sur {{totalLines}} ne sont pas entièrement arrivées. Confirmer comptabilise la totalité du reliquat comme reçu à destination ; utilisez Clôturer pour perte ou retour.",
+      "inTransitDescription": "Le stock de destination sera incrémenté et le coût moyen pondéré recalculé si des frais additionnels existent."
     },
     "confirmCancel": {
       "title": "Annuler ce transfert ?",

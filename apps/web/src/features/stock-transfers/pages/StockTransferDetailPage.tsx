@@ -274,7 +274,12 @@ export function StockTransferDetailPage() {
       <ConfirmDialog
         isOpen={confirmComplete}
         title={t('detail.confirmComplete.title')}
-        message={t('detail.confirmComplete.description')}
+        message={transfer.status === 'partially_received'
+          ? t('detail.confirmComplete.description', {
+            shortLines: (transfer.lines ?? []).filter(line => line.quantity_remaining !== '0.0000').length,
+            totalLines: (transfer.lines ?? []).length,
+          })
+          : t('detail.confirmComplete.inTransitDescription')}
         onConfirm={handleComplete}
         onClose={() => {
           setConfirmComplete(false)
