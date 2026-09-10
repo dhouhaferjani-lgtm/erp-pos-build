@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { screen } from '@testing-library/react'
 import { renderWithProviders } from '@/test/renderWithProviders'
-import { StockTransferStatusBadge } from './StockTransferStatusBadge'
+import { StockTransferStatusBadge } from '../components/StockTransferStatusBadge'
 import type { StockTransferStatus } from '../types'
 
 const statuses: [StockTransferStatus, string][] = [

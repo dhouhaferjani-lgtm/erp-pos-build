@@ -362,6 +362,7 @@ class StockTransferService
             }
 
             $transfer->status = TransferStatus::Cancelled;
+            // canBeCancelled() excludes partial/terminal receipts, so no freight has been allocated.
             $transfer->freight_uncapitalized = $transfer->transfer_cost;
             $transfer->cancelled_by_user_id = $userId;
             $transfer->cancelled_at = now();

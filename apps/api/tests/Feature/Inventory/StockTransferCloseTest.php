@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Inventory;
 
 require_once __DIR__.'/StockTransferReceiveTest.php';
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
@@ -16,6 +18,7 @@ use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
+use Illuminate\Support\Facades\DB;
 
 final class StockTransferCloseTest extends TransferReceiptFeatureTestCase
 {
@@ -45,6 +48,31 @@ final class StockTransferCloseTest extends TransferReceiptFeatureTestCase
             $allocated = bcadd($allocated, $line->allocated_transfer_cost, 4);
         }
         self::assertSame($this->transfer->transfer_cost, bcadd($allocated, $this->transfer->freight_uncapitalized, 4));
+    }
+
+    public function test_partial_receipt_cannot_be_cancelled(): void
+    {
+        $this->receive('5.0000')->assertCreated();
+        $this->postJson('/api/v1/stock-transfers/'.$this->transfer->id.'/cancel')->assertUnprocessable();
+        self::assertSame('partially_received', $this->transfer->refresh()->status->value);
+        self::assertSame('5.0000', $this->destinationQuantity());
+    }
+
+    public function test_close_write_off_refuses_unmapped_shrinkage_accounts_without_writes(): void
+    {
+        Account::query()->where('company_id', $this->company->id)
+            ->where('system_purpose', SystemAccountPurpose::InventoryShrinkageExpense)->update(['system_purpose' => null]);
+        $snapshot = static function (): array {
+            $rows = [];
+            foreach (['stock_levels', 'stock_movements', 'stock_transfers', 'stock_transfer_lines', 'stock_transfer_receipts', 'journal_entries', 'journal_lines'] as $table) {
+                $rows[$table] = DB::table($table)->orderBy('id')->get()->toJson();
+            }
+
+            return $rows;
+        };
+        $before = $snapshot();
+        $this->close('write_off')->assertUnprocessable()->assertJsonPath('error.code', 'GL_ACCOUNTS_UNMAPPED');
+        self::assertSame($before, $snapshot());
     }
 
     public function test_close_write_off_posts_one_shrinkage_leg_and_persists_the_freight_residual(): void

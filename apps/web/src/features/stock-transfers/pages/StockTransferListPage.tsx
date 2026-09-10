@@ -12,15 +12,19 @@ import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { Select } from '@/components/atoms'
 
+const STATUS_FILTERS = {
+  draft: true,
+  in_transit: true,
+  partially_received: true,
+  completed: true,
+  closed_with_writeoff: true,
+  closed_returned: true,
+  cancelled: true,
+} as const satisfies Record<StockTransferStatus, true>
+
 const STATUS_OPTIONS: readonly (StockTransferStatus | 'all')[] = [
   'all',
-  'draft',
-  'in_transit',
-  'partially_received',
-  'closed_with_writeoff',
-  'closed_returned',
-  'completed',
-  'cancelled',
+  ...Object.keys(STATUS_FILTERS).filter((status): status is StockTransferStatus => status in STATUS_FILTERS),
 ]
 
 function isStockTransferStatusOrAll(value: string): value is StockTransferStatus | 'all' {

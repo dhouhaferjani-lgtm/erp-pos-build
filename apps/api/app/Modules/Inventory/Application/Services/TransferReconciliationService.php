@@ -40,7 +40,6 @@ SQL;
         $transfer->loadMissing('sourceLocation', 'destinationLocation', 'lines.product.unitOfMeasure', 'lines.batchAllocations.batch', 'receipts.receivedBy', 'receipts.lines');
         $lines = [];
         $withDiscrepancy = 0;
-        $totals = ['sent' => '0', 'received' => '0', 'damaged' => '0', 'written_off' => '0', 'returned' => '0', 'remaining' => '0'];
         foreach ($transfer->lines as $line) {
             $decimals = QuantityScale::decimalPlacesForUnit($line->product->unitOfMeasure?->decimal_places);
             $format = static function (string $q) use ($decimals): string {
@@ -50,13 +49,9 @@ SQL;
 
                 return QuantityScale::formatForUnit($q, $decimals);
             };
-            $quantities = ['sent' => $line->quantity, 'received' => $line->quantity_received, 'damaged' => $line->quantity_damaged, 'written_off' => $line->quantity_written_off, 'returned' => $line->quantity_returned, 'remaining' => $line->remainingQuantity()];
             $loss = bcadd(bcadd($line->quantity_damaged, $line->quantity_written_off, QuantityScale::SCALE), $line->quantity_returned, QuantityScale::SCALE);
             if (bccomp($loss, '0', QuantityScale::SCALE) > 0) {
                 $withDiscrepancy++;
-            }
-            foreach ($quantities as $name => $quantity) {
-                $totals[$name] = bcadd($totals[$name], $quantity, QuantityScale::SCALE);
             }
             $reasons = [];
             $lots = [];
@@ -95,7 +90,7 @@ SQL;
             initiated_at: $transfer->initiated_at?->toIso8601String() ?? '', closed_at: $transfer->closed_at?->toIso8601String(),
             close_disposition: $transfer->close_disposition, close_reason: $transfer->close_reason, close_note: $transfer->close_note,
             lines: $lines, receipts: $receipts,
-            summary: new TransferReconciliationSummaryData(count($lines), $withDiscrepancy, $totals['sent'], $totals['received'], $totals['damaged'], $totals['written_off'], $totals['returned'], $totals['remaining'], $transfer->freight_uncapitalized),
+            summary: new TransferReconciliationSummaryData(count($lines), $withDiscrepancy, $transfer->freight_uncapitalized),
         );
     }
 }

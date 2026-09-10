@@ -6,6 +6,7 @@ namespace App\Modules\Inventory\Application\DTOs;
 
 use App\Modules\Inventory\Domain\StockTransferLine;
 use App\Modules\Inventory\Domain\StockTransferLineBatchAllocation;
+use App\Shared\Domain\QuantityScale;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -64,7 +65,7 @@ final class StockTransferLineData extends Data
             variant_sku: $line->variant->sku ?? null,
             variant_name: $line->variant->name_suffix ?? null,
             quantity: (string) $line->quantity,
-            quantity_decimals: $product?->unitOfMeasure->decimal_places ?? 4,
+            quantity_decimals: QuantityScale::decimalPlacesForUnit($product?->unitOfMeasure?->decimal_places),
             unit_cost_snapshot: $line->unit_cost_snapshot === null ? null : (string) $line->unit_cost_snapshot,
             allocated_transfer_cost: (string) $line->allocated_transfer_cost,
             quantity_received: (string) $line->quantity_received,

@@ -82,12 +82,14 @@ describe('StockTransferDetailPage', () => {
   })
 
   it('explains that partial completion receives the entire outstanding remainder', () => {
+    const line = transfer.lines?.[0]
+    if (!line) throw new Error('Transfer fixture requires a line')
     state.transfer = {
       ...structuredClone(transfer),
       status: 'partially_received',
       lines: [
-        { ...transfer.lines![0]!, quantity_received: '2.0000', quantity_remaining: '3.0000' },
-        { ...transfer.lines![0]!, id: 'line-2' },
+        { ...line, quantity_received: '2.0000', quantity_remaining: '3.0000' },
+        { ...line, id: 'line-2' },
       ],
     }
     renderWithProviders(<StockTransferDetailPage />, { route: '/inventory/stock-transfers/transfer-1' })

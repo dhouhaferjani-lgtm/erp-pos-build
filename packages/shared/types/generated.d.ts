@@ -1411,12 +1411,6 @@ has_discrepancy: boolean;
 export type TransferReconciliationSummaryData = {
 lines: number;
 lines_with_discrepancy: number;
-total_sent: string;
-total_received: string;
-total_damaged: string;
-total_written_off: string;
-total_returned: string;
-total_remaining: string;
 freight_uncapitalized: string;
 };
 }

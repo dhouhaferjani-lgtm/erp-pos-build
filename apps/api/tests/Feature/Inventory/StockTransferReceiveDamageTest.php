@@ -58,6 +58,7 @@ final class StockTransferReceiveDamageTest extends TransferReceiptFeatureTestCas
         $this->postJson('/api/v1/stock-transfers/'.$this->transfer->id.'/receive', $body)->assertCreated();
         self::assertSame($cost, $this->product->refresh()->cost_price);
         self::assertSame('3.0000', BatchStock::query()->where('batch_id', $batch->id)->where('location_id', $this->destination->id)->sole()->quantity);
+        self::assertSame('3.0000', $this->destinationQuantity());
     }
 
     public function test_declared_reason_never_changes_the_movement_reason(): void

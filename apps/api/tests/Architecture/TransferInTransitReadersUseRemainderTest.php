@@ -14,7 +14,7 @@ final class TransferInTransitReadersUseRemainderTest extends TestCase
     {
         foreach (['LocationStockQueryService' => 2, 'StockMatrixQueryService' => 1, 'WeightedAverageCostService' => 1] as $name => $sites) {
             $source = file_get_contents(__DIR__.'/../../app/Modules/Inventory/Application/Services/'.$name.'.php');
-            self::assertTrue($this->usesRemainder($source, $sites), $name.' must use carrying statuses and remainder quantities.');
+            self::assertTrue($this->usesRemainder($source, $sites), $name.' must use CARRYING_STATUSES + REMAINDER_SQL at exactly '.$sites.' site(s); update this count when you add one.');
         }
     }
 
