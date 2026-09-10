@@ -1,0 +1,27 @@
+# RESUME — orchestrator session handover (2026-09-10, ~16:00 Africa/Tunis)
+
+Orchestrator session: Claude Fable 5.1 (`session_01AcU81as26G2apodoimmyq7`, started 12:04 from `RESUME-orchestrator-2026-09-10.md`; previous session erp-9f confirmed handover and is idle). RBAC session in `.worktrees/rbac-audit` is untouched. Standing rules unchanged (reviewers ONE AT A TIME; Codex `-o` outputs die on reboot; implementers never edit plans/reviews).
+
+## Local `dev` (main checkout)
+- ~123 commits ahead of `origin/dev`, UNPUSHED (T-1 code + all gate registers/plans/prompts of the day). Push = staging auto-deploy; promote only as a verified fast-forward when the owner says so. Untracked preserved: `apps/api/docs/sessions/2026-08-04-cross-tenant-scheduled-jobs-plan.md`, `docs/handoff/HANDBACK-enforcement-p1-2026-08-19.md`.
+- Parent repo `/Users/houssamr/Projects/syneriva`: `docs/03-ERP-INTEGRATION/REALIGNMENT-LOG.md` carries the A-1a rule-9 entry (batch string totals; expiry narrowing; `batch_stock: []` on create) UNCOMMITTED beside an unrelated `claude/glossary.md` edit — commit the log path-scoped at the lane A merge.
+- **Merge-order note:** `lane/w-lot-a-1a` and `lane/t2-receipt-spine` both edit the `backend-test-pgsql --filter` alternation at `.github/workflows/ci.yml:~1145`; the second merge needs a manual union of the two class lists (both comment blocks ABOVE `php artisan test`).
+
+## Lane A — W-LOT-A-1a (`.worktrees/w-lot-a-1a`, `lane/w-lot-a-1a`, PG `autoerp_test_w` @ 5433)
+- HEAD `5d847b2ba` = fix round 2 complete (all three r2 blockers fixed) but `blocking_decision` on a PRE-EXISTING per-lot transfer 500 (`BatchStockService::transferBatchStock` omits `movement_id`; ticket `docs/superpowers/tickets/2026-09-10-batch-transfer-missing-movement-reference.md`). Orchestrator ruling: OUT OF SCOPE, known-red precedent (`WLOTA1A_RUN_KNOWN_REDS=1` skip + pin test) — **round 2b prompt `docs/handoff/CODEX-PROMPT-WLOTA-1a-fix-round-2b-2026-09-10.md` NOT YET PASTED by the owner** (overturnable, see OWNER-QUESTIONS 2026-09-10).
+- Authority plan rev 11 `docs/superpowers/plans/2026-09-06-WLOTA-1a-permissions-roles-web-rev-11.md` (§00 gate r2 rulings: membership-derived response scope before the write; B-2(r2) membership requirement gated behind activation; §10 ledger split — `types.ts` + `BatchListPage.tsx` + its Vitest move to Push 3; list precision fixed now).
+- Registers: r2 `docs/superpowers/reviews/2026-09-10-w-lot-a-1a-impl-gate-r2-{tenancy,inventory,frontend}.md` (r1 frontend B-1/B-7 RETRACTED).
+- **On round 2b `status: review`:** gate r3 = tenancy-authz (PG runner) → inventory-costing (SQLite) → frontend-conventions, one at a time; verify B-1(r2) hoist (pre-write 403 + snapshot; unrestricted totals company-wide; one write-off = one movement), B-2(r2) gate, Push-3 ledger incl. the web string-tolerance slice, M-1(r2) list precision via `getQuantityDecimals`, the known-red skip + pin. Then merge into LOCAL dev from the main checkout (absolute `cd`), commit the parent REALIGNMENT-LOG path-scoped, then §11 five-push protocol WITH the owner (Push 3 now includes the web string-tolerance slice; Push 4 before Push 5).
+
+## Lane B — T-2 S1 receipt spine (`.worktrees/t2-receipt-spine`, `lane/t2-receipt-spine`, PG `autoerp_test_u` on the NATIVE PostgreSQL **15.15** @ **5432**, not 5433)
+- HEAD `d7123fa30` = fix round 1 complete. Gate r2: tenancy CHANGES-REQUIRED 1B/2M/5m (T-9(r2) i18n ratchet red from the option-(a) `i18n.ts` spread), stock-gl **ACCEPT** 0B/0M/4m, inventory 0B/1M/3m (I-11(r2) web Complete on a partial books the whole remainder), frontend 0B/3M/9m (F-1 hand-rolled types shadow the generated DTOs; F-2 Badge span; F-3 R5 masking on the detail page). Registers `docs/superpowers/reviews/2026-09-10-t2-s1-impl-gate-r2-{tenancy,stock-gl,inventory,frontend}.md`.
+- Authority plan rev 10 `docs/superpowers/plans/2026-09-09-T2T3-transfer-receipt-blind-receiving-plan-rev-10.md` (§0AB rulings; rev 9's self-pointing Supersedes line corrected). **Fix round 2 prompt `docs/handoff/CODEX-PROMPT-T2T3-S1-fix-round-2-2026-09-10.md` NOT YET PASTED by the owner.**
+- **On round 2 `status: review`:** gate r3 with all four reviewers one at a time (tenancy first: i18n auditor exit 0 with the owner-pinned blob `fd6dbe39…`, preflight exit 0, `lint:ratchet`; frontend: aliases in, Badge atom back, line-count copy; inventory: I-11 test; stock-gl: G-9..G-11). Then merge, then S2 packet (`autoerp_test_v`, plan §17.2) — S2 must carry the R5 masking obligation for `StockTransferDetailPage` and a receiver-shape discriminant on `StockTransferData`; S4 packet gets the per-line received/remaining-before-terminal-affordance rule.
+
+## Lane C — IMP-1 (owner has the packet `docs/handoff/CODEX-DISPATCH-IMP-1-imports-history-and-error-export-2026-09-10.md`; owner rulings recorded in it; worktree `.worktrees/imp1-history-export` NOT created yet). On `status: review`: imports-reviewer → frontend-conventions-reviewer, merge.
+
+## Owner-open
+- Paste the two prompts above (A round 2b; S1 fix round 2); paste IMP-1 when a lane slot frees (cap 3).
+- Overturnable rulings: A-1a B-2(r2) gating; A-1a transfer-500 out-of-scope; S1 M-2 option (a) (fallback (d)).
+- Reboot (swap 13/14 GB) — safe now: no reviewer or test process is running; Codex Desktop threads persist; this session resumes from this brief + `MEMORY.md`.
+- Promote local dev to origin/dev when ready (code included; staging deploy).
