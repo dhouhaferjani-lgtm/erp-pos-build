@@ -79,7 +79,7 @@ test.describe('W-LOT-A-1a pre-activation web gating', () => {
 // activated tenant and its canonical database mapping. PG* variables point to
 // that tenant database; this test neither derives a database name nor flips a flag.
 test.describe('W-LOT-A-1a post-activation isolation', () => {
-  test.skip(!process.env.WLOTA1A_POST_ACTIVATION, 'Requires the orchestrator post-activation gate and disposable tenant.')
+  test.skip(process.env.WLOTA1A_POST_ACTIVATION !== '1', 'Requires the orchestrator post-activation gate and disposable tenant.')
   test('isolates selected B2 stock and history and preserves duplicate-create state', async ({ page, request }) => {
     test.setTimeout(180_000)
     const required = (name: string): string => {

@@ -10,6 +10,7 @@ use App\Modules\Identity\Application\Services\LotActionPermissionDelta;
 use App\Modules\Identity\Domain\Enums\LotActionPermissionDeltaOutcome;
 use App\Modules\Identity\Domain\Enums\RoleProvisioningSource;
 use App\Modules\Identity\Domain\Enums\SystemRoleName;
+use Illuminate\Console\Command;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -79,7 +80,10 @@ class RolesAndPermissionsSeeder extends Seeder
     private function emitWlota1aReseedMarker(string $tenantId, string $mode, LotActionPermissionDeltaResult $result): void
     {
         $marker = "WLOTA1A-RESEED tenant={$tenantId} mode={$mode} outcome={$result->outcome->value} reason={$result->reason}";
-        $this->command->info($marker);
+        // Laravel's Seeder PHPDoc says Command, but direct invocations leave it null.
+        /** @var Command|null $command */
+        $command = $this->command;
+        $command?->info($marker);
         Log::channel('stderr')->info($marker);
     }
 

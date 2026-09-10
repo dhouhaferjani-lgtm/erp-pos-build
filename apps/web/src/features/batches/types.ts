@@ -15,7 +15,7 @@ export interface Batch {
   id: number
   uuid: string
   product_id: string
-  product_variant_id: string | null
+  variant_id: string | null
   batch_number: string
   manufacturing_date: string | null
   /**
@@ -48,10 +48,10 @@ export interface Batch {
     quantity_decimals: number
   }
   batch_stock?: Array<{
-    location_id: string | number
-    quantity: string | number
-    reserved_quantity: string | number
-    available_quantity: string | number
+    location_id: string
+    quantity: string
+    reserved_quantity: string
+    available_quantity: string
   }>
 }
 
@@ -272,8 +272,8 @@ export interface ExpiryStatusConfig {
  * serialises as a JSON string.
  */
 export interface ExpiredBatchStock {
-  /** Bigint PK from the locations table */
-  location_id: number
+  /** Location UUID from the locations table */
+  location_id: string
   /** On-hand quantity (decimal:4 DB cast → string) */
   quantity: string
   /** Reserved quantity (decimal:4 DB cast → string) */

@@ -101,7 +101,7 @@ function makeBatch(overrides: Partial<ExpiredBatch>): ExpiredBatch {
     updated_at: null,
     product: { id: 'p-1', name: 'Aspirin', sku: 'ASP-1' },
     batch_stock: [
-      { location_id: 10, quantity: '5.0000', reserved_quantity: '0.0000', available_quantity: '5.0000' },
+      { location_id: '00000000-0000-4000-8000-000000000010', quantity: '5.0000', reserved_quantity: '0.0000', available_quantity: '5.0000' },
     ],
     ...overrides,
   }
@@ -116,7 +116,7 @@ const batchB = makeBatch({
   available_quantity: '12.0000',
   total_quantity: '12.0000',
   batch_stock: [
-    { location_id: 10, quantity: '12.0000', reserved_quantity: '0.0000', available_quantity: '12.0000' },
+    { location_id: '00000000-0000-4000-8000-000000000010', quantity: '12.0000', reserved_quantity: '0.0000', available_quantity: '12.0000' },
   ],
 })
 
@@ -160,7 +160,7 @@ describe('ExpiryWriteOffPage (B4b)', () => {
   it('renders four-decimal string totals and uses them for the selected quantity', async () => {
     const original = mockQueryReturn.data
     mockQueryReturn.data = [makeBatch({ total_quantity: '3.1234', available_quantity: '3.1234',
-      batch_stock: [{ location_id: 10, quantity: '3.1234', reserved_quantity: '0.0000', available_quantity: '3.1234' }] })]
+      batch_stock: [{ location_id: '00000000-0000-4000-8000-000000000010', quantity: '3.1234', reserved_quantity: '0.0000', available_quantity: '3.1234' }] })]
     try {
       const { user } = setup()
       expect(screen.getAllByText('3.1234')).toHaveLength(2)

@@ -57,13 +57,12 @@ class BatchResource extends JsonResource
                         : 4,
                 ];
             }),
-            'batch_stock' => $this->whenLoaded('batchStock', fn () => $this->batchStock->map(fn ($stock) => [
+            'batch_stock' => $this->batchStock->map(fn ($stock) => [
                 'location_id' => $stock->location_id,
                 'quantity' => $stock->quantity,
                 'reserved_quantity' => $stock->reserved_quantity,
                 'available_quantity' => bcsub($stock->quantity, $stock->reserved_quantity, QuantityScale::SCALE),
-            ])
-            ),
+            ]),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

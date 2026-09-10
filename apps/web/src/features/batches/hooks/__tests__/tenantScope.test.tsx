@@ -115,7 +115,7 @@ function batchFixture(uuid: string): Batch {
     id: 1,
     uuid,
     product_id: 'product-1',
-    product_variant_id: null,
+    variant_id: null,
     batch_number: 'BATCH-1',
     manufacturing_date: null,
     expiry_date: '2027-05-11',
@@ -140,9 +140,9 @@ function batchFixture(uuid: string): Batch {
     },
     batch_stock: [
       {
-        location_id: 1,
-        quantity: 10,
-        reserved_quantity: 0,
+        location_id: '00000000-0000-4000-8000-000000000001',
+        quantity: '10.0000',
+        reserved_quantity: '0.0000',
         available_quantity: '10.0000',
       },
     ],

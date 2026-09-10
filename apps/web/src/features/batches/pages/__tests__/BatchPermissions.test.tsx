@@ -7,7 +7,7 @@ import { BatchDetailPage } from '../BatchDetailPage'
 
 const state = vi.hoisted(() => ({
   permissions: [] as string[], populated: true,
-  batch: { product: { id: 'product-a', name: 'Product A', sku: 'SKU-A', quantity_decimals: 4 }, id: 1, product_id: 'product-a', product_variant_id: null, manufacturing_date: null,
+  batch: { product: { id: 'product-a', name: 'Product A', sku: 'SKU-A', quantity_decimals: 4 }, id: 1, product_id: 'product-a', variant_id: null, manufacturing_date: null,
     recall_reason: null, recalled_at: null, notes: null, can_be_sold: true,
     created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z', total_quantity: '3.1234', uuid: 'lot-a', batch_number: 'LOT-A', is_active: true as boolean, is_recalled: false, is_expired: false,
     expiry_status: 'OK', expiry_date: null, days_until_expiry: null, available_quantity: '3.1234' } satisfies Batch,
