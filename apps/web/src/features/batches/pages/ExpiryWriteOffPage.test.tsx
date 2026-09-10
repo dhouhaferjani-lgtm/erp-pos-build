@@ -95,28 +95,28 @@ function makeBatch(overrides: Partial<ExpiredBatch>): ExpiredBatch {
     notes: null,
     expiry_status: 'EXPIRED',
     can_be_sold: false,
-    total_quantity: 5,
-    available_quantity: 5,
+    total_quantity: '5.0000',
+    available_quantity: '5.0000',
     created_at: null,
     updated_at: null,
     product: { id: 'p-1', name: 'Aspirin', sku: 'ASP-1' },
     batch_stock: [
-      { location_id: 10, quantity: '5.0000', reserved_quantity: '0.0000', available_quantity: 5 },
+      { location_id: 10, quantity: '5.0000', reserved_quantity: '0.0000', available_quantity: '5.0000' },
     ],
     ...overrides,
   }
 }
 
-const batchA = makeBatch({ uuid: 'batch-uuid-1', available_quantity: 5, total_quantity: 5 })
+const batchA = makeBatch({ uuid: 'batch-uuid-1', available_quantity: '5.0000', total_quantity: '5.0000' })
 const batchB = makeBatch({
   id: 2,
   uuid: 'batch-uuid-2',
   batch_number: 'LOT-002',
   product: { id: 'p-2', name: 'Ibuprofen', sku: 'IBU-1' },
-  available_quantity: 12,
-  total_quantity: 12,
+  available_quantity: '12.0000',
+  total_quantity: '12.0000',
   batch_stock: [
-    { location_id: 10, quantity: '12.0000', reserved_quantity: '0.0000', available_quantity: 12 },
+    { location_id: 10, quantity: '12.0000', reserved_quantity: '0.0000', available_quantity: '12.0000' },
   ],
 })
 
@@ -155,6 +155,24 @@ describe('ExpiryWriteOffPage (B4b)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockHasPermission.mockImplementation((p: string) => p === 'batches.write-off')
+  })
+
+  it('renders four-decimal string totals and uses them for the selected quantity', async () => {
+    const original = mockQueryReturn.data
+    mockQueryReturn.data = [makeBatch({ total_quantity: '3.1234', available_quantity: '3.1234',
+      batch_stock: [{ location_id: 10, quantity: '3.1234', reserved_quantity: '0.0000', available_quantity: '3.1234' }] })]
+    try {
+      const { user } = setup()
+      expect(screen.getAllByText('3.1234')).toHaveLength(2)
+      await user.click(screen.getAllByRole('checkbox')[1])
+      await user.click(screen.getByRole('button', { name: 'expiryWriteOff.actions.writeOffSelected' }))
+      await user.click(screen.getByTestId('confirm-dialog-confirm'))
+      expect(mockMutate).toHaveBeenCalledWith(expect.objectContaining({
+        lines: [{ batch_id: 'batch-uuid-1', quantity: '3.1234' }],
+      }))
+    } finally {
+      mockQueryReturn.data = original
+    }
   })
 
   it('calls groupedWriteOff with the correct payload after selecting a lot and confirming', async () => {

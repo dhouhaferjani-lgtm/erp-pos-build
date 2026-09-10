@@ -128,8 +128,8 @@ function batchFixture(uuid: string): Batch {
     notes: null,
     can_be_sold: true,
     days_until_expiry: 365,
-    total_quantity: 10,
-    available_quantity: 10,
+    total_quantity: '10.0000',
+    available_quantity: '10.0000',
     created_at: '2026-05-11T09:00:00Z',
     updated_at: '2026-05-11T09:00:00Z',
     product: {
@@ -142,7 +142,7 @@ function batchFixture(uuid: string): Batch {
         location_id: 1,
         quantity: 10,
         reserved_quantity: 0,
-        available_quantity: 10,
+        available_quantity: '10.0000',
       },
     ],
   }

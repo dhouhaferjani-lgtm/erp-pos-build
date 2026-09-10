@@ -1,13 +1,16 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Batch } from '../../types'
 import { BatchListPage } from '../BatchListPage'
 import { BatchDetailPage } from '../BatchDetailPage'
 
 const state = vi.hoisted(() => ({
   permissions: [] as string[], populated: true,
-  batch: { uuid: 'lot-a', batch_number: 'LOT-A', is_active: true, is_recalled: false, is_expired: false,
-    expiry_status: 'OK', expiry_date: null, days_until_expiry: null, available_quantity: '2.0000' },
+  batch: { id: 1, product_id: 'product-a', product_variant_id: null, manufacturing_date: null,
+    recall_reason: null, recalled_at: null, notes: null, can_be_sold: true,
+    created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z', total_quantity: '3.1234', uuid: 'lot-a', batch_number: 'LOT-A', is_active: true as boolean, is_recalled: false, is_expired: false,
+    expiry_status: 'OK', expiry_date: null, days_until_expiry: null, available_quantity: '3.1234' } satisfies Batch,
 }))
 vi.mock('@/hooks/usePermissions', () => ({ usePermissions: () => ({ hasPermission: (permission: string) => state.permissions.includes(permission) }) }))
 vi.mock('@/hooks/useCurrency', () => ({ useCurrency: () => ({ decimals: 3 }) }))
@@ -29,6 +32,10 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('W-LOT-A-1a batch action permissions', () => {
+  it('renders four-decimal API strings using the existing display precision', () => {
+    list()
+    expect(screen.getByText('3.123')).toBeInTheDocument()
+  })
   it('hides the populated-list header create link without batches.create', () => {
     list()
     expect(screen.queryAllByRole('link', { name: /add batch/i })).toHaveLength(0)

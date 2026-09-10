@@ -1009,7 +1009,7 @@ export type RoleData = {
 id: number;
 name: string;
 guard_name: string;
-permissions: Array<any>;
+permissions: Array<string>;
 users_count: number;
 created_at: string | null;
 updated_at: string | null;

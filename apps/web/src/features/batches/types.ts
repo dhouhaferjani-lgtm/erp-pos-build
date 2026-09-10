@@ -35,8 +35,8 @@ export interface Batch {
   can_be_sold: boolean
   /** Null for a lot with no recorded expiry (W4-1). */
   days_until_expiry: number | null
-  total_quantity: number
-  available_quantity: number
+  total_quantity: string
+  available_quantity: string
   created_at: string
   updated_at: string
 
@@ -267,8 +267,8 @@ export interface ExpiryStatusConfig {
  * Per-location stock entry included in an ExpiredBatch.
  *
  * `quantity` and `reserved_quantity` are decimal:4-cast DB columns → JSON
- * strings.  `available_quantity` is a PHP computed accessor (`quantity -
- * reserved_quantity`) that returns a float and serialises as a JSON number.
+ * strings. `available_quantity` is computed with BCMath at scale 4 and
+ * serialises as a JSON string.
  */
 export interface ExpiredBatchStock {
   /** Bigint PK from the locations table */
@@ -277,8 +277,8 @@ export interface ExpiredBatchStock {
   quantity: string
   /** Reserved quantity (decimal:4 DB cast → string) */
   reserved_quantity: string
-  /** Available = quantity − reserved (PHP float accessor → JSON number) */
-  available_quantity: number
+  /** Available = quantity − reserved (4-dp JSON string) */
+  available_quantity: string
 }
 
 /**
@@ -288,11 +288,9 @@ export interface ExpiredBatchStock {
  * and `batch_stock` are always present — the endpoint loads both relations
  * eagerly.
  *
- * NOTE: `total_quantity` and `available_quantity` at the batch level are PHP
- * float aggregates (`(float) batchStock()->sum(...)`) and therefore arrive as
- * JSON numbers, not strings.  Per-location quantities in `batch_stock` follow
- * the decimal:4 cast (strings), except `available_quantity` which is a PHP
- * float accessor and arrives as a number.
+ * Batch totals sum the scoped, loaded stock relation using BCMath. All
+ * batch-level and per-location quantities are 4-dp JSON strings, including
+ * available quantities. This contract applies before and after activation.
  */
 export interface ExpiredBatch {
   /** Bigint PK */
@@ -318,10 +316,10 @@ export interface ExpiredBatch {
   notes: string | null
   expiry_status: ExpiryStatus
   can_be_sold: boolean
-  /** PHP float aggregate (batchStock().sum('quantity')) → JSON number */
-  total_quantity: number
-  /** PHP float aggregate (batchStock().sum('available_quantity')) → JSON number */
-  available_quantity: number
+  /** Scoped loaded-stock total (4-dp JSON string). */
+  total_quantity: string
+  /** Scoped loaded-stock total (4-dp JSON string). */
+  available_quantity: string
   /** ISO 8601 datetime string */
   created_at: string | null
   /** ISO 8601 datetime string */
