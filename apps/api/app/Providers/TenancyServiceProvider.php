@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Modules\Identity\Application\Listeners\RestoreCentralPermissionCache;
+use App\Modules\Identity\Application\Listeners\ScopePermissionCacheToTenant;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Stancl\Tenancy\Events\TenancyEnded;
@@ -37,7 +39,7 @@ use Stancl\Tenancy\Listeners\RevertToCentralContext;
  *   - mode ON (post-flip prod, and the PG-only flip/PAT tests): the bootstrap
  *     runs and the connection swaps to the tenant database.
  *
- * Only the bootstrap/revert listeners are wired — NOT TenantCreated ->
+ * Bootstrap/revert and permission-cache listeners are wired — NOT TenantCreated ->
  * CreateDatabase/MigrateDatabase, which would attempt `CREATE DATABASE` for
  * every Tenant row (e.g. in tests, inside a RefreshDatabase transaction, which
  * PostgreSQL forbids). Tenant database provisioning is driven explicitly.
@@ -57,5 +59,8 @@ class TenancyServiceProvider extends ServiceProvider
                 app(RevertToCentralContext::class)->handle($event);
             }
         });
+
+        Event::listen(TenancyInitialized::class, ScopePermissionCacheToTenant::class);
+        Event::listen(TenancyEnded::class, RestoreCentralPermissionCache::class);
     }
 }

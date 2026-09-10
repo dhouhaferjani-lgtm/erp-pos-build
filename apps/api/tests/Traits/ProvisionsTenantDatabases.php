@@ -7,7 +7,10 @@ namespace Tests\Traits;
 use App\Console\TenantScopedCommand;
 use App\Modules\Tenant\Application\Services\TenancyResolver;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
+use Stancl\Tenancy\Jobs\CreateDatabase;
+use Stancl\Tenancy\Jobs\MigrateDatabase;
 use Throwable;
 
 /**
@@ -31,6 +34,23 @@ trait ProvisionsTenantDatabases
 {
     protected function provisionTenantDatabase(Tenant $tenant): Tenant
     {
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            Bus::dispatchSync(new CreateDatabase($tenant));
+            $this->beforeApplicationDestroyed(static function () use ($tenant): void {
+                try {
+                    if (tenancy()->initialized) {
+                        tenancy()->end();
+                    }
+                    DB::purge('tenant');
+                    $tenant->database()->manager()->deleteDatabase($tenant);
+                } catch (Throwable) {
+                    // Best-effort cleanup must not hide the original assertion failure.
+                }
+            });
+
+            return $tenant;
+        }
+
         $path = database_path($tenant->getDatabaseName());
 
         touch($path);
@@ -66,6 +86,12 @@ trait ProvisionsTenantDatabases
     protected function provisionTenantDatabaseWithSchema(Tenant $tenant): Tenant
     {
         $this->provisionTenantDatabase($tenant);
+
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            Bus::dispatchSync(new MigrateDatabase($tenant));
+
+            return $tenant;
+        }
 
         /** @var list<object{sql: string}> $objects */
         $objects = DB::connection()->select(
