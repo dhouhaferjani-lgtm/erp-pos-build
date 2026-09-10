@@ -186,8 +186,14 @@ else
     #   2. the bare reset — the base key, which is still the LIVE key in
     #      compatibility mode and is also the legacy pre-W0a-S1 shared key that
     #      must be evicted once after the flip.
-    # Neither ever blocks boot.
-    DB_HOST="$DIRECT_DB_HOST" php artisan tenants:run permission:cache-reset 2>/dev/null || true
+    # Neither ever blocks boot — step 1 runs as an `if` condition, which `set -e` does not apply to, and step 2 keeps `|| true`. Step 1 reports both arms because `tenants:run` has no per-tenant isolation (Stancl `Tenancy::runForMultiple()` has no try/catch): one unreachable tenant database aborts the loop, and a partial reset must be visible in the deploy log.
+    echo ""
+    echo "Resetting the per-tenant permission cache across tenant databases (direct -> $DIRECT_DB_HOST)..."
+    if DB_HOST="$DIRECT_DB_HOST" php artisan tenants:run permission:cache-reset; then
+        echo "  Per-tenant permission cache reset: [completed]"
+    else
+        echo "  Per-tenant permission cache reset: [ABORTED - tenants:run has no per-tenant isolation, so the failing tenant AND EVERY TENANT AFTER IT keep a stale snapshot for the cache TTL. Find the last 'Tenant:' id printed above, repair that database, then re-run the FULL fleet command - php artisan tenants:run permission:cache-reset - because a targeted re-run does not visit the tenants the abort skipped. Diagnostic only, never the repair: php artisan tenants:run permission:cache-reset --tenants=<uuid>]"
+    fi
     php artisan permission:cache-reset 2>/dev/null || true
 
     # Run seeders only if AUTO_SEED is set to true (prevents re-seeding on every restart)
