@@ -5,6 +5,11 @@ declare(strict_types=1);
 namespace Tests\Feature\Inventory;
 
 require_once __DIR__.'/StockTransferReceiveTest.php';
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferBatchAllocationData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
@@ -12,7 +17,9 @@ use App\Modules\Inventory\Application\Services\StockTransferService;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Inventory\Domain\StockTransferReceipt;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 
 final class StockTransferReceiveLotsTest extends TransferReceiptFeatureTestCase
 {
@@ -62,6 +69,7 @@ final class StockTransferReceiveLotsTest extends TransferReceiptFeatureTestCase
 
     public function test_lot_damage_nets_to_zero_and_requires_perpetual_valuation(): void
     {
+        Event::fake([JournalEntryPosted::class]);
         $batch = $this->shippedBatch();
         $body = $this->receiptBody('0.0000', '2.0000');
         $body['lines'][0]['discrepancy_reason'] = 'other';
@@ -72,5 +80,20 @@ final class StockTransferReceiveLotsTest extends TransferReceiptFeatureTestCase
         $this->postJson('/api/v1/stock-transfers/'.$this->transfer->id.'/receive', $body)->assertCreated();
         self::assertSame('0.0000', $this->destinationQuantity());
         self::assertSame(1, $this->journalCount());
+        $entry = JournalEntry::query()->where('company_id', $this->company->id)->with('lines')->sole();
+        $scale = $this->app->make(CurrencyScaleResolverInterface::class)->getScale($this->company->currency);
+        $amount = bcmul('2.0000', $this->product->cost_price, $scale);
+        $zero = bcadd('0', '0', $scale);
+        $byPurpose = [];
+        foreach ($entry->lines as $line) {
+            $purpose = Account::findOrFail($line->account_id)->system_purpose->value;
+            $byPurpose[$purpose] = [$line->debit, $line->credit];
+        }
+        self::assertSame([$amount, $zero], $byPurpose[SystemAccountPurpose::InventoryShrinkageExpense->value]);
+        self::assertSame([$zero, $amount], $byPurpose[SystemAccountPurpose::Inventory->value]);
+        self::assertSame(JournalEntryStatus::Posted, $entry->status);
+        self::assertTrue($entry->isChained());
+        Event::assertDispatched(JournalEntryPosted::class);
+
     }
 }

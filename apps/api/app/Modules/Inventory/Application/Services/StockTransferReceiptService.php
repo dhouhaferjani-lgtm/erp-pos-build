@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Application\Services;
 
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Inventory\Application\DTOs\MovementGlContext;
 use App\Modules\Inventory\Domain\Enums\MovementGlKind;
@@ -70,6 +71,7 @@ final class StockTransferReceiptService
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly ProductCostLock $costLock,
         private readonly DocumentNumberingService $numberingService,
+        private readonly GeneralLedgerService $generalLedger,
     ) {}
 
     /** @param ReceivePayload $payload */
@@ -92,6 +94,9 @@ final class StockTransferReceiptService
     /** @param ReceivePayload|ClosePayload|null $input */
     private function transact(string $transferId, string $userId, ?array $input, TransferReceiptKind $kind, string $tenantId, string $companyId, ?string $serverKey = null): TransferReceiptResult
     {
+        if (DB::transactionLevel() !== 0) {
+            throw new \LogicException('StockTransferReceiptService must be the outermost transaction');
+        }
         $key = $input['idempotency_key'] ?? $serverKey;
         if ($key === null) {
             throw new \InvalidArgumentException('A receipt key is required.');
@@ -131,6 +136,9 @@ final class StockTransferReceiptService
                                     $this->valuationMode->requirePerpetual($transfer->company_id);
                                 } catch (UnsupportedValuationModeException) {
                                     throw new TransferReceiptFailureException(Failure::ValuationModeUnsupported);
+                                }
+                                if (! $this->generalLedger->hasInventoryWriteOffAccounts($transfer->company_id)) {
+                                    throw new TransferReceiptFailureException(Failure::GlAccountsUnmapped);
                                 }
                                 break;
                             }

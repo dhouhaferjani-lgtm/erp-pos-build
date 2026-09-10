@@ -31,6 +31,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -53,8 +54,15 @@ final class StockTransferEdgeCasesTest extends TestCase
 
     private Product $product;
 
+    /** Receipt completion must own the outermost transaction. @return list<string> */
+    protected function connectionsToTransact(): array
+    {
+        return [];
+    }
+
     protected function setUp(): void
     {
+        RefreshDatabaseState::$migrated = false;
         parent::setUp();
         $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->for($this->tenant)->create(['currency' => 'TND']);

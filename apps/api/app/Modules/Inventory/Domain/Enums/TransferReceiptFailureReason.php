@@ -20,6 +20,7 @@ enum TransferReceiptFailureReason: string
     case IdempotencyKeyReused = 'IDEMPOTENCY_KEY_REUSED';
     case DispositionRequired = 'DISPOSITION_REQUIRED';
     case BlindRequiresCountedReceipt = 'BLIND_REQUIRES_COUNTED_RECEIPT';
+    case GlAccountsUnmapped = 'GL_ACCOUNTS_UNMAPPED';
     case ValuationModeUnsupported = 'VALUATION_MODE_UNSUPPORTED';
 
     /** Static sentences only: no quantity, no transfer field, ever. */
@@ -40,6 +41,7 @@ enum TransferReceiptFailureReason: string
             self::IdempotencyKeyReused => 'That idempotency key was already used for a different request.',
             self::DispositionRequired => 'A close disposition is required.',
             self::BlindRequiresCountedReceipt => 'This transfer must be received with counted quantities.',
+            self::GlAccountsUnmapped => 'This action requires mapped inventory and shrinkage accounts.',
             self::ValuationModeUnsupported => 'This action requires perpetual inventory valuation.',
         };
     }

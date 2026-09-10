@@ -42,6 +42,7 @@ use App\Shared\Contracts\ProductVariantLookup;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\Event;
 use PDOException;
 use Spatie\Permission\PermissionRegistrar;
@@ -69,8 +70,15 @@ class InventoryTransferServiceTest extends TestCase
 
     private Product $productB;
 
+    /** Receipt completion must own the outermost transaction. @return list<string> */
+    protected function connectionsToTransact(): array
+    {
+        return [];
+    }
+
     protected function setUp(): void
     {
+        RefreshDatabaseState::$migrated = false;
         parent::setUp();
 
         $this->tenant = Tenant::create([
