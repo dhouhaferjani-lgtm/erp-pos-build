@@ -124,12 +124,35 @@ final class LotActionReseedMarkerTest extends TestCase
         app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
 
-    public function test_flag_off_seeder_emits_one_legacy_marker_without_canonical_role_changes(): void
+    public function test_unmarked_flag_off_seeder_does_not_emit_stderr_marker(): void
     {
         $before = $this->orderedPermissionSnapshot();
+        Log::shouldReceive('channel')->with('stderr')->never();
+        $this->seed(RolesAndPermissionsSeeder::class);
+        self::assertSame($before, $this->orderedPermissionSnapshot());
+    }
+
+    public function test_seeding_outside_tenancy_falls_back_to_legacy_with_a_logged_reason(): void
+    {
+        setPermissionsTeamId(null);
+        config(['lot_action_permissions.enforce' => true]);
+        Log::shouldReceive('info')->once()->with('Role seeding uses legacy catalogue', ['reason' => 'missing_tenant_context']);
+        Log::shouldReceive('channel')->with('stderr')->never();
+        $this->seed(RolesAndPermissionsSeeder::class);
+        $this->assertDatabaseHas('roles', ['name' => 'admin', 'tenant_id' => null]);
+        $this->assertDatabaseMissing('roles', ['name' => 'general_manager', 'provisioning_source' => 'w-lot-a-1a']);
+    }
+
+    public function test_marked_flag_off_reseed_emits_preservation_marker(): void
+    {
+        $this->emptyRoleFixture();
+        config(['lot_action_permissions.enforce' => true]);
+        $this->seed(RolesAndPermissionsSeeder::class);
+        config(['lot_action_permissions.enforce' => false]);
         $logger = Mockery::mock(LoggerInterface::class);
         Log::shouldReceive('channel')->with('stderr')->once()->andReturn($logger);
-        $logger->shouldReceive('info')->once()->with("WLOTA1A-RESEED tenant={$this->tenant->id} mode=LEGACY outcome=ALREADY_APPLIED reason=enforcement_off");
+        $logger->shouldReceive('info')->once()->with("WLOTA1A-RESEED tenant={$this->tenant->id} mode=LEGACY outcome=ALREADY_APPLIED reason=marked_tenant_delta_preserved");
+        $before = $this->orderedPermissionSnapshot();
         $this->seed(RolesAndPermissionsSeeder::class);
         self::assertSame($before, $this->orderedPermissionSnapshot());
     }

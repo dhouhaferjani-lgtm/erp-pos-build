@@ -32,6 +32,13 @@ class RolesAndPermissionsSeeder extends Seeder
     {
         $tenantId = $this->currentTenantId();
         $this->permissionRegistrar->forgetCachedPermissions();
+        if ($tenantId === null) {
+            Log::info('Role seeding uses legacy catalogue', ['reason' => 'missing_tenant_context']);
+            $this->createPermissionsFrom(self::legacyPermissionNames());
+            $this->createLegacyRoles();
+
+            return;
+        }
         if ($this->activation->enforced()) {
             $result = $this->lotActionPermissionDelta->apply($tenantId, self::permissionNames(), self::rolePermissionGrants());
             if (! in_array($result->outcome, [LotActionPermissionDeltaOutcome::Applied, LotActionPermissionDeltaOutcome::AlreadyApplied], true)) {
@@ -42,20 +49,20 @@ class RolesAndPermissionsSeeder extends Seeder
             return;
         }
         if ($this->markedTenantCarriesWlota1aDelta($tenantId)) {
-            $reason = 'marked_tenant_delta_preserved';
+            $this->emitWlota1aReseedMarker($tenantId, 'LEGACY', new LotActionPermissionDeltaResult(LotActionPermissionDeltaOutcome::AlreadyApplied, 'marked_tenant_delta_preserved'));
+
+            return;
         } else {
             $this->createPermissionsFrom(self::legacyPermissionNames());
             $this->createLegacyRoles();
-            $reason = 'enforcement_off';
         }
-        $this->emitWlota1aReseedMarker($tenantId, 'LEGACY', new LotActionPermissionDeltaResult(LotActionPermissionDeltaOutcome::AlreadyApplied, $reason));
     }
 
-    private function currentTenantId(): string
+    private function currentTenantId(): ?string
     {
         $id = tenant('id') ?? $this->permissionRegistrar->getPermissionsTeamId();
         if (! is_string($id) || $id === '') {
-            throw new \RuntimeException('missing_tenant_context');
+            return null;
         }
 
         return $id;
@@ -89,6 +96,7 @@ class RolesAndPermissionsSeeder extends Seeder
         $grants['admin'] = self::permissionNames();
         $grants['manager'] = array_values(array_unique([...array_diff($grants['manager'], ['batches.recall']), 'batches.recall.request']));
         $grants[SystemRoleName::GeneralManager->value] = array_values(array_unique([...$grants['manager'], 'batches.recall', 'treasury.manage_all_locations']));
+        // Owner ruling (W-LOT-A-1a rev 10): technician receives no batches.view grant.
         foreach (['cashier', 'viewer', 'operator'] as $role) {
             $grants[$role] = array_values(array_unique([...$grants[$role], 'batches.view']));
         }

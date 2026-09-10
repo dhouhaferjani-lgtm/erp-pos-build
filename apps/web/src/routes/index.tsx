@@ -1202,6 +1202,7 @@ export function AppRoutes() {
           {/* Batches — vertical-gated via ModuleGuard (BatchExpiry) */}
           <Route
             path="batches"
+            // Keeps the fingerprint literal in the served bundle for deployment evidence.
             handle={{ featureFingerprint: WLOTA1A_WEB_FINGERPRINT }}
             element={
               <ModuleGuard module="BatchExpiry">

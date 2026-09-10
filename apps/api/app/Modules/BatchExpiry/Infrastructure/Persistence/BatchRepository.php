@@ -106,6 +106,7 @@ class BatchRepository implements BatchRepositoryInterface
         // "Batch allocations must follow FEFO" and the operator cannot satisfy it.
         // Equal DATES were already reachable; undated ties are new, and on the
         // launch tenant they are the common shape.
+        // Restricted stock pickers require positive stock; historical visibility belongs to list/detail only.
         $this->scopeVisible($query, $locationIds);
 
         return $query->with(['batchStock' => fn ($stock) => $locationIds === null ? $stock : $stock->whereIn('location_id', $locationIds)])
