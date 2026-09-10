@@ -2,21 +2,21 @@
 
 status: review
 
-Source implementation: `c30dcdf9c`, branch `lane/t2-receipt-spine`, worktree `.worktrees/t2-receipt-spine`.
+Original source implementation: `c30dcdf9c`, branch `lane/t2-receipt-spine`, worktree `.worktrees/t2-receipt-spine`.
 Original DISPATCH_SHA: `9d6bc75c12d7dd9ed8c4226d0b3e7608754a5f28`.
 Amendment DISPATCH_SHA: `de3007fe9` (documentation-only fast-forward; no production drift).
-Authority: plan rev 8, spec rev 11, and the approved 2026-09-10 movement-creation ruling.
+Authority: plan rev 9 §0AA, spec rev 11, the movement-creation ruling, and the 2026-09-10 fix-round-1 prompt. The original implementation evidence below is historical; the Fix round 1 section records the current changes and verification.
 
-S1 implements setting-off receipts, partial receipt/replay, damage land-then-scrap, terminal write-off/return, freight residuals, reconciliation, legacy backfill and remainder readers. No blind setting, masking, receiver-view route, notification listener, merge, push or deployment. All PostgreSQL legs were serial on exclusive `autoerp_test_u`, with BOTH DB_DATABASE and DB_CENTRAL_DATABASE set. No full PHPUnit or Vitest suite was run. Shared root dev was not edited.
+**Fix round 1 is not fully cleared: the Arabic completeness gate awaits a scope ruling.** S1 implements setting-off receipts, partial receipt/replay, damage land-then-scrap, terminal write-off/return, freight residuals, reconciliation, legacy backfill and remainder readers. No blind setting, masking, receiver-view route, notification listener, merge, push or deployment. All PostgreSQL legs were serial on exclusive `autoerp_test_u`, with BOTH DB_DATABASE and DB_CENTRAL_DATABASE set. No full PHPUnit or Vitest suite was run. Shared root dev was not edited.
 
 ## Verification commands and green results
 
 All logs named below are under `docs/sessions/t2-receipt-spine/` in this worktree (ignored local evidence); the relevant outcomes and failing assertions are preserved here for a fresh checkout.
 
-Each PostgreSQL row used the following exact command with its listed file substituted, individually and serially:
+PostgreSQL reproduction command (port now pinned for T-8). The original runs below omitted DB_PORT and resolved to native PostgreSQL 16 on 5432; fix-round-1 runs explicitly set it. Substitute one listed file at a time:
 
 ```sh
-DB_DATABASE=autoerp_test_u DB_CENTRAL_DATABASE=autoerp_test_u DB_USERNAME=houssamr DB_HOST=127.0.0.1 DB_PASSWORD='' apps/api/vendor/bin/phpunit -c apps/api/phpunit-pgsql.xml FILE
+DB_DATABASE=autoerp_test_u DB_CENTRAL_DATABASE=autoerp_test_u DB_USERNAME=houssamr DB_HOST=127.0.0.1 DB_PORT=5432 DB_PASSWORD='' apps/api/vendor/bin/phpunit -c apps/api/phpunit-pgsql.xml FILE
 ```
 
 | Class / file | Result | Evidence log |
@@ -101,7 +101,7 @@ Both captures ran before ANY production edit, using an explicit file argument in
 
 ```
 cd apps/api
-T2T3_CAPTURE_BASELINE=1 DB_DATABASE=autoerp_test_u DB_CENTRAL_DATABASE=autoerp_test_u DB_USERNAME=houssamr DB_HOST=127.0.0.1 DB_PASSWORD='' ./vendor/bin/phpunit -c phpunit-pgsql.xml tests/Feature/Inventory/TransferLegacyCompletionBackfillTest.php --filter test_capture_the_pre_change_reader_baseline
+T2T3_CAPTURE_BASELINE=1 DB_DATABASE=autoerp_test_u DB_CENTRAL_DATABASE=autoerp_test_u DB_USERNAME=houssamr DB_HOST=127.0.0.1 DB_PORT=5432 DB_PASSWORD='' ./vendor/bin/phpunit -c phpunit-pgsql.xml tests/Feature/Inventory/TransferLegacyCompletionBackfillTest.php --filter test_capture_the_pre_change_reader_baseline
 Time: 00:08.720, Memory: 151.00 MB
 OK (1 test, 3 assertions)
 exit 0
@@ -206,11 +206,7 @@ tests/Feature lane manifest OK — 1532 Feature classes in 74 groups; every grou
 
 ## Reviewer gate
 
-All required reviewers returned ACCEPT with BLOCKER=0, MAJOR=0. Inventory-costing and tenancy-authz additionally confirmed their ACCEPTs at final source tip c30dcdf9c after the variance/type/Arabic deltas; the stock/GL implementation had no subsequent change. They reviewed code and the recorded local test evidence; they did not run concurrent PostgreSQL legs.
-
-- inventory-costing-reviewer: four-decimal CHECKs; all four remainder reader sites and unchanged rounding; company WAC denominator; terminal-state-before-freight order; land/scrap net stock; company-dependent allocation precision and exact residual; shipment-grain backfill; untouched baseline/preservation/C1; no float arithmetic.
-- stock-gl-interaction-reviewer: first transfer-document GL uses the buffer; service owns the root transaction and attempt marker rollback; both valuation paths preflight; return posts no GL; lot identities are on lot rows with parent ids null; no settlement/freight compensation. Event serializer correction and restored C2 evidence reviewed.
-- tenancy-authz-reviewer: exact admin/manager roles, middleware and route matrix, destination/source access checks, company uniques, generic denial, A/B data isolation, all fourteen CI names and exact manifest figures, generated DTOs/map, exact checklist contents and one-line predecessor edit. Authority 5/15; second-company final 2/30.
+Reviewer gates: see the orchestrator's registers (`docs/superpowers/reviews/2026-09-10-t2-s1-impl-gate-r1-tenancy.md`, `…-r1-inventory.md`, `…-r1-stock-gl.md`). Fix round 1 is submitted for review; this handback does not assign reviewer verdicts.
 
 ## Promotion documentation and owed operations
 
@@ -230,7 +226,7 @@ One row per actual source file relative to ERP root, including amendment and com
 
 | File | Latest carrying commit |
 |---|---|
-| `.github/workflows/ci.yml` | `82f362d72` |
+| `.github/workflows/ci.yml` | `dee922d5f` |
 | `apps/api/app/Http/Middleware/RequireAnyPermission.php` | `7713b1e62` |
 | `apps/api/app/Modules/Inventory/Application/DTOs/StockTransferData.php` | `b8351a080` |
 | `apps/api/app/Modules/Inventory/Application/DTOs/StockTransferLineBatchAllocationData.php` | `b8351a080` |
@@ -249,17 +245,17 @@ One row per actual source file relative to ERP root, including amendment and com
 | `apps/api/app/Modules/Inventory/Application/Services/LocationStockQueryService.php` | `145b15885` |
 | `apps/api/app/Modules/Inventory/Application/Services/ReceiptPayloadCanonicalizer.php` | `b6db956d8` |
 | `apps/api/app/Modules/Inventory/Application/Services/StockMatrixQueryService.php` | `145b15885` |
-| `apps/api/app/Modules/Inventory/Application/Services/StockTransferMovementSupport.php` | `b6db956d8` |
-| `apps/api/app/Modules/Inventory/Application/Services/StockTransferReceiptService.php` | `b6db956d8` |
-| `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php` | `7713b1e62` |
+| `apps/api/app/Modules/Inventory/Application/Services/StockTransferMovementSupport.php` | `ede6a990a` |
+| `apps/api/app/Modules/Inventory/Application/Services/StockTransferReceiptService.php` | `ede6a990a` |
+| `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php` | `ede6a990a` |
 | `apps/api/app/Modules/Inventory/Application/Services/TransferPayloadBuilder.php` | `7713b1e62` |
 | `apps/api/app/Modules/Inventory/Application/Services/TransferReceiptResult.php` | `b6db956d8` |
-| `apps/api/app/Modules/Inventory/Application/Services/TransferReconciliationService.php` | `7713b1e62` |
+| `apps/api/app/Modules/Inventory/Application/Services/TransferReconciliationService.php` | `ede6a990a` |
 | `apps/api/app/Modules/Inventory/Application/Services/WeightedAverageCostService.php` | `145b15885` |
 | `apps/api/app/Modules/Inventory/Domain/Enums/TransferActorRole.php` | `b8351a080` |
 | `apps/api/app/Modules/Inventory/Domain/Enums/TransferCloseDisposition.php` | `b8351a080` |
 | `apps/api/app/Modules/Inventory/Domain/Enums/TransferDiscrepancyReason.php` | `b8351a080` |
-| `apps/api/app/Modules/Inventory/Domain/Enums/TransferReceiptFailureReason.php` | `b8351a080` |
+| `apps/api/app/Modules/Inventory/Domain/Enums/TransferReceiptFailureReason.php` | `5e61060de` |
 | `apps/api/app/Modules/Inventory/Domain/Enums/TransferReceiptKind.php` | `b8351a080` |
 | `apps/api/app/Modules/Inventory/Domain/Enums/TransferReceiptStatus.php` | `b8351a080` |
 | `apps/api/app/Modules/Inventory/Domain/Enums/TransferStatus.php` | `b8351a080` |
@@ -275,64 +271,180 @@ One row per actual source file relative to ERP root, including amendment and com
 | `apps/api/app/Modules/Inventory/Domain/StockTransferReceipt.php` | `b8351a080` |
 | `apps/api/app/Modules/Inventory/Domain/StockTransferReceiptLine.php` | `b8351a080` |
 | `apps/api/app/Modules/Inventory/Domain/StockTransferReceiptLineLot.php` | `b8351a080` |
-| `apps/api/app/Modules/Inventory/Presentation/Controllers/StockTransferController.php` | `7713b1e62` |
+| `apps/api/app/Modules/Inventory/Presentation/Controllers/StockTransferController.php` | `e6ea6fde7` |
 | `apps/api/app/Modules/Inventory/Presentation/Requests/CloseStockTransferRequest.php` | `b6db956d8` |
 | `apps/api/app/Modules/Inventory/Presentation/Requests/ReceiveStockTransferRequest.php` | `b6db956d8` |
 | `apps/api/app/Modules/Inventory/Presentation/routes.php` | `7713b1e62` |
 | `apps/api/app/Shared/Domain/Enums/StockMovementReferenceType.php` | `b6db956d8` |
+| `apps/api/app/Shared/Domain/QuantityScale.php` | `ede6a990a` |
 | `apps/api/database/migrations/tenant/2026_09_09_100000_add_receipt_counters_to_transfer_lines.php` | `74392421f` |
 | `apps/api/database/migrations/tenant/2026_09_09_100100_create_stock_transfer_receipt_tables.php` | `74392421f` |
 | `apps/api/database/migrations/tenant/2026_09_09_100200_add_close_columns_to_stock_transfers.php` | `74392421f` |
 | `apps/api/database/migrations/tenant/2026_09_09_100300_backfill_legacy_transfer_completions.php` | `74392421f` |
 | `apps/api/database/seeders/RolesAndPermissionsSeeder.php` | `7713b1e62` |
-| `apps/api/tests/Architecture/TransferInTransitReadersUseRemainderTest.php` | `82f362d72` |
+| `apps/api/tests/Architecture/TenantOnlyUniqueOnCatalogueTablesRatchetTest.php` | `c3a982ca3` |
+| `apps/api/tests/Architecture/TransferInTransitReadersUseRemainderTest.php` | `ede6a990a` |
 | `apps/api/tests/Architecture/baselines/document-per-action-baseline.json` | `bf2cd841a` |
-| `apps/api/tests/Feature/Inventory/InventoryTransferServiceTest.php` | `7713b1e62` |
-| `apps/api/tests/Feature/Inventory/StockTransferCloseTest.php` | `b6db956d8` |
-| `apps/api/tests/Feature/Inventory/StockTransferCompleteConcurrencyPostgresTest.php` | `7713b1e62` |
-| `apps/api/tests/Feature/Inventory/StockTransferEdgeCasesTest.php` | `7713b1e62` |
+| `apps/api/tests/Feature/Inventory/InventoryTransferServiceTest.php` | `5e61060de` |
+| `apps/api/tests/Feature/Inventory/StockTransferCloseTest.php` | `376745c92` |
+| `apps/api/tests/Feature/Inventory/StockTransferCompleteConcurrencyPostgresTest.php` | `5e61060de` |
+| `apps/api/tests/Feature/Inventory/StockTransferEdgeCasesTest.php` | `5e61060de` |
 | `apps/api/tests/Feature/Inventory/StockTransferIdempotencyCollisionPostgresTest.php` | `7713b1e62` |
-| `apps/api/tests/Feature/Inventory/StockTransferReceiveConcurrencyPostgresTest.php` | `82f362d72` |
-| `apps/api/tests/Feature/Inventory/StockTransferReceiveDamageTest.php` | `82f362d72` |
-| `apps/api/tests/Feature/Inventory/StockTransferReceiveLotsTest.php` | `82f362d72` |
+| `apps/api/tests/Feature/Inventory/StockTransferReceiveConcurrencyPostgresTest.php` | `e6ea6fde7` |
+| `apps/api/tests/Feature/Inventory/StockTransferReceiveDamageTest.php` | `ede6a990a` |
+| `apps/api/tests/Feature/Inventory/StockTransferReceiveLotsTest.php` | `5e61060de` |
 | `apps/api/tests/Feature/Inventory/StockTransferReceiveTest.php` | `b6db956d8` |
 | `apps/api/tests/Feature/Inventory/StockTransferReceiveValidationTest.php` | `b6db956d8` |
 | `apps/api/tests/Feature/Inventory/TransferLegacyCompletionBackfillTest.php` | `8b395fbee` |
-| `apps/api/tests/Feature/Inventory/TransferReceiptAuthorityGateTest.php` | `7713b1e62` |
+| `apps/api/tests/Feature/Inventory/TransferReceiptAuthorityGateTest.php` | `e6ea6fde7` |
 | `apps/api/tests/Feature/Inventory/TransferReceiptEventStreamTest.php` | `82f362d72` |
-| `apps/api/tests/Feature/Inventory/TransferReceiptGlBoundaryTest.php` | `82f362d72` |
+| `apps/api/tests/Feature/Inventory/TransferReceiptGlBoundaryTest.php` | `5e61060de` |
 | `apps/api/tests/Feature/Inventory/TransferReceiptPatternQueryPostgresTest.php` | `82f362d72` |
 | `apps/api/tests/Feature/Inventory/TransferReceiptSecondOfEverythingTest.php` | `a17de0dc5` |
 | `apps/api/tests/Feature/Migrations/TransferReceiptSchemaRerunPostgresTest.php` | `82f362d72` |
 | `apps/api/tests/Feature/Replenishment/TransferCloseReplenishmentSettlementTest.php` | `82f362d72` |
 | `apps/api/tests/Fixtures/Inventory/transfer-reader-baseline.json` | `b41183f50` |
+| `apps/api/tests/Unit/Shared/QuantityScaleFormatForUnitTest.php` | `ede6a990a` |
 | `apps/api/tests/feature-lane-manifest.json` | `82f362d72` |
+| `apps/web/src/features/stock-transfers/__tests__/StockTransferDetailPage.test.tsx` | `23ea9835a` |
+| `apps/web/src/features/stock-transfers/components/StockTransferStatusBadge.test.tsx` | `23ea9835a` |
+| `apps/web/src/features/stock-transfers/components/StockTransferStatusBadge.tsx` | `23ea9835a` |
+| `apps/web/src/features/stock-transfers/pages/StockTransferDetailPage.tsx` | `23ea9835a` |
+| `apps/web/src/features/stock-transfers/pages/StockTransferListPage.tsx` | `23ea9835a` |
+| `apps/web/src/features/stock-transfers/types/index.ts` | `23ea9835a` |
 | `apps/web/src/hooks/permissionsMap.generated.ts` | `7713b1e62` |
+| `apps/web/src/lib/i18n.ts` | `23ea9835a` |
 | `apps/web/src/locales/ar/inventory.json` | `c30dcdf9c` |
+| `apps/web/src/locales/ar/stock-transfers.json` | `23ea9835a` |
 | `apps/web/src/locales/en/inventory.json` | `b6db956d8` |
+| `apps/web/src/locales/en/stock-transfers.json` | `23ea9835a` |
 | `apps/web/src/locales/fr/inventory.json` | `b6db956d8` |
-| `docs/glossary.md` | `a17de0dc5` |
+| `apps/web/src/locales/fr/stock-transfers.json` | `23ea9835a` |
+| `docs/glossary.md` | `ede6a990a` |
 | `docs/handoff/PROMOTION-CHECKLIST-2026-08-26.md` | `a17de0dc5` |
-| `docs/handoff/PROMOTION-CHECKLIST-2026-09-09-t2t3.md` | `a17de0dc5` |
-| `packages/shared/types/generated.d.ts` | `b8351a080` |
-
-Actual source ledger: 85 unique paths.
-
-```text
-b41183f50 Phase 2.3.0: Capture pre-change transfer reader baseline
-82f362d72 Phase 2.3.1: Define transfer receipt acceptance gates
-bf2cd841a Phase 2.3.2: Create transfer movements with final identity
-74392421f Phase 2.3.3: Add transfer receipt schema and legacy backfill
-b8351a080 Phase 2.3.4: Define typed receipt and reconciliation contracts
-145b15885 Phase 2.3.5: Read only the remaining in-transit quantity
-8b395fbee Phase 2.3.6: Verify historical readers and backfill reruns
-b6db956d8 Phase 2.3.7: Post atomic receipts and close transfer remainders
-38a8456ab Phase 2.3.8: Persist replayable receipt and close events
-7713b1e62 Phase 2.3.9: Expose scoped receipt and reconciliation endpoints
-a17de0dc5 Phase 2.3.10: Document receipt ownership and promotion checks
-c30dcdf9c Phase 2.3.11: Complete receipt source labels in Arabic
-```
+| `docs/handoff/PROMOTION-CHECKLIST-2026-09-09-t2t3.md` | `HEAD (fix-round documentation)` |
+| `docs/superpowers/plans/2026-09-09-T2T3-transfer-receipt-blind-receiving-plan-rev-9.md` | `HEAD (fix-round documentation)` |
+| `packages/shared/types/generated.d.ts` | `5e61060de` |
 
 ## Resume recipe
 
-Open `.worktrees/t2-receipt-spine` on `lane/t2-receipt-spine`, read this handback and plan rev 8 only, and inspect `git diff de3007fe9..HEAD`. Do not regenerate the historical baseline. Use the named-file commands above with both PostgreSQL database variables fixed to autoerp_test_u; never run a full PHPUnit/Vitest suite. Reviewers' implementation gates are complete; the preflight gates are complete and this slice is stopped at status review. No merge or push is authorized here.
+Open `.worktrees/t2-receipt-spine` on `lane/t2-receipt-spine`, read this handback and plan rev 9 §0AA, and inspect `git diff de3007fe9..HEAD`. Do not regenerate the historical baseline. Use the named-file commands above with both PostgreSQL database variables fixed to autoerp_test_u; never run a full PHPUnit/Vitest suite. Reviewer gates: see the orchestrator's registers. Fix-round verification and any unresolved gate are recorded below; this slice remains at status review. No merge or push is authorized here.
+
+## Fix round 1
+
+Authority: rev 9 §0AA and the three orchestrator gate registers. Base: `93b106461`. Fix-round source tip: `ede6a990a`. All references below are one-based lines in the final worktree files; source files are committed before the documentation handback. Status remains `review`; no push, merge, tenant rollout or observed-CI claim.
+
+| Item | Disposition and evidence | Current path:line |
+|---|---|---|
+| T-1 | Fixed; the comment block precedes the continued command. bash -n and a PATH-stub replay of the complete extracted step both exit 0; actual argv below. | `.github/workflows/ci.yml:1141` |
+| T-2 | Fixed; three parent-scoped exclusions, no waiver or ceiling change. PostgreSQL: 3 tests / 137 assertions. | `apps/api/tests/Architecture/TenantOnlyUniqueOnCatalogueTablesRatchetTest.php:168` |
+| T-3 | Fixed; inventory.view alone is refused list/show, and complete alone is refused reconciliation. | `apps/api/tests/Feature/Inventory/TransferReceiptAuthorityGateTest.php:24` |
+| T-4 | Disclosed: backend any-of reads still have no corresponding web route guard until S4; FE Inventory module gate is also deferred. | `docs/handoff/PROMOTION-CHECKLIST-2026-09-09-t2t3.md:11` |
+| T-5 | Fixed; receive/close/receiveAllRemaining require explicit tenant and company; transact predicates both. The lock helper accepts a scoped identity, validates UUID and predicates both again. Direct foreign-company call throws ModelNotFoundException with unchanged data. Existing complete/cancel/initiate compatibility callers supply their resolved identity; no CompanyContext is introduced into receipt/lock code. | `apps/api/app/Modules/Inventory/Application/Services/StockTransferReceiptService.php:95`; `apps/api/app/Modules/Inventory/Application/Services/StockTransferMovementSupport.php:41`; `apps/api/tests/Feature/Inventory/TransferReceiptAuthorityGateTest.php:37` |
+| T-6 | Intentional for S1: the existing LOCATION_ACCESS_DENIED 403 body retains location_id and caller user_id, shared with complete/cancel. S4 decides 403 details versus 404 hiding. | `apps/api/app/Modules/Inventory/Presentation/Controllers/StockTransferController.php:395` |
+| T-7 | Removed the ignored 7,016,448-byte SQLite file apps/api/autoerp_test_u after verifying its SQLite format header. Trap: DB_DATABASE alone does not select the driver; all PG legs use phpunit-pgsql.xml and all SQLite legs use :memory:. | `.gitignore:81` |
+| T-8 | All fix-round PostgreSQL invocations explicitly set DB_PORT=5432, both database names, host and user. Native PostgreSQL 16, exclusive autoerp_test_u; one file at a time. | `docs/handoff/HANDBACK-T2-receipt-spine-2026-09-09.md:19` |
+| M-1 | Fixed; cancel records transfer_cost as uncapitalized freight. Initiate 10 units with 140.0000 freight, cancel, allocated + residual = 140.0000. | `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php:365`; `apps/api/tests/Feature/Inventory/StockTransferCloseTest.php:22` |
+| M-2 | Option (a) implemented: generated TransferStatus alias, seven token-based badges, all status filters and partial completion; en/fr/ar status keys and Arabic registration. Arabic namespace completeness requires the pending scope decision (118 older keys). No receive/close UI added. | `apps/web/src/features/stock-transfers/types/index.ts:2`; `apps/web/src/features/stock-transfers/components/StockTransferStatusBadge.tsx:5`; `apps/web/src/features/stock-transfers/pages/StockTransferDetailPage.tsx:38`; `apps/web/src/features/stock-transfers/pages/StockTransferListPage.tsx:15` |
+| I-1 | Fixed; MONEY_SCALE names the two four-decimal freight columns. Positive pools/allocations truncate toward zero; uncapitalized freight or the last eligible allocation receives the exact residual. | `apps/api/app/Modules/Inventory/Application/Services/StockTransferMovementSupport.php:29`; `apps/api/app/Modules/Inventory/Application/Services/StockTransferReceiptService.php:501` |
+| I-2 | Recorded S4 decision: join receipt/close lines on transfer_line_id to full transfer line quantity_decimals; receipt DTOs remain scale-4 strings. | `docs/superpowers/plans/2026-09-09-T2T3-transfer-receipt-blind-receiving-plan-rev-9.md:2742` |
+| I-3 | Fixed; counts are per site (LocationStockQueryService 2, matrix 1, WAC 1). Negative controls remove either required token at either location site. | `apps/api/tests/Architecture/TransferInTransitReadersUseRemainderTest.php:27` |
+| I-4 | Fixed; shared decimalPlacesForUnit resolves precision for both QuantityScale formatting and reconciliation metadata, including null/zero/high-precision units. | `apps/api/app/Shared/Domain/QuantityScale.php:65`; `apps/api/app/Modules/Inventory/Application/Services/TransferReconciliationService.php:45` |
+| I-5 | Recorded: SQLite remainder subtraction uses binary arithmetic; its green legs are not PostgreSQL numeric-reader proof. Reader rounding remains unchanged. | `apps/api/app/Modules/Inventory/Domain/StockTransferLine.php:143` |
+| I-6 | InventoryTransferServiceTest is explicitly in the ledger and is in-scope by constructor/replay/transaction-boundary consequence. Its 22 cases retain all stock/freight assertions. | `apps/api/tests/Feature/Inventory/InventoryTransferServiceTest.php:74` |
+| I-7 | Fixed; lot-less return explicitly tests allocation === null. | `apps/api/app/Modules/Inventory/Application/Services/StockTransferReceiptService.php:443` |
+| I-8 | Fixed; Blind receiving, Receiver view and Visibility version glossary rows marked planned (S2/S3). | `docs/glossary.md:89` |
+| I-9 | Fixed; real mixed good/damaged lot receipt preserves products.cost_price and nets BatchStock to 3.0000 good units. | `apps/api/tests/Feature/Inventory/StockTransferReceiveDamageTest.php:51` |
+| I-10 | Recorded provenance: reviewed source c30dcdf9c; initial handback-only HEAD 93b106461. Fix-round source commits follow those pins. | `docs/handoff/HANDBACK-T2-receipt-spine-2026-09-09.md:5` |
+| G-1 | Fixed; both plain and lot damage assert shrinkage debit/inventory credit at company scale, opposite sides zero, Posted, chained, and JournalEntryPosted dispatched. | `apps/api/tests/Feature/Inventory/StockTransferReceiveDamageTest.php:35`; `apps/api/tests/Feature/Inventory/StockTransferReceiveLotsTest.php:87` |
+| G-2 | Fixed; missing inventory/shrinkage purposes cause GL_ACCOUNTS_UNMAPPED typed 422 before stock/GL writes. Seven-table snapshot unchanged. Preflight uses the existing purpose resolver for both scrap forms. | `apps/api/app/Modules/Inventory/Application/Services/StockTransferReceiptService.php:140`; `apps/api/tests/Feature/Inventory/StockTransferReceiveDamageTest.php:82`; `docs/handoff/PROMOTION-CHECKLIST-2026-09-09-t2t3.md:12` |
+| G-3 | Fixed; nonzero transaction level throws LogicException before receipt work. The nesting test catches inside a committing outer transaction and proves no writes. Legacy fixture transactions removed; completion race now starts its contender while the receipt root holds the header lock. | `apps/api/app/Modules/Inventory/Application/Services/StockTransferReceiptService.php:97`; `apps/api/tests/Feature/Inventory/TransferReceiptGlBoundaryTest.php:15`; `apps/api/tests/Feature/Inventory/StockTransferCompleteConcurrencyPostgresTest.php:94` |
+| G-4 | Disclosed destination attribution for land-then-scrap close write-offs. | `docs/handoff/PROMOTION-CHECKLIST-2026-09-09-t2t3.md:13` |
+| G-5 | Fixed; removed the orphan lineProductIds docblock; collectProductIds keeps its own documentation. | `apps/api/app/Modules/Inventory/Application/Services/StockTransferService.php:806` |
+| G-6 | Fixed; handback assigns no reviewer verdict. Reviewer gates: see the orchestrator’s registers. | `docs/handoff/HANDBACK-T2-receipt-spine-2026-09-09.md:209` |
+| G-7 | Disclosed freight-related GL/subledger divergence; existing T-1 ticket unchanged and no compensating GL entry added. | `docs/handoff/PROMOTION-CHECKLIST-2026-09-09-t2t3.md:14` |
+| G-8 | Recorded: SQLite omits receipt CHECK constraints and the migration’s PostgreSQL-only foreign-key/index work. SQLite green is not constraint proof; prior named PostgreSQL schema evidence remains historical, not a new run. | `apps/api/database/migrations/tenant/2026_09_09_100100_create_stock_transfer_receipt_tables.php:83` |
+
+### Fix-round verification
+
+Logs are in `docs/sessions/t2-receipt-spine/fix-round-1/` (ignored). PostgreSQL: native 16 at 127.0.0.1:5432, exclusive autoerp_test_u, serial named files.
+
+```sh
+DB_DATABASE=autoerp_test_u DB_CENTRAL_DATABASE=autoerp_test_u DB_USERNAME=houssamr DB_HOST=127.0.0.1 DB_PORT=5432 DB_PASSWORD='' apps/api/vendor/bin/phpunit -c apps/api/phpunit-pgsql.xml FILE
+DB_CONNECTION=sqlite DB_DATABASE=:memory: DB_CENTRAL_DATABASE=:memory: DPA_BASELINE_PROTECTED_BLOB=1381983d463e6c546535be907d4aa1c7ca94c597 apps/api/vendor/bin/phpunit -c apps/api/phpunit.xml FILE
+```
+
+| Driver | Named class | Result |
+|---|---|---|
+| pg | `InventoryTransferServiceTest` | OK (22 tests, 72 assertions) |
+| pg | `QuantityScaleFormatForUnitTest` | OK (5 tests, 12 assertions) |
+| pg | `StockTransferCloseTest` | OK (7 tests, 31 assertions) |
+| pg | `StockTransferCompleteConcurrencyPostgresTest` | OK (2 tests, 20 assertions) |
+| pg | `StockTransferEdgeCasesTest` | Tests: 27, Assertions: 115, Skipped: 2. |
+| pg | `StockTransferReceiveConcurrencyPostgresTest` | OK (3 tests, 43 assertions) |
+| pg | `StockTransferReceiveDamageTest` | OK (6 tests, 22 assertions) |
+| pg | `StockTransferReceiveLotsTest` | OK (3 tests, 32 assertions) |
+| pg | `TenantOnlyUniqueOnCatalogueTablesRatchetTest` | OK (3 tests, 137 assertions) |
+| pg | `TransferInTransitReadersUseRemainderTest` | OK (3 tests, 9 assertions) |
+| pg | `TransferReceiptAuthorityGateTest` | OK (8 tests, 19 assertions) |
+| pg | `TransferReceiptGlBoundaryTest` | OK (2 tests, 16 assertions) |
+| sqlite | `DocumentPerActionBaselineRatchetTest` | OK (2 tests, 109 assertions) |
+| sqlite | `InventoryTransferServiceTest` | OK (22 tests, 72 assertions) |
+| sqlite | `StockTransferCloseTest` | OK (7 tests, 31 assertions) |
+| sqlite | `StockTransferEdgeCasesTest` | Tests: 27, Assertions: 115, Skipped: 2. |
+| sqlite | `StockTransferReceiveDamageTest` | OK (6 tests, 22 assertions) |
+| sqlite | `StockTransferReceiveLotsTest` | OK (3 tests, 32 assertions) |
+| sqlite | `StockTransferReceiveTest` | OK (4 tests, 24 assertions) |
+| sqlite | `TransferInTransitReadersUseRemainderTest` | OK (3 tests, 9 assertions) |
+
+The PG-configured architecture reader detector and unit-precision test are source/unit checks, not database-behavior proofs. SQLite uses binary arithmetic for SQL remainders and does not install receipt CHECK constraints (I-5/G-8). Two edge-test skips remain the existing ticket-linked recall and initiate-payload-idempotency cases.
+
+### Red evidence and CI argv
+
+- T-5: direct receive under another company reached the writer before scoping; `red-authority.log` failed its ModelNotFound expectation, then 8/19 green.
+- M-1: `red-cancel.log` expected 140.0000, received 0.0000; the full close file now passes.
+- G-2: `red-damage.log` expected 422, received 201; typed refusal and unchanged seven-table snapshot now pass.
+- G-3: `red-nested.log` failed “A nested receipt must be refused.” The guard now throws before work. `red-legacy-nesting.log` exposed two obsolete nested-completion fixtures; the replacement preserves the real lock wait, stock/freight and replay assertions (2/20 green).
+- M-2: the three new badge labels were absent (`red-badge.log`). The detail probe was corrected to the existing button label “Confirm receipt” before repeating the old-behavior negative control (`red-detail-corrected-label.log`); it fails without partial completion and passes with it.
+- I-4: `red-unit-precision.log` failed because the shared precision resolver did not exist; the matching metadata/formatting test is green (5/12). G-1, T-3 and I-9 are added regression pins for existing correct behavior.
+
+The complete run body was extracted from `.github/workflows/ci.yml` (lines 1048–1178) into `ci-full-step.sh`. `bash -n` and `PATH=<stub-bin>:$PATH bash -e ci-full-step.sh` both exit 0; the stub is the only php on PATH and never runs tests. The receipt-bearing argv line is:
+
+```text
+php argv: <artisan> <test> <-c> <phpunit-pgsql.xml> <--filter=/\\(VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|AccountStatusChangedServerOnlyTest|Task33FiscalFullFlowVerificationTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|AccountChargeProjectionTest|TreasuryAccountChargeBridgeTest|DocumentAccountChargeFactureBridgeTest|TaskPhase3AccountChargeFullFlowTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest|DeviceLossIncidentTest|VirtualAdminTerminalResolverTest|PaymentAllocationPrecisionTest|PartnerMoneyPrecisionTest|WacSerializationConcurrencyTest|ZReportImmutabilityTest|ZReportProjectionTest|GenerateZReportWithCountsTest|AnalyticsTest|ZReportListTest|ProcurementPolicyCheckConstraintTest|StockRebalanceEndpointTest|StockMovementLocationFilterTest|StockMatrixEndpointTest|StockThresholdTest|GoodsReceiptDestinationTest|PaymentRepositoryLocationTest|PosBridgeLocationAttributionTest|BackfillLocationAttributionTest|LocationReconciliationTest|CashPositionEndpointTest|MaturingInstrumentsTest|UpcomingPaymentsTest|ExpenseAnalyticsTest|ZReportCashRoundingSummaryTest|PosReceiptsCashRoundingCheckTest|PosCoreReceiptProjectionCashRoundingTest|TreasuryReceiptBridgeNettingTest|TreasuryReceiptBridgeRoundingGlTest|SaleReceiptV3PayloadConstraintTest|ConfigureCashRoundingCommandTest|BackfillTolerancePurposesCommandTest|BackfillChartPurposesMigrationTest|CountryPaymentSettingsCashRoundingTest|PosPaymentPolicyEndpointTest|TenantLaunchContractTest|PosCoreReceiptProjectionRefundQuantityCapTest|PosCoreReceiptProjectionRefundQuantityCapMixedLegacyTest|PosReceiptImmutabilityTriggerSealedHashAlgorithmTest|PosCoreReceiptProjectionOriginalLineTrustTest|PosCoreReceiptProjectionConcurrentRedeliveryTest|ReceiptReturnRefactorV3Test|FiscalPayloadConstraintValidatorTest|ApplyFiscalEventProjectionJobNonRetryableTest|RefundCompensationControllerTest|BackfillSealedHashAlgorithmCommandTest|DeadLetteredProjectionsControllerTest|Nf525VerifyChainParityTest|ReceiptHashServiceVerifyLegacyArmV4Test|LegacyCorrectionGuardTest|EnableV4RefundAuthoringCommandTest|DisableV4RefundAuthoringCommandTest|PosCoreReceiptProjectionApprovalEvidenceTest|PosCoreReceiptProjectionRefundDispositionStockTest|PosCoreReceiptProjectionRefundPolicyAlertTest|PosCoreReceiptProjectionTrainingRefundRefusedTest|PosCoreReceiptProjectionVoucherRefundNoRedemptionTest|TerminalResourcePolicyTest|BatchChainE2ETest|SupportAccessPostgresEndToEndTest|VatDataRepositoryTest|Nf525CanonicalZGrandTotalPeriodTotalsTest|ReturnPeriodBackdatingGuardTest|ReturnNoteConfirmSealAndPeriodTest|DeliveredQuantityResolverTest|GuidedCancelFlowTest|GuidedCancelFlowTupleSplitTest|CanCancelReturnDecisionReadModelTest|GuidedCancelFlowMultiLineAndNettingTest|GuidedCancelFlowAuthorizationTest|PosReceiptsIndexMigrationStructureTest|AccountantReceiptPermissionsTest|ReceiptAggregateIntegrityTest|ReceiptAuthorizationTest|ReceiptFilterDateBoundaryTest|ReceiptFilterOptionsTest|ReceiptIndexArchivedTerminalTest|ReceiptIndexEnvelopeTest|ReceiptIndexFiscalStatusFilterTest|ReceiptIndexLocationScopeTest|ReceiptIndexTrainingExclusionTest|ReceiptIndexTypeFilterTest|ReceiptLocationScopeAuthorizationTest|ReceiptPdfPrintAuditTest|ReceiptResourceNoCanonicalBytesRecursiveTest|ReceiptShowRefundLineageTest|ReceiptShowResourceTest|RefundRegisterPaginationTest|RefundReportingFieldsTest|CorrectingEntryEndpointTest|SupplierGoodsReturnNoteTest|SupplierGoodsReturnNotesSchemaTest|TerminalLocationPosEnabledTest|BackfillLocationPosEnabledB3MigrationTest|PosReceiptFrozenStateImmutabilityTriggerTest|TerminalClaimHardeningTest|PosTerminalsIdentityLifecycleConstraintsTest|FiscalPeriodReopenEndpointTest|ExpensePostTest|ResolveLineEntryCodeCostRedactionTest|PurchaseOrderUnpricedLineConfirmTest|ExpensePaidFromRepositoryTest|OpeningCashFloatSeedsRepositoryTest|ProformaOutputTest|ProformaTemplateCensusTest|ProformaResourceTest|CompanyContextMiddlewareTypedErrorsTest|SaleReceiptV5PostRemiseVatBaseTest|PosReceiptV5DiscountVatBaseProjectionTest|FiscalPeriodCloseEndpointTest|BackfillDefaultLocationCodeF1MigrationTest|StagedDeploymentBootTest|AuthoritySchemaUnactivatedStateTest|ResultWorkbookTest|PartiesImportBalancesTest|LiveCountingSchemaTest|StockReservationDefaultBatchTest|AtomicFEFOConsumptionTest|BatchStockServiceVariantTest|BatchesVariantUniqueTest|RepositoryMovementsEndpointTest|PosCoreReceiptProjectionRefundNoDecrementTest|PosCoreReceiptProjectionRefundStockTest|PosCoreReceiptProjectionVariantStockTest|ReceiptReturnRefactorTest|ReceiptStockPolicyTest|BatchTrackedSalesOrderConfirmFefoTest|ImplicitReservationFefoLotTest|RepairPhantomDefaultBatchesCommandTest|PosCoreReceiptProjectionBatchLotTest|NullInventedDefaultLotExpiryMigrationTest|OpeningLotExpiryW41Test|SpreadsheetParserDateCellTest|ProductsRoundTripTest|PartiesRoundTripTest|OpeningBalancesRoundTripTest|CompositeItemsRoundTripTest|ProductImagesZipRoundTripTest|UnitsInvariantTest|UnitsNotSeededRefusalTest|UnitsProvisioningTest|ProductSkuCompanyScopeMigrationTest|VariantSkuCompanyScopeMigrationTest|PartnerVatCompanyScopeMigrationTest|PartnerVatLifetimeScopeTest|ProductSkuCompanyScopeImportTest|VariantIndexScopeTest|ProductUpsertKeyPrecedenceTest|ImportJobCompanyBackfillMigrationTest|ImportCompanyPinTest|ImportModuleEntitlementTest|ImportJobClaimConcurrencyTest|ReapStuckImportsTest|PurgeExpiredImportArtifactsTest|ImportRowOutcomeBackfillTest|ImportRowCodedErrorTest|ImportJsonbCastHydrationTest|UnitResolutionTest|ProductIdentityResolutionTest|DuplicateCensusTest|CoalescingMergeTest|ImportOutcomeAtomicityTest|UnitCatalogQueryTest|FreshTenantCensusInvariantsTest|DayOneCensusCommandTest|TenantOnlyUniqueOnCatalogueTablesRatchetTest|TenantOnlyUniqueRatchetLivenessTest|RepositoryNormalisationTest|StockTransferIdempotencyCollisionPostgresTest|DocumentDueDateGuardTest|CreditNotePaidInvoiceSourceTest|AddAttributeValueEndpointTest|CountingIndexStatusFilterTest|CountingMovementReferenceTest|StockTransferEdgeCasesTest|StockTransferCompleteConcurrencyPostgresTest|ReplenishmentEdgeCasesTest|StockTransferReceiveTest|StockTransferReceiveDamageTest|StockTransferReceiveLotsTest|StockTransferReceiveValidationTest|StockTransferCloseTest|StockTransferReceiveConcurrencyPostgresTest|TransferReceiptEventStreamTest|TransferReceiptGlBoundaryTest|TransferReceiptPatternQueryPostgresTest|TransferLegacyCompletionBackfillTest|TransferReceiptSecondOfEverythingTest|TransferReceiptAuthorityGateTest|TransferCloseReplenishmentSettlementTest|TransferReceiptSchemaRerunPostgresTest)::/>
+```
+
+### Scope and commit ledger for this round
+
+- `InventoryTransferServiceTest`, `StockTransferEdgeCasesTest` and the completion-concurrency fixture adapt to the explicit root-transaction contract; their existing stock, WAC, replay and lock-wait assertions remain. They are in-scope by G-3 consequence.
+- `QuantityScale::decimalPlacesForUnit` is shared by the formatter and reconciliation because there was no shared integer precision resolver; its null/zero/high-precision contract is tested.
+- `packages/shared/types/generated.d.ts` was regenerated by artisan for the new failure enum; no generated file was hand-edited. The frontend alias uses the actual generated name `App.Modules.Inventory.Domain.Enums.TransferStatus`.
+- `apps/web/src/lib/i18n.ts` registers the new three-key Arabic namespace overlay; this necessary wiring exposed the completeness gate discussed above.
+- Rev 9 is copied from the orchestrator’s shared-root authority into this worktree with only the requested §7.12 I-2 note added. No earlier revision was edited.
+- No new test class, feature-lane ceiling or CI alternation entry is added in this round. The fourteen existing receipt class selections and four raise-note statements remain.
+- The historical reader fixture is byte-identical to b41183f50; DPA protected blob/scanner and the i18n baseline/pin are unchanged. The old promotion-checklist file still has only its original one-line successor pointer.
+
+```text
+dee922d5f Phase 2.3.13: Preserve the PostgreSQL CI filter argument
+c3a982ca3 Phase 2.3.14: Classify receipt parent scoped unique indexes
+e6ea6fde7 Phase 2.3.15: Enforce receipt company scope and read permissions
+376745c92 Phase 2.3.16: Preserve uncapitalized freight on cancellation
+5e61060de Phase 2.3.17: Guard receipt GL posting and pin shrinkage journals
+23ea9835a Phase 2.3.18: Render all transfer statuses and complete partial receipts
+ede6a990a Phase 2.3.19: Tighten receipt precision and regression evidence
+```
+
+### Static and frontend verification; remaining gate
+
+- Pint `--test` passed on all 19 touched PHP files. PHPStan level 8 passed on the seven touched production files, following this repository’s `app/` analysis scope. `preflight-scope.txt` records the exact scoped arguments.
+- The canonical `./scripts/preflight.sh` was run with named-file scopes: the reader architecture file for PHPUnit and the badge file for Vitest. It passed Pint, PHPStan, 3 PHPUnit cases / 9 assertions, both artisan generation/drift guards, web TypeScript, ESLint (0 errors / 6410 existing warnings), TanStack/design/quantity audits, manifest checker/liveness (76 tests / 431 assertions), and local-harness guards (10 / 52). It then exited 1 at i18n with 118 missing Arabic keys. Gates after i18n were not reached in this run. No successful full preflight is claimed. An earlier attempt correctly stopped at generated-file drift; the artisan-generated failure enum was then included in the GL commit, and both generation guards passed on the next run.
+- `(cd apps/api && php tools/feature-lane-manifest-check.php)` exited 0: 1532 Feature classes / 74 groups, uniquely anchored filters against 1944 test classes; 70 groups / 1267 classes remain parked and one class remains coverage debt. No ceiling, raise note, baseline or CI activation was changed in this round.
+- `pnpm typecheck` at repository root passed for shared, web and POS after generation. Web `pnpm audit:keys` passed with zero violations; `pnpm audit:design-system` passed with 802 acknowledged / zero new violations.
+- Named Vitest invocations ran separately: `StockTransferStatusBadge.test.tsx` 8 passed (all seven statuses plus Arabic registration); `StockTransferDetailPage.test.tsx` 3 passed (including partially received → Confirm receipt); `StockTransferListPage.test.tsx` 2 passed. Scoped ESLint on touched web code exited 0 with one existing route-string warning on an untouched list link.
+- React Doctor skill regression check: `npx react-doctor@latest --verbose --diff`, before and after, reports exactly 49/100, 10 errors and 376 warnings (386 findings) against origin/main. Both commands exit 1 for pre-existing repository diagnostics; score and finding counts did not regress. No diagnostics were suppressed, no tool configuration changed, and no unrelated React cleanup was performed.
+
+**Unresolved scope decision (M-2 / i18n):** the pre-existing Arabic resource was a whole-namespace English alias. The permitted three new translations now load correctly, but activating an Arabic bundle exposes 118 old missing keys to the existing completeness ratchet. The user was asked whether to widen the three-key scope or retain it and report the failure; no answer or approval is assumed. The i18n baseline, protected blob and detector remain unchanged.
+
+A concrete draft is available locally at `docs/sessions/t2-receipt-spine/fix-round-1/stock-transfers.ar.proposed.json` (ignored, not applied to the app). It covers all 121 English source keys plus five required Arabic plural variants; key coverage and interpolation names were verified. If approved, apply that draft to `apps/web/src/locales/ar/stock-transfers.json`, run the i18n gate and named web checks, then finish the remaining preflight gates and refresh this handback. Without that scope ruling, this is not a fully green handback.
+
+Orchestrator review remains owed, including the added frontend-conventions reviewer for rev 9 option (a). Reviewer gates: see the orchestrator’s registers. No reviewer verdict is assigned here. No merge or push was performed.

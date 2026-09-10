@@ -1,10 +1,17 @@
 # Promotion checklist — T-2 / T-3 transfer receipt + blind receiving (lane t2t3-transfer-receipt-blind-receiving)
 
-Plan: docs/superpowers/plans/2026-09-09-T2T3-transfer-receipt-blind-receiving-plan-rev-8.md
+Plan: docs/superpowers/plans/2026-09-09-T2T3-transfer-receipt-blind-receiving-plan-rev-9.md
 Spec: docs/superpowers/specs/2026-09-09-transfer-destination-receipt-and-blind-receiving-design-rev-11.md (§11 rollout)
 Applies to: source Push 1 (S1). Pushes 2-4 add no permission and no backfill.
 Promoting to origin/dev = staging auto-deploy including `tenants:migrate` (memory
 feedback_push_dev_autodeploys_migrations). Every step below runs AFTER that deploy settles.
+
+## S1 review disclosures
+
+- T-4: The backend list/show gate accepts any of view, complete or reconcile. Until S4, the web route guard still requires `inventory.transfers.view` and has no Inventory module gate; complete-only and reconcile-only actors cannot reach those pages.
+- G-2: Before launch, verify that both `inventory` and `inventory_shrinkage_expense` account purposes resolve for every launch company. Destructive receipt/close actions refuse with `GL_ACCOUNTS_UNMAPPED` before any stock or GL write otherwise.
+- G-4: Lost-in-transit close write-offs are landed and scrapped at the destination; movement feeds and per-location shrinkage therefore attribute the loss to the destination.
+- G-7: Freight capitalization raises inventory-subledger WAC without a matching GL debit, while damage/write-off credits GL Inventory. The resulting GL-versus-subledger freight divergence remains owned by `docs/superpowers/tickets/2026-09-09-t1-freight-capitalization-no-gl.md`.
 
 ## 1. Tenant permission seeding  (spec §11.4 item 1)
 - [ ] `php artisan tenants:seed --force --class='Database\Seeders\RolesAndPermissionsSeeder'`
