@@ -15,6 +15,17 @@ require_once __DIR__.'/LotActionPermissionDeltaTest.php';
 
 final class GeneralManagerAssignmentTest extends LotActionRoleFixture
 {
+    public function test_assignment_without_current_membership_preserves_flag_off_contract(): void
+    {
+        $target = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        config(['lot_action_permissions.enforce' => false]);
+        $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/users/'.$target->id.'/roles', ['role' => 'viewer'])->assertOk();
+        self::assertTrue($target->fresh()->hasRole('viewer'));
+        config(['lot_action_permissions.enforce' => true]);
+        $this->postJson('/api/v1/users/'.$target->id.'/roles', ['role' => 'viewer'])
+            ->assertStatus(422)->assertJsonPath('message', 'Active company membership required.');
+    }
+
     public function test_concurrent_assignment_and_membership_narrowing_are_serialized(): void
     {
         self::assertSame('APPLIED', $this->applyDelta()->outcome->value);

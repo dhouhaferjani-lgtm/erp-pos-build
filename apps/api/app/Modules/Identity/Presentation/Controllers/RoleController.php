@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Identity\Presentation\Controllers;
 
+use App\Modules\BatchExpiry\Application\Services\LotActionPermissionActivation;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
@@ -64,6 +65,7 @@ class RoleController extends Controller
 
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly LotActionPermissionActivation $activation,
         private readonly CompanyConfigService $configService,
         private readonly GeneralManagerAssignmentGuard $generalManagerAssignmentGuard,
         private readonly PermissionRegistrar $permissionRegistrar,
@@ -373,15 +375,15 @@ class RoleController extends Controller
                 $companyId = $this->companyContext->requireCompanyId();
                 $memberships = UserCompanyMembership::query()->where('user_id', $userId)->where('status', MembershipStatus::Active)->orderBy('company_id')->lockForUpdate()->get();
                 $membership = $memberships->firstWhere('company_id', $companyId);
-                abort_if($membership === null, 422, 'Active company membership required.');
+                abort_if($this->activation->enforced() && $membership === null, 422, 'Active company membership required.');
                 Role::query()->where(config('permission.column_names.team_foreign_key'), $actor->tenant_id)->where('name', $validated['role'])->lockForUpdate()->first();
                 $effectiveRoles = array_values(array_unique([...array_values($user->getRoleNames()->map(static fn ($name): string => (string) $name)->all()), $validated['role']]));
-                $this->generalManagerAssignmentGuard->assertAssignable($actor, $userId, $companyId, $effectiveRoles, $membership->allowed_location_ids);
+                $this->generalManagerAssignmentGuard->assertAssignable($actor, $userId, $companyId, $effectiveRoles, $membership?->allowed_location_ids);
 
                 /** @var string $roleName */
                 $roleName = $validated['role'];
                 $user->assignRole($roleName);
-                $this->generalManagerAssignmentGuard->assertAssignable($actor, $userId, $companyId, array_values($user->getRoleNames()->map(static fn ($name): string => (string) $name)->all()), $membership->allowed_location_ids);
+                $this->generalManagerAssignmentGuard->assertAssignable($actor, $userId, $companyId, array_values($user->getRoleNames()->map(static fn ($name): string => (string) $name)->all()), $membership?->allowed_location_ids);
 
                 // Privileged action — leave an audit trail (actor + target + role +
                 // timestamp). The audit_events row is the only record of who granted
