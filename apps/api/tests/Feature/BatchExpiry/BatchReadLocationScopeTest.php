@@ -28,6 +28,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -193,6 +194,80 @@ final class BatchReadLocationScopeTest extends BatchPermissionFixture
             $this->patchJson('/api/v1/batches/'.$batch->uuid, ['notes' => 'Company response', 'location_id' => $other->id])
                 ->assertOk()->assertJsonPath('data.total_quantity', $total)->assertJsonPath('data.available_quantity', $available)->assertJsonCount(2, 'data.batch_stock');
         }
+    }
+
+    public function test_recall_response_uses_membership_stock(): void
+    {
+        $batch = $this->lot();
+        $other = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->stockAt($batch, $other, '91.0000');
+        $this->stockAt($batch, $this->location, '3.1234', '0.1000');
+        $this->restrict([$this->location->id]);
+        $this->postJson('/api/v1/batches/'.$batch->uuid.'/recall', ['reason' => 'Damaged packaging'])
+            ->assertOk()->assertJsonPath('data.is_recalled', true)
+            ->assertJsonPath('data.total_quantity', '3.1234')->assertJsonPath('data.available_quantity', '3.0234')
+            ->assertJsonCount(1, 'data.batch_stock')->assertJsonPath('data.batch_stock.0.location_id', $this->location->id);
+    }
+
+    public function test_transfer_controller_response_uses_all_membership_locations(): void
+    {
+        $batch = $this->lot();
+        $other = Location::factory()->create(['company_id' => $this->company->id]);
+        $destination = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->stockAt($batch, $other, '91.0000');
+        $this->stockAt($batch, $this->location, '3.1234', '0.1000');
+        $this->stockAt($batch, $destination, '2.0000');
+        $this->restrict([$this->location->id, $destination->id]);
+        $response = $this->postJson('/api/v1/batches/'.$batch->uuid.'/transfer', [
+            'from_location_id' => $this->location->id, 'to_location_id' => $destination->id, 'quantity' => '1.0000',
+        ])->assertOk()->assertJsonPath('data.total_quantity', '5.1234')->assertJsonPath('data.available_quantity', '5.0234')->assertJsonCount(2, 'data.batch_stock');
+        $stocks = array_column($response->json('data.batch_stock'), null, 'location_id');
+        self::assertSame('2.1234', $stocks[$this->location->id]['quantity']);
+        self::assertSame('3.0000', $stocks[$destination->id]['quantity']);
+        self::assertArrayNotHasKey($other->id, $stocks);
+    }
+
+    public function test_write_off_response_uses_membership_stock(): void
+    {
+        $batch = $this->lot();
+        $other = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->stockAt($batch, $other, '91.0000');
+        $this->stockAt($batch, $this->location, '3.1234', '0.1000');
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id, 'company_id' => $this->company->id,
+            'product_id' => $this->product->id, 'location_id' => $this->location->id,
+            'quantity' => '3.1234', 'reserved' => '0.1000',
+        ]);
+        $this->restrict([$this->location->id]);
+        $this->postJson('/api/v1/batches/'.$batch->uuid.'/write-off', [
+            'location_id' => $this->location->id, 'quantity' => '1.0000', 'reason' => 'damage',
+        ])->assertOk()->assertJsonPath('data.total_quantity', '2.1234')->assertJsonPath('data.available_quantity', '2.0234')
+            ->assertJsonCount(1, 'data.batch_stock')->assertJsonPath('data.batch_stock.0.location_id', $this->location->id);
+    }
+
+    public function test_flag_off_expiry_query_scope_and_empty_create_stock_contract(): void
+    {
+        $this->travelTo(now()->startOfDay());
+        $this->restrict(null);
+        config(['lot_action_permissions.enforce' => false]);
+        Role::findByName('admin', 'sanctum')->revokePermissionTo('batches.view');
+        $this->user->unsetRelations();
+        self::assertFalse($this->user->can('batches.view'));
+        $batch = $this->lot();
+        $batch->update(['expiry_date' => now()->subDay(), 'is_expired' => true]);
+        $other = Location::factory()->create(['company_id' => $this->company->id]);
+        $this->stockAt($batch, $other, '91.0000');
+        $this->stockAt($batch, $this->location, '3.1234', '0.1000');
+        $stock = [['location_id' => $this->location->id, 'quantity' => '3.1234', 'reserved_quantity' => '0.1000', 'available_quantity' => '3.0234']];
+        $this->getJson('/api/v1/batches/expired?'.http_build_query(['location_ids' => [$this->location->id]]))
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.total_quantity', '3.1234')
+            ->assertJsonPath('data.0.available_quantity', '3.0234')->assertJsonPath('data.0.batch_stock', $stock);
+        $batch->update(['expiry_date' => now()->addDays(5), 'is_expired' => false]);
+        $this->getJson('/api/v1/batches/expiring?'.http_build_query(['location_id' => $this->location->id]))
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.total_quantity', '3.1234')
+            ->assertJsonPath('data.0.available_quantity', '3.0234')->assertJsonPath('data.0.batch_stock', $stock);
+        $this->postJson('/api/v1/batches', ['product_id' => $this->product->id, 'batch_number' => 'EMPTY-CONTRACT', 'expiry_date' => now()->addDays(60)->toDateString()])
+            ->assertCreated()->assertJsonPath('data.total_quantity', '0.0000')->assertJsonPath('data.available_quantity', '0.0000')->assertJsonPath('data.batch_stock', []);
     }
 
     public function test_unloaded_resource_cannot_silently_emit_zero_stock(): void
