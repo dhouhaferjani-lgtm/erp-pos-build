@@ -305,7 +305,7 @@ class StockTransferController extends Controller
             return $denied;
         }
         try {
-            $result = $this->receiptService->receive($model->id, $user->id, $request->toPayload());
+            $result = $this->receiptService->receive($model->id, $user->id, $request->toPayload(), $company->tenant_id, $company->id);
         } catch (TransferReceiptFailureException $e) {
             return $this->receiptFailureResponse($e);
         } catch (TransferStateException $e) {
@@ -331,7 +331,7 @@ class StockTransferController extends Controller
             return $denied;
         }
         try {
-            $result = $this->receiptService->close($model->id, $user->id, $request->toPayload());
+            $result = $this->receiptService->close($model->id, $user->id, $request->toPayload(), $company->tenant_id, $company->id);
         } catch (TransferReceiptFailureException $e) {
             return $this->receiptFailureResponse($e);
         } catch (TransferStateException $e) {

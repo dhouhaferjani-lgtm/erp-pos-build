@@ -89,7 +89,7 @@ try {
         $payload = $action === 'receive'
             ? ['idempotency_key' => $argv[6], 'lines' => [['transfer_line_id' => $argv[4], 'quantity_received' => '8.0000', 'quantity_damaged' => '0.0000']]]
             : ['idempotency_key' => $argv[6], 'disposition' => 'return_to_source', 'reason' => 'other'];
-        $app->make(App\Modules\Inventory\Application\Services\StockTransferReceiptService::class)->$action($argv[1], $argv[2], $payload);
+        $app->make(App\Modules\Inventory\Application\Services\StockTransferReceiptService::class)->$action($argv[1], $argv[2], $payload, $app->make(App\Modules\Company\Services\CompanyContext::class)->requireCompany()->tenant_id, $argv[3]);
         echo json_encode(['status' => 201]);
     }
 } catch (App\Modules\Inventory\Domain\Exceptions\TransferReceiptFailureException $e) {

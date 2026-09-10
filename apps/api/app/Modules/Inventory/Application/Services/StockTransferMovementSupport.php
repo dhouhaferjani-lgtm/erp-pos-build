@@ -13,6 +13,8 @@ use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\QuantityScale;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Str;
 
 /**
  * Shared transfer stock and freight operations. Callers own the transaction
@@ -31,15 +33,20 @@ final class StockTransferMovementSupport
 
     /**
      * Header row lock with lines and allocations eager-loaded.
-     * Moved verbatim from StockTransferService::lockTransfer() (:734-743).
+     * Re-resolve the caller-scoped identity under the header lock.
      */
-    public function lockTransfer(string $transferId): StockTransfer
+    public function lockTransfer(StockTransfer $identity): StockTransfer
     {
+        if (! Str::isUuid($identity->id)) {
+            throw (new ModelNotFoundException)->setModel(StockTransfer::class, [$identity->id]);
+        }
         /** @var StockTransfer $transfer */
         $transfer = StockTransfer::query()
+            ->where('tenant_id', $identity->tenant_id)
+            ->where('company_id', $identity->company_id)
             ->with('lines.batchAllocations')
             ->lockForUpdate()
-            ->findOrFail($transferId);
+            ->findOrFail($identity->id);
 
         return $transfer;
     }

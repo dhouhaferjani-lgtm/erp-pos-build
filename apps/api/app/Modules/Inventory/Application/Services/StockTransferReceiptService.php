@@ -35,6 +35,7 @@ use App\Modules\Inventory\Domain\StockTransferReceiptLineLot;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
 use App\Shared\Domain\QuantityScale;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -72,36 +73,39 @@ final class StockTransferReceiptService
     ) {}
 
     /** @param ReceivePayload $payload */
-    public function receive(string $transferId, string $userId, array $payload): TransferReceiptResult
+    public function receive(string $transferId, string $userId, array $payload, string $tenantId, string $companyId): TransferReceiptResult
     {
-        return $this->transact($transferId, $userId, $payload, TransferReceiptKind::Receipt);
+        return $this->transact($transferId, $userId, $payload, TransferReceiptKind::Receipt, $tenantId, $companyId);
     }
 
     /** @param ClosePayload $payload */
-    public function close(string $transferId, string $userId, array $payload): TransferReceiptResult
+    public function close(string $transferId, string $userId, array $payload, string $tenantId, string $companyId): TransferReceiptResult
     {
-        return $this->transact($transferId, $userId, $payload, TransferReceiptKind::Close);
+        return $this->transact($transferId, $userId, $payload, TransferReceiptKind::Close, $tenantId, $companyId);
     }
 
-    public function receiveAllRemaining(string $transferId, string $userId, string $idempotencyKey): TransferReceiptResult
+    public function receiveAllRemaining(string $transferId, string $userId, string $idempotencyKey, string $tenantId, string $companyId): TransferReceiptResult
     {
-        return $this->transact($transferId, $userId, null, TransferReceiptKind::Receipt, $idempotencyKey);
+        return $this->transact($transferId, $userId, null, TransferReceiptKind::Receipt, $tenantId, $companyId, $idempotencyKey);
     }
 
     /** @param ReceivePayload|ClosePayload|null $input */
-    private function transact(string $transferId, string $userId, ?array $input, TransferReceiptKind $kind, ?string $serverKey = null): TransferReceiptResult
+    private function transact(string $transferId, string $userId, ?array $input, TransferReceiptKind $kind, string $tenantId, string $companyId, ?string $serverKey = null): TransferReceiptResult
     {
         $key = $input['idempotency_key'] ?? $serverKey;
         if ($key === null) {
             throw new \InvalidArgumentException('A receipt key is required.');
         }
-        $identity = StockTransfer::query()->findOrFail($transferId);
+        if (! Str::isUuid($transferId)) {
+            throw (new ModelNotFoundException)->setModel(StockTransfer::class, [$transferId]);
+        }
+        $identity = StockTransfer::query()->where('tenant_id', $tenantId)->where('company_id', $companyId)->findOrFail($transferId);
         $hash = $input === null ? null : $this->canonicalizer->hash($input);
         try {
-            return DB::transaction(function () use ($transferId, $userId, $input, $kind, $key, $hash): TransferReceiptResult {
+            return DB::transaction(function () use ($identity, $userId, $input, $kind, $key, $hash): TransferReceiptResult {
                 $marker = $this->glBuffer->mark();
                 try {
-                    $transfer = $this->movementSupport->lockTransfer($transferId);
+                    $transfer = $this->movementSupport->lockTransfer($identity);
                     $existing = $this->findReceipt($transfer, $key);
                     if ($existing !== null) {
                         return $this->replay($existing, $transfer, $hash, $kind);

@@ -309,8 +309,10 @@ class StockTransferService
      */
     public function complete(string $transferId, string $userId): StockTransfer
     {
+        $identity = StockTransfer::query()->findOrFail($transferId);
+
         return $this->receiptService
-            ->receiveAllRemaining($transferId, $userId, 'sys:complete:'.$transferId)
+            ->receiveAllRemaining($transferId, $userId, 'sys:complete:'.$transferId, $identity->tenant_id, $identity->company_id)
             ->transfer;
     }
 
@@ -323,7 +325,7 @@ class StockTransferService
     public function cancel(string $transferId, string $userId, ?string $reason = null): StockTransfer
     {
         return DB::transaction(function () use ($transferId, $userId, $reason): StockTransfer {
-            $transfer = $this->movementSupport->lockTransfer($transferId);
+            $transfer = $this->movementSupport->lockTransfer(StockTransfer::query()->findOrFail($transferId));
 
             if (! $transfer->status->canBeCancelled()) {
                 throw new TransferStateException($transfer->id, $transfer->status, 'cancel');
@@ -391,7 +393,7 @@ class StockTransferService
      */
     private function moveSourceToInTransit(string $transferId, string $userId): StockTransfer
     {
-        $transfer = $this->movementSupport->lockTransfer($transferId);
+        $transfer = $this->movementSupport->lockTransfer(StockTransfer::query()->findOrFail($transferId));
 
         if (! $transfer->status->canBeInitiated()) {
             throw new TransferStateException($transfer->id, $transfer->status, 'initiate');
