@@ -13,9 +13,9 @@ final readonly class BackwardDocumentBatchTraceData
         public readonly bool $isRecalled,
         public readonly bool $isExpired,
         public readonly string $productName,
-        public readonly string $productId,
+        public readonly ?string $productId,
         public readonly string $quantity,
-        public readonly string $documentNumber,
+        public readonly ?string $documentNumber,
         public readonly string $documentType,
         public readonly string $documentDate,
     ) {}

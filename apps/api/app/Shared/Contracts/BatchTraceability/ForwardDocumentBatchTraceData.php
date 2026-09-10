@@ -8,7 +8,7 @@ final readonly class ForwardDocumentBatchTraceData
 {
     public function __construct(
         public readonly string $type,
-        public readonly string $documentNumber,
+        public readonly ?string $documentNumber,
         public readonly string $documentType,
         public readonly string $documentDate,
         public readonly string $partnerName,

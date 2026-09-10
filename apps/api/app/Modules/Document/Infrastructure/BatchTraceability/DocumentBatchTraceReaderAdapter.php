@@ -22,7 +22,7 @@ final readonly class DocumentBatchTraceReaderAdapter implements DocumentBatchTra
 
         return array_values($this->query($tenantId, $companyId, $locationIds)->where('batch_id', $batchId)
             ->with(['document.partner'])->get()->map(fn (DocumentLine $line) => new ForwardDocumentBatchTraceData(
-                type: 'document', documentNumber: (string) $line->document->document_number,
+                type: 'document', documentNumber: $line->document->document_number,
                 documentType: $line->document->type->value, documentDate: $line->document->document_date->toJSON(),
                 partnerName: (string) (optional($line->document->partner)->name ?? 'Unknown'), partnerId: $line->document->partner_id,
                 productName: $line->description, quantity: $line->quantity,
@@ -53,7 +53,7 @@ final readonly class DocumentBatchTraceReaderAdapter implements DocumentBatchTra
             batchNumber: $line->batch?->batch_number, batchId: (int) $line->batch_id,
             expiryDate: $line->batch?->expiry_date?->toDateString(), isRecalled: $line->batch !== null ? $line->batch->is_recalled : false,
             isExpired: $line->batch !== null ? $line->batch->is_expired : false, productName: $line->description,
-            productId: (string) $line->product_id, quantity: $line->quantity, documentNumber: (string) $line->document->document_number,
+            productId: $line->product_id, quantity: $line->quantity, documentNumber: $line->document->document_number,
             documentType: $line->document->type->value, documentDate: $line->document->document_date->toJSON(),
         ))->values()->all());
     }

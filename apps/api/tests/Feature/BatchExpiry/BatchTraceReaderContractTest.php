@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\ReceiptLineBatchAllocation;
@@ -81,6 +82,29 @@ final class BatchTraceReaderContractTest extends BatchPermissionFixture
         self::assertSame([], $reader->batchIdsVisibleAtLocations($this->tenant->id, $this->company->id, [$this->location->id]));
         $fallback = $this->documentLine($batch, $this->company->id, $this->location->id);
         self::assertSame([$fallback->document->document_number], array_column($reader->forwardForBatch($this->tenant->id, $this->company->id, $batch->id, [$this->location->id]), 'documentNumber'));
+    }
+
+    public function test_backward_trace_rejects_malformed_identifiers_and_dates(): void
+    {
+        $this->restrict(null);
+        $this->getJson('/api/v1/partners/not-a-uuid/batch-history')->assertNotFound();
+        foreach (['product_id' => 'not-a-uuid', 'date_from' => 'not-a-date', 'date_to' => 'not-a-date'] as $key => $value) {
+            $this->getJson('/api/v1/partners/'.$this->user->id.'/batch-history?'.http_build_query([$key => $value]))
+                ->assertUnprocessable()->assertJsonValidationErrors($key, 'error.errors');
+        }
+    }
+
+    public function test_draft_trace_preserves_null_document_number_and_product_id(): void
+    {
+        $batch = $this->lot();
+        $line = $this->documentLine($batch, $this->company->id, $this->location->id);
+        $line->update(['product_id' => null]);
+        $line->document->update(['document_number' => null, 'status' => DocumentStatus::Draft]);
+        $this->restrict(null);
+        $this->getJson('/api/v1/batches/'.$batch->uuid.'/traceability')->assertOk()
+            ->assertJsonPath('data.document_sales.0.document_number', null);
+        $this->getJson('/api/v1/partners/'.$line->document->partner_id.'/batch-history')->assertOk()
+            ->assertJsonPath('data.0.document_number', null)->assertJsonPath('data.0.product_id', null);
     }
 
     public function test_forward_and_backward_json_contracts_are_field_for_field_compatible(): void

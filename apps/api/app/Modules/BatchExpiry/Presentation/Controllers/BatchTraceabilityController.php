@@ -105,10 +105,18 @@ class BatchTraceabilityController extends Controller
      */
     public function backwardTrace(Request $request, string $partnerId): JsonResponse
     {
+        if (! Str::isUuid($partnerId)) {
+            return response()->json(['error' => ['code' => 'PARTNER_NOT_FOUND', 'message' => 'Partner not found']], 404);
+        }
+        $validated = $request->validate([
+            'product_id' => ['sometimes', 'uuid'],
+            'date_from' => ['sometimes', 'date'],
+            'date_to' => ['sometimes', 'date'],
+        ]);
         $company = $this->companyContext->requireCompany();
         $rows = $this->documentTraceReader->backwardForPartner(
             $company->tenant_id, $company->id, $partnerId, $this->resolvedTraceLocationIds($request),
-            $request->input('product_id'), $request->input('date_from'), $request->input('date_to'),
+            $validated['product_id'] ?? null, $validated['date_from'] ?? null, $validated['date_to'] ?? null,
         );
 
         return response()->json(['data' => array_map(static fn ($row): array => [
