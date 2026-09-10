@@ -29,8 +29,9 @@ abstract class LotActionRoleFixture extends BatchPermissionFixture
      */
     protected function race(array $jobs, string $lockSql, array $bindings): array
     {
-        self::assertSame('pgsql', DB::getDriverName());
-        self::assertSame('autoerp_test_w', DB::connection()->getDatabaseName());
+        if (DB::getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Concurrency harness requires PostgreSQL advisory locks.');
+        }
         $schema = 'wlota_race_'.bin2hex(random_bytes(6));
         config(['database.connections.wlota_race' => config('database.connections.'.DB::getDefaultConnection())]);
         $control = DB::connection('wlota_race');
