@@ -12,6 +12,8 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\LocationStockQueryService;
 use App\Modules\Inventory\Application\Services\StockMatrixQueryService;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
+use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockTransfer;
 use App\Modules\Inventory\Domain\StockTransferReceiptLine;
 use App\Modules\Product\Domain\Product;
@@ -143,6 +145,19 @@ final class TransferLegacyCompletionBackfillTest extends TestCase
         $baseline = json_decode(file_get_contents(base_path(self::BASELINE)), true, flags: JSON_THROW_ON_ERROR)[DB::getDriverName()];
         $migration = require database_path('migrations/tenant/2026_09_09_100300_backfill_legacy_transfer_completions.php');
         $migration->up();
+        // Prove the intended changed answer independently, then restore that
+        // one fixture row before comparing all historical answers byte-for-byte.
+        $carrying = DB::table('stock_transfers')->where('status', 'in_transit')->where('transfer_number', 'BASE-in_transit-plain')->orderBy('id')->first();
+        $carryingLine = DB::table('stock_transfer_lines')->where('transfer_id', $carrying->id)->sole();
+        DB::table('stock_transfers')->where('id', $carrying->id)->update(['status' => 'partially_received']);
+        DB::table('stock_transfer_lines')->where('id', $carryingLine->id)->update(['quantity' => '12.0000', 'quantity_received' => '7.0000']);
+        $changed = $this->readerAnswers();
+        self::assertSame('5.0000', $changed['location_stock_grouped'][$carrying->company_id][$carrying->destination_location_id][$carryingLine->product_id.'|']);
+        self::assertSame('5.0000', $changed['location_stock_distribution'][$carrying->company_id][$carryingLine->product_id][$carrying->destination_location_id]);
+        self::assertSame('5.0000', $changed['stock_matrix_incoming'][$carrying->company_id][$carryingLine->product_id.'||'.$carrying->destination_location_id]);
+        self::assertSame(bcsub($baseline['sites']['wac_owned_quantity'][$carrying->company_id][$carryingLine->product_id], '7.4517', 7), $changed['wac_owned_quantity'][$carrying->company_id][$carryingLine->product_id]);
+        DB::table('stock_transfers')->where('id', $carrying->id)->update(['status' => 'in_transit']);
+        DB::table('stock_transfer_lines')->where('id', $carryingLine->id)->update(['quantity' => $carryingLine->quantity, 'quantity_received' => '0.0000']);
         $after = $this->readerAnswers();
         self::assertSame($baseline['sites']['location_stock_grouped'], $after['location_stock_grouped']);
         self::assertSame($baseline['sites']['location_stock_distribution'], $after['location_stock_distribution']);
@@ -182,6 +197,36 @@ final class TransferLegacyCompletionBackfillTest extends TestCase
         }
     }
 
+    public function test_legacy_movement_resolution_requires_one_match_at_the_destination_and_shipped_lot(): void
+    {
+        $this->seedHistoricalFixture();
+        $expected = [];
+        $index = 0;
+        foreach (StockTransfer::query()->where('status', 'completed')->with('lines.batchAllocations')->orderBy('id')->get() as $transfer) {
+            $line = $transfer->lines->sole();
+            $batchId = $line->batchAllocations->first()?->batch_id;
+            $writer = $this->app->make(StockAdjustmentService::class);
+            $this->app->make(CompanyContext::class)->setCompanyId($transfer->company_id);
+            $movement = $writer->receive($line->product_id, $transfer->destination_location_id, $line->quantity, $transfer->transfer_number, $transfer->initiated_by_user_id, batchId: $batchId, expectedCompanyId: $transfer->company_id, movementType: MovementType::TransferIn, transferId: $transfer->id);
+            // A transfer-linked movement at the source cannot be selected.
+            $writer->receive($line->product_id, $transfer->source_location_id, '1.0000', $transfer->transfer_number, $transfer->initiated_by_user_id, batchId: $batchId, expectedCompanyId: $transfer->company_id, movementType: MovementType::TransferIn, transferId: $transfer->id);
+            $expected[$line->id] = $index < 2 ? $movement->id : null;
+            if ($index >= 2) {
+                $writer->receive($line->product_id, $transfer->destination_location_id, '1.0000', $transfer->transfer_number, $transfer->initiated_by_user_id, batchId: $batchId, expectedCompanyId: $transfer->company_id, movementType: MovementType::TransferIn, transferId: $transfer->id);
+            }
+            $index++;
+        }
+        (require database_path('migrations/tenant/2026_09_09_100300_backfill_legacy_transfer_completions.php'))->up();
+        foreach (DB::table('stock_transfer_receipt_lines')->get() as $line) {
+            if ($line->is_lot_tracked) {
+                self::assertNull($line->in_movement_id);
+                self::assertSame($expected[$line->transfer_line_id], DB::table('stock_transfer_receipt_line_lots')->where('receipt_line_id', $line->id)->sole()->in_movement_id);
+            } else {
+                self::assertSame($expected[$line->transfer_line_id], $line->in_movement_id);
+            }
+        }
+    }
+
     public function test_interrupted_backfill_rolls_back_and_the_next_run_completes(): void
     {
         if (DB::getDriverName() !== 'pgsql') {
@@ -207,6 +252,22 @@ final class TransferLegacyCompletionBackfillTest extends TestCase
         self::assertSame(0, DB::table('stock_transfer_receipt_lines')->count());
         DB::transaction(static fn () => $migration->up());
         self::assertSame(4, DB::table('stock_transfer_receipts')->count());
+    }
+
+    public function test_rerun_does_not_reclassify_modern_damage_as_good_received(): void
+    {
+        $this->seedHistoricalFixture();
+        $migration = require database_path('migrations/tenant/2026_09_09_100300_backfill_legacy_transfer_completions.php');
+        $migration->up();
+        DB::table('stock_transfer_receipts')->update(['kind' => 'receipt']);
+        DB::table('stock_transfer_lines')->whereIn('transfer_id', DB::table('stock_transfer_receipts')->select('transfer_id'))
+            ->update(['quantity_received' => '0.0000', 'quantity_damaged' => DB::raw('quantity')]);
+        DB::table('stock_transfer_line_batch_allocations')->whereIn('stock_transfer_line_id', DB::table('stock_transfer_lines')->select('id')->where('quantity_damaged', '>', 0))
+            ->update(['quantity_received' => '0.0000', 'quantity_damaged' => DB::raw('quantity')]);
+        $before = $this->backfillSnapshot();
+        $migration->up();
+        self::assertSame($before, $this->backfillSnapshot());
+        self::assertSame(0, DB::table('stock_transfer_lines')->where('quantity_damaged', '>', 0)->where('quantity_received', '>', 0)->count());
     }
 
     /** @return array<string, string> */
