@@ -8,6 +8,8 @@ use App\Modules\Identity\Application\DTOs\LotActionPermissionDeltaResult;
 use App\Modules\Identity\Domain\Enums\LotActionPermissionDeltaOutcome as Outcome;
 use App\Modules\Identity\Domain\Enums\RoleProvisioningSource;
 use App\Modules\Identity\Domain\Enums\SystemRoleName;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Spatie\Permission\Models\Permission;
@@ -51,7 +53,7 @@ final readonly class LotActionPermissionDelta
                 }
                 $this->acquireTenantLock($tenantId);
                 $team = config('permission.column_names.team_foreign_key');
-                $roles = Role::query()->where($team, $tenantId)->where('guard_name', 'sanctum')->orderBy('name')->orderBy('id')->lockForUpdate()->get()->keyBy('name');
+                $roles = $this->resolveCatalogueRoles($tenantId, array_keys($rolePermissionGrants));
                 $generalManager = $roles->get(SystemRoleName::GeneralManager->value);
                 if ($generalManager !== null && $generalManager->getAttribute('provisioning_source') !== RoleProvisioningSource::Wlota1a->value) {
                     throw new \DomainException('unmarked_general_manager_collision');
@@ -95,7 +97,35 @@ final readonly class LotActionPermissionDelta
             return new LotActionPermissionDeltaResult(Outcome::Failed, $exception->getMessage());
         } finally {
             $this->permissionRegistrar->setPermissionsTeamId($previousTeamId);
+            $this->permissionRegistrar->forgetCachedPermissions();
         }
+    }
+
+    /**
+     * Legacy NULL-team roles are the shipped catalogue in each tenant database.
+     * Resolve them as Spatie does, without changing ownership or role pivots.
+     *
+     * @param  list<string>  $names
+     * @return Collection<string, Role>
+     */
+    private function resolveCatalogueRoles(string $tenantId, array $names): Collection
+    {
+        $team = config('permission.column_names.team_foreign_key');
+        $roles = Role::query()->where('guard_name', 'sanctum')->whereIn('name', $names)
+            ->where(fn (Builder $query): Builder => $query->whereNull($team)->orWhere($team, $tenantId))
+            ->orderBy('name')->orderBy('id')->lockForUpdate()->get();
+        foreach ($roles->groupBy('name') as $name => $matches) {
+            if ($name === SystemRoleName::GeneralManager->value && $matches->contains(
+                fn (Role $role): bool => $role->getAttribute('provisioning_source') !== RoleProvisioningSource::Wlota1a->value,
+            )) {
+                throw new \DomainException('unmarked_general_manager_collision');
+            }
+            if ($matches->count() !== 1) {
+                throw new \DomainException('ambiguous_legacy_role_collision');
+            }
+        }
+
+        return $roles->keyBy('name');
     }
 
     private function acquireTenantLock(string $tenantId): void
@@ -162,8 +192,9 @@ final readonly class LotActionPermissionDelta
             ->where('guard_name', 'sanctum')->whereRaw('provisioning_source = ?', [RoleProvisioningSource::Wlota1a->value])->count() !== 1) {
             throw new \DomainException('canonical_state_mismatch');
         }
+        $roles = $this->resolveCatalogueRoles($tenantId, array_keys($rolePermissionGrants));
         foreach ($rolePermissionGrants as $name => $permissions) {
-            $role = Role::query()->where($team, $tenantId)->where('name', $name)->where('guard_name', 'sanctum')->first();
+            $role = $roles->get($name);
             $actual = $role?->permissions()->toBase()->pluck('name')->all() ?? [];
             if (array_diff($permissions, $actual) !== [] || ($name === 'manager' && in_array('batches.recall', $actual, true))) {
                 throw new \DomainException('canonical_state_mismatch');

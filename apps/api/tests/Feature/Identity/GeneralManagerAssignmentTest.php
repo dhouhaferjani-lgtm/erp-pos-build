@@ -15,6 +15,25 @@ require_once __DIR__.'/LotActionPermissionDeltaTest.php';
 
 final class GeneralManagerAssignmentTest extends LotActionRoleFixture
 {
+    public function test_concurrent_assignment_and_membership_narrowing_are_serialized(): void
+    {
+        self::assertSame('APPLIED', $this->applyDelta()->outcome->value);
+        $target = User::factory()->create(['tenant_id' => $this->tenant->id]);
+        UserCompanyMembership::create(['user_id' => $target->id, 'company_id' => $this->company->id,
+            'role' => 'viewer', 'allowed_location_ids' => null, 'status' => 'active']);
+        $job = ['actor' => $this->user->id, 'company' => $this->company->id, 'target' => $target->id, 'location' => $this->location->id];
+        $results = $this->race([['action' => 'assign'] + $job, ['action' => 'narrow'] + $job],
+            'SELECT id FROM users WHERE id = ? FOR UPDATE', [$target->id]);
+        $statuses = array_column($results, 'status');
+        sort($statuses);
+        self::assertSame([200, 422], $statuses, json_encode($results, JSON_THROW_ON_ERROR));
+        foreach ($results as $result) {
+            if ($result['status'] === 422) {
+                self::assertStringContainsString('GENERAL_MANAGER_REQUIRES_UNRESTRICTED_MEMBERSHIP', $result['body']);
+            }
+        }
+    }
+
     public function test_create_update_and_dedicated_assignment_reject_restricted_membership(): void
     {
         $this->provisionMarkedRole();
