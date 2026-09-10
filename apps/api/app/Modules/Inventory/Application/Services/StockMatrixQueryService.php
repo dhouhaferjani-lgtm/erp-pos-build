@@ -6,7 +6,8 @@ namespace App\Modules\Inventory\Application\Services;
 
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Inventory\Domain\Enums\TransferStatus;
+use App\Modules\Inventory\Domain\StockTransfer;
+use App\Modules\Inventory\Domain\StockTransferLine;
 use App\Shared\Domain\QuantityScale;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -399,9 +400,9 @@ final class StockMatrixQueryService
             ->where('stock_transfer_lines.company_id', $companyId)
             ->whereIn('stock_transfer_lines.product_id', $productIds)
             ->whereIn('stock_transfers.destination_location_id', $locationIds)
-            ->where('stock_transfers.status', TransferStatus::InTransit->value)
+            ->whereIn('stock_transfers.status', StockTransfer::CARRYING_STATUSES)
             ->groupBy('stock_transfer_lines.product_id', 'stock_transfer_lines.variant_id', 'stock_transfers.destination_location_id')
-            ->selectRaw('stock_transfer_lines.product_id, stock_transfer_lines.variant_id, stock_transfers.destination_location_id as location_id, SUM(stock_transfer_lines.quantity) as incoming')
+            ->selectRaw('stock_transfer_lines.product_id, stock_transfer_lines.variant_id, stock_transfers.destination_location_id as location_id, SUM('.StockTransferLine::REMAINDER_SQL.') as incoming')
             ->get();
         foreach ($transferRows as $row) {
             $key = (string) $row->product_id.'|'.($row->variant_id ?? '').'|'.(string) $row->location_id;
