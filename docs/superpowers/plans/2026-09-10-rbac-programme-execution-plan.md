@@ -30,12 +30,24 @@ Tenancy 3.10 / PHPUnit 11 / PHPStan L8 / Pint / React 19 / TanStack Query 5 / Vi
 (rev 9, **ACCEPTED** — Codex spec gate r9, 0 BLOCKER / 0 MAJOR / 3 minor editorial,
 register at [`docs/superpowers/reviews/2026-09-10-rbac-spec-codex-gate-r9.md`](../reviews/2026-09-10-rbac-spec-codex-gate-r9.md)).
 
-**Measured at:** `dev` = `2f99fef26`, 2026-09-10, **re-measured after the wave-0a plan's
-Codex gate r1** (it was `d64db9a0e` when this document was written and `105b1b22b` when
-the gate read it — `dev` moves several times a day). Every lane SHA and every overlap
-claim below was re-run at that tip; none is carried forward from the spec.
+**Measured at:** `dev` = `630afa86f`, 2026-09-10, **re-measured after the wave-0a plan's
+Codex gate r2** (it was `d64db9a0e` when this document was written, `105b1b22b` when plan
+gate r1 read it and `2f99fef26` at gate r2's fix round — `dev` moves several times a day).
+Every lane SHA and every overlap claim below was re-run at that tip with
+`git rev-parse --short` and `git diff --shortstat`; none is carried forward from the spec.
 
-> **Revision note, 2026-09-10 (wave-0a plan gate r1).** Wave 0a's plan is now **rev 2**
+> **Revision note, 2026-09-10 (wave-0a plan gate r2).** Wave 0a's plan is now **rev 3**
+> (register: `docs/superpowers/reviews/2026-09-10-rbac-plan-0a-codex-gate-r2.md`,
+> CHANGES-REQUIRED, 3 B / 6 M / 5 m). Three of its findings change **this** document:
+> **M-1** — wave 0a's Entry condition below must not claim every path returns empty, because
+> `.github/workflows/ci.yml` is an **accepted** file-level overlap and is verified by hunk
+> location instead; **M-5** — wave 0b's scope row assigned `roles.view` to the `UsersPage`
+> roles query, which contradicts owner ruling D4 (an assigner needs the role-name list, so
+> that query's guard is **`users.assign-roles`**); and **m-1 / the citation audit** — the
+> ref pins here were stale again and three citations needed a `dev:` qualifier. All are
+> applied below.
+>
+> **Revision note, 2026-09-10 (wave-0a plan gate r1).** Wave 0a's plan was **rev 2**
 > (register: `docs/superpowers/reviews/2026-09-10-rbac-plan-0a-codex-gate-r1.md`,
 > CHANGES-REQUIRED, 3 B / 7 M / 5 m). Three of its findings change **this** document:
 > **B-3** moved 0a's T3/T3b — the four Identity read-route gates and the `UsersPage`
@@ -89,17 +101,19 @@ These are not per-wave choices. A lane that breaks one of them is not mergeable.
 |---|---|
 | **Goal** | Stop the bleeding with permissions that already exist: mark the seven genuinely self-service routes, install the route-coverage ratchet with its baseline, **its tombstone behaviour test and its convention-08 tamper cases**, and close 15 ungated writes + **2** ungated reads using only seeded keys — then **register the whole set in CI** so it gates PR→`dev`. No migration, no new permission key, no seeder edit, **and no `apps/web` file** (rev 2, gate r1 B-3). |
 | **Scope items (spec §8)** | `0a-1` land S-1 tenant-scoped permission cache — **DONE**, merged into local `dev` at `6415062b9` (lane `lane/rbac-w0a-s1-permission-cache`, tip `05455fa41`; gates r1/r2 at `docs/superpowers/reviews/2026-09-10-rbac-w0a-s1-gate-r{1,2}.md`). `0a-2` route-coverage ratchet + baseline + liveness fixture. `0a-3` `authz.self` middleware, alias and the two allow-list/shape tests. ~~`0a-4` gate the four Identity read routes~~ — **MOVED to wave 0b as `0b-15`** by plan gate r1 B-3, with the page guards it requires. `0a-5` gate Promotion ×4, Uom ×5, Menu ×3, Coupon ×3 writes + the two coupon reads. `0a-8` docs. **`0a-2b` (new, rev 2)** register the wave's six Architecture classes in the always-on `backend-architecture` CI job. Plus the S-1 follow-up minor (entrypoint per-tenant reset reports its outcome). |
-| **Entry condition** | **None.** Every 0a path was re-measured on 2026-09-10 against `lane/w-lot-a-1a` (`5d847b2ba`) and `lane/t2-receipt-spine` (`d7123fa30`) with `git diff --name-only dev...<lane> -- <path>`: **every path returns empty for both lanes.** The spec's single accepted overlap — `apps/api/tests/feature-lane-manifest.json` — is **no longer an overlap**, because 0a-1 already merged (it consumed the `Identity.classes` 32→33 and `gated_ceiling` 1253→1254 raise) and every remaining 0a test lives under `tests/Architecture/`, which the feature-lane manifest does not govern (`apps/api/tools/feature-lane-manifest-check.php:205,328-334`). Wave 0a is now disjoint **except for one accepted file-level overlap**: rev 2 adds a `.github/workflows/ci.yml` step (gate r1 B-2), a file both lanes edit — but their hunks are at `:1130` (W-LOT) and `:1138-1145` (T2) while 0a appends after `:228`, ~900 lines away, so all three merge cleanly. Convention 08's same-lane rule (`docs/conventions/08-DETECTOR-LIVENESS.md:58-64`) outweighs the zero-overlap preference: a ratchet that gates no merge event is not a CI guard. |
+| **Entry condition** | **None**, under a two-part overlap check — **not** "every path returns empty", which was rev 2's wording and contradicted the wave's own accepted overlap (plan gate r2 M-1). **(A)** Every 0a path **except `.github/workflows/ci.yml`** was re-measured on 2026-09-10 against `lane/w-lot-a-1a` (`52f5ad796`) and `lane/t2-receipt-spine` (`951a7637e`) with `git diff --name-only dev...<lane> -- <path>`: **every one returns empty for both lanes.** The spec's single accepted overlap — `apps/api/tests/feature-lane-manifest.json` — is **no longer an overlap**, because 0a-1 already merged (it consumed the `Identity.classes` 32→33 and `gated_ceiling` 1253→1254 raise) and every remaining 0a test lives under `tests/Architecture/`, which the feature-lane manifest does not govern (`apps/api/tools/feature-lane-manifest-check.php:205,328-334`). **(B)** `.github/workflows/ci.yml` **is** edited by both lanes and by wave 0a (gate r1 B-2), and is verified by **hunk location**: `git diff dev...<lane> -- .github/workflows/ci.yml \| grep '^@@'` returns exactly `@@ -1130,7 +1130,7 @@` for W-LOT and `@@ -1138,8 +1138,11 @@` for T2, while 0a appends after `dev:.github/workflows/ci.yml:228`, inside the `backend-architecture` job that spans `:143-236`. **The stop condition is a hunk reaching into `143..236`, not the file appearing in the diff.** Convention 08's same-lane rule (`docs/conventions/08-DETECTOR-LIVENESS.md:58-64`) outweighs the zero-overlap preference: a ratchet that gates no merge event is not a CI guard. |
 | **Exit checklist** | ① Every task's named PHPUnit path green, red captured first with the exact failing assertion pasted into the handback. ② `php tools/feature-lane-manifest-check.php` green with **no** ceiling change (0a adds no `tests/Feature` class). ③ PHPStan L8 + `pint --test` clean on touched paths. ④ **The six Architecture classes named in one `backend-architecture` step**, the workflow parses, and the local run names the same six. ⑤ **UI happy path, real app, console + network captured:** log in as `admin` → Settings → Roles and Settings → Users behave **exactly as on `dev`** (`GET /roles`, `GET /permissions` still 200 — 0a does not gate them) → Promotions list, archive a promotion → UoM units create/edit/delete **plus one conversion** → Menus delete a category item → Coupons list + revoke. ⑥ **No-regression probe as `manager`** (every key 0a uses is one a manager already holds, so nothing may newly refuse) **and a real denial probe as `viewer`**: a UoM unit create and a coupon revoke each 403 with the standard envelope, while the UoM conversion still succeeds. ⑦ Zero 5xx and zero new console errors across all three probes. ⑧ Handback written at `docs/handoff/HANDBACK-rbac-w0a-2026-09-10.md`. |
 | **Reviewer gates** | `tenancy-authz-reviewer` (**mandatory**) on the whole diff. **`frontend-conventions-reviewer` is NOT a gate for 0a as of rev 2** — the wave touches no `apps/web` file (gate r1 B-3); it becomes mandatory for wave 0b's task 0b-15. No inventory/treasury/fiscal reviewer — 0a touches none of those modules. |
-| **Deploy steps** | **None new.** 0a-1 already requires `permission:cache-reset` at boot and that is already wired (`apps/api/docker/entrypoint.sh:190-191`); the follow-up task only makes its per-tenant arm report its outcome. No permission row is added, so no tenant needs a catalogue run. |
+| **Deploy steps** | **None new.** 0a-1 already requires `permission:cache-reset` at boot and that is already wired (`dev:apps/api/docker/entrypoint.sh:190-191` — **`dev:`**, because the per-tenant line arrived with the 0a-1 merge and does not exist at the audit worktree's HEAD; plan gate r2 citation audit); the follow-up task only makes its per-tenant arm report its outcome. No permission row is added, so no tenant needs a catalogue run. |
 | **Rollback point** | Each task is one self-contained commit; `git revert` of the task commit restores prior behaviour. The ratchet baseline reverts with its test (they are added in the same commit and every gating commit deletes its own baseline entries). |
 
-**Named residual carried out of 0a, rev 2:** the ratchet's **anti-growth** direction —
-the baseline key set compared against a CI-pinned blob — stays inert until **0b-11**
-registers `ROUTE_COVERAGE_BASELINE_PROTECTED_BLOB`, because that `env:` line is on a file
-both in-flight lanes edit and 0b's entry condition is what waits for them. Growth and
-stale are live from 0a's own merge. Wave 0a's
+**Named residual carried out of 0a, rev 2 (wording corrected at plan gate r2 m-3):** the
+ratchet's **anti-growth** direction — the baseline key set compared against a CI-pinned
+blob — stays inert until **0b-11** registers `ROUTE_COVERAGE_BASELINE_PROTECTED_BLOB`. The
+blocker is that the blob is an **owner-held repository variable**, and the `env:` line that
+reads it is worthless before it is registered — **not** that wave 0a cannot edit
+`.github/workflows/ci.yml`, which it demonstrably does (it appends the whole
+`backend-architecture` step). Growth and stale are live from 0a's own merge. Wave 0a's
 `RoutePermissionCoverageRatchetLivenessTest::matched_growth_defeats_the_checker_which_is_what_the_protected_blob_exists_for`
 is that residual's executable record.
 
@@ -121,7 +135,7 @@ is that residual's executable record.
 | Field | Value |
 |---|---|
 | **Goal** | Declare and gate the ungated writes whose permission does **not** exist yet, plus the four items wave 0a had to defer for file-overlap reasons, and ship the one shared fleet runner. |
-| **Scope items (spec §8)** | `0b-1` `credit-notes.cancel` (first). `0b-2..4` `services.*` (3), `service-categories.*` (3), `channels.*` (4), `categories.*` (4), `progression.*` (2), `purchase-hub.orders.create`, `companies.create`. `0b-5` the two `BatchExpiry` writes, gated **beside** the lane's `BatchActionAccess`, not instead of it. `0b-6` delete `PermissionSeeder.php` + its `ProductionSeeder.php:73-75` caller. `0b-7` fix `RefundResidualTenantIsolationTest:136-142` **in 0b-1's commit**. `0b-8` glossary rows on top of the lane's General-manager row. `0b-9` `permissions:ensure` + `permissions:ensure-fleet` + `TenantFleetRunner` + `LegacyRoleBaseline` (both predicates) + `PermissionWriteLock`. `0b-11` the `ROUTE_COVERAGE_BASELINE_PROTECTED_BLOB` `env:` line, appended to the `backend-architecture` step **wave 0a already created** (the step registration is no longer 0b's — gate r1 B-2). `0b-12` `RequireAnyPermission` `error.details`. `0b-13` the counting-item gate. `0b-14` wire the lock into every runtime role-grant writer. **`0b-15` (new — plan gate r1 B-3) the four Identity read-route gates relocated from 0a, with the `UsersPage` roles-query guard, the two `RolesPage` queries, the `/settings/roles` route and the Settings card all gated on `roles.view`, plus a Playwright spec.** |
+| **Scope items (spec §8)** | `0b-1` `credit-notes.cancel` (first). `0b-2..4` `services.*` (3), `service-categories.*` (3), `channels.*` (4), `categories.*` (4), `progression.*` (2), `purchase-hub.orders.create`, `companies.create`. `0b-5` the two `BatchExpiry` writes, gated **beside** the lane's `BatchActionAccess`, not instead of it. `0b-6` delete `PermissionSeeder.php` + its `ProductionSeeder.php:73-75` caller. `0b-7` fix `RefundResidualTenantIsolationTest:136-142` **in 0b-1's commit**. `0b-8` glossary rows on top of the lane's General-manager row. `0b-9` `permissions:ensure` + `permissions:ensure-fleet` + `TenantFleetRunner` + `LegacyRoleBaseline` (both predicates) + `PermissionWriteLock`. `0b-11` the `ROUTE_COVERAGE_BASELINE_PROTECTED_BLOB` `env:` line, appended to the `backend-architecture` step **wave 0a already created** (the step registration is no longer 0b's — gate r1 B-2). `0b-12` `RequireAnyPermission` `error.details`. `0b-13` the counting-item gate. `0b-14` wire the lock into every runtime role-grant writer. **`0b-15` (new — plan gate r1 B-3) the four Identity read-route gates relocated from 0a, with their page guards. The two keys are NOT interchangeable (plan gate r2 M-5, owner ruling D4): the `UsersPage` roles query is gated on **`users.assign-roles`** — `GET /roles` deliberately accepts `roles.view` OR `users.assign-roles` because a role *assigner* needs the role-name list (spec `:1610,1616-1622`) — while the two `RolesPage` queries, the `/settings/roles` route and the Settings card are gated on **`roles.view`**. Plus a Playwright spec.** |
 | **Entry condition** | **`lane/w-lot-a-1a` merged into local `dev`.** Reason, by file: 0b edits `apps/api/database/seeders/RolesAndPermissionsSeeder.php` (`permissionNames()` and `rolePermissionGrants()`) — the lane rewrites that file and introduces a marked-tenant preservation branch in it; 0b-5 edits `apps/api/app/Modules/BatchExpiry/Presentation/routes.php` — the lane rewrites it wholesale and adds `BatchActionAccess`; 0b-8 edits `docs/glossary.md` — the lane adds the General-manager row and the sole-writer sentence there; 0b-11 edits `.github/workflows/ci.yml` — **both** lanes edit it; 0b-14 edits `RoleController.php` and `UserController.php` — the lane moves both; **0b-15 edits `apps/web/src/features/settings/RolesPage.tsx`, `apps/web/src/routes/index.tsx` and `apps/web/src/hooks/usePermissions.ts` — all three are in the lane's diff, which is precisely why plan gate r1 B-3 put it here rather than in 0a.** **Additionally: 0b-13 edits `apps/api/app/Modules/Inventory/Presentation/routes.php` and 0b-12 edits `apps/api/app/Http/Middleware/RequireAnyPermission.php` — both are in `lane/t2-receipt-spine`'s diff**, so 0b-12 and 0b-13 wait for **T2** as well; the rest of 0b needs only W-LOT. Split 0b into `0b-main` (W-LOT gated) and `0b-t2` (T2 gated) if T2 lands late. |
 | **Exit checklist** | ① All named PHPUnit paths green by path, red captured first. ② `EnsurePermissionsFleetTest` and `TenantFleetRunnerSelectorTest` green — the latter **using a reachable cross-column collision** (a selector equal to tenant A's UUID and tenant B's slug), never two equal slugs, because `tenants.slug` is globally unique (`apps/api/database/migrations/2025_11_30_000001_create_tenants_table.php:16-20`); the snapshot primitive is `get(['id', 'slug'])`, not `pluck('id','slug')` (gate r9 m-1). ③ Convention-09 rows for this wave: `ServicePermissionsSecondCompanyTest`, `CategoryPermissionsSecondCompanyTest`, `StockAdjustmentLocationScopePermissionTest`, and `permissions:ensure` run twice reporting `created=0 granted=0` with zero row writes. ④ Route-coverage ceilings shrink — writes **152 → 127**, reads **146 → 142** (0b-15, the first read closure) **→ 126** — and no baseline entry is left stale. ⑤ **0b-15's e2e:** `pnpm --filter @autoerp/web test:e2e` run and `apps/web/e2e/rbac-role-read-gates.spec.ts` green (`AGENTS.md:12-16`), asserting a `manager` issues **no** `/roles` or `/permissions` request at all — an absence, not a 403. ⑤ **UI happy path with console + 5xx capture:** a Services CRUD round trip as `manager`, a Categories create/reorder, a Channels list, a company create refused for a non-admin, a batch delete as `admin`. ⑥ `tenant:census-day-one` clean. |
 | **Reviewer gates** | `tenancy-authz-reviewer` (**mandatory**). `frontend-conventions-reviewer` (**mandatory** — the regenerated `permissionsMap.generated.ts`, the label JSONs, **and 0b-15's four frontend surfaces**). `inventory-costing-reviewer` for 0b-13 and 0b-5 (a batch delete and a counting-item write). |
@@ -213,17 +227,21 @@ Measured 2026-09-10 in the shared checkout `/Users/houssamr/Projects/syneriva/ap
 
 | Ref | SHA today | `git diff --shortstat dev...<ref>` | Merged into `dev`? | What it blocks |
 |---|---|---|---|---|
-| `dev` | `2f99fef26` | — | — | — |
-| `lane/rbac-w0a-s1-permission-cache` | `05455fa41` | — | **YES** — merged at `6415062b9` | nothing; 0a-1 is DONE |
-| `lane/t1-transfers-edge` | `86273346a` | **empty** | **YES** — ancestor of `dev` | nothing |
-| `lane/w-lot-a-1a` | `5d847b2ba` | 83 files, +4 674, −663 | **NO** | wave **0b-main** and (via its staging protocol) wave **1** |
-| `lane/t2-receipt-spine` | `d7123fa30` | 100 files, +13 066, −495 | **NO** | wave **0b-t2** (items 0b-12, 0b-13 only) |
+| `dev` | `630afa86f` | — | — | — |
+| `lane/rbac-w0a-s1-permission-cache` | `05455fa41` | — | **YES** — merged at `6415062b9`, `--is-ancestor` verified | nothing; 0a-1 is DONE |
+| `lane/t1-transfers-edge` | `86273346a` | **empty** | **YES** — `--is-ancestor` verified | nothing |
+| `lane/w-lot-a-1a` | `52f5ad796` | 83 files, +4 714, −663 | **NO** | wave **0b-main** and (via its staging protocol) wave **1** |
+| `lane/t2-receipt-spine` | `951a7637e` | 100 files, +13 144, −546 | **NO** | wave **0b-t2** (items 0b-12, 0b-13 only) |
 
-**`dev` moved twice more while the wave-0a plan was being gated** — `d64db9a0e` when this
-document was written, `105b1b22b` when plan gate r1 read the tree, `2f99fef26` now — while
-**both lane tips held still** at `5d847b2ba` and `d7123fa30`, with their shortstats
-unchanged (83 files / +4 674 / −663 and 100 files / +13 066 / −495). `origin/dev` is
-`ad1d6ceb1` and still does not contain `6415062b9`, so O-1 stands.
+**`dev` has now moved four times while the wave-0a plan was being gated** — `d64db9a0e`
+when this document was written, `105b1b22b` when plan gate r1 read the tree, `2f99fef26`
+when rev 2 was written, `630afa86f` now — and **this time both lanes moved too**:
+`lane/w-lot-a-1a` `5d847b2ba` → `52f5ad796` (83 files, +4 674/−663 → +4 714/−663) and
+`lane/t2-receipt-spine` `d7123fa30` → `951a7637e` (100 files, +13 066/−495 → +13 144/−546).
+Neither moved a `ci.yml` hunk into the `backend-architecture` job, so wave 0a's accepted
+overlap is unchanged — which is the check, not the SHA. `origin/dev` is `ad1d6ceb1` and
+still does not contain `6415062b9` (`git merge-base --is-ancestor 6415062b9 origin/dev`
+exits non-zero), so O-1 stands.
 
 **The lane tips moved again since Codex spec gate r9 read them** (r9 saw
 `e66ab5823` / `ede6a990a`; the spec text still pins `f8005243d` / `bd91f8de5`). That
@@ -237,7 +255,7 @@ overlap is gone because 0a-1 already landed.
 
 | Wave | May start | Trigger the orchestrator watches |
 |---|---|---|
-| **0a** | **NOW.** No entry condition; disjoint at today's tips **except the accepted `.github/workflows/ci.yml` file-level overlap** (hunks ~900 lines apart), and the laptop lane cap allows it: one RBAC lane (`lane/rbac-w0a`) alongside the two in-flight lanes is exactly 3. | none — dispatch `docs/superpowers/plans/2026-09-10-rbac-wave-0a.md` (**rev 2**; rev 1 was CHANGES-REQUIRED at plan gate r1) |
+| **0a** | **NOW.** No entry condition; disjoint at today's tips **except the accepted `.github/workflows/ci.yml` file-level overlap**, whose hunks are ~900 lines from the job wave 0a appends to, and the laptop lane cap allows it: one RBAC lane (`lane/rbac-w0a`) alongside the two in-flight lanes is exactly 3. | none — dispatch `docs/superpowers/plans/2026-09-10-rbac-wave-0a.md` (**rev 3**; revs 1 and 2 were CHANGES-REQUIRED at plan gates r1 and r2) |
 | **0b-main** | When W-LOT lands. **Task 0b-15 (the Identity read gates + page guards, relocated from 0a) rides in this half**, because the three frontend files it needs are in W-LOT's diff. | `git -C /Users/houssamr/Projects/syneriva/apps/erp branch --merged dev \| grep lane/w-lot-a-1a` returns a line |
 | **0b-t2** (items 0b-12, 0b-13) | When T2 lands. | `git -C … branch --merged dev \| grep lane/t2-receipt-spine` returns a line |
 | **1** | When 0a **and** 0b are merged **and** W-LOT's five-push staging protocol has completed. | the two `branch --merged dev` greps above **plus** the owner's confirmation that the five-push protocol finished — the protocol is a staging fact, not a repo fact, so no grep can prove it |
@@ -258,7 +276,7 @@ entry conditions and therefore cannot both be open before their blocking lane la
 | # | Item | Why it is the owner's |
 |---|---|---|
 | **O-1** | **Promote `6415062b9`** (the 0a-1 merge) to `origin/dev` in the next verified fast-forward batch. It is on local `dev` only. Pushing `origin/dev` auto-deploys staging including `tenants:migrate`, so it is an owner-timed action. | staging deploy |
-| **O-2** | **Runner-flip checklist: remove the `.github/workflows/ci.yml:1271` allowlist entry** (`\|PermissionCacheTenantScopingTest` in the `t6-phase0b-pgsql` `--filter` alternation) **when `vars.SELF_HOSTED_RUNNER_READY` flips** and `feature-lane-tenancy` starts running the `Identity` group — otherwise the class runs twice. Lower `Identity.classes` and `gated_ceiling` in the same edit. Recorded in the manifest note at `apps/api/tests/feature-lane-manifest.json:820` and repeated here so it survives the note. | a repository variable only the owner sets |
+| **O-2** | **Runner-flip checklist: remove the `dev:.github/workflows/ci.yml:1271` allowlist entry** (`\|PermissionCacheTenantScopingTest` in the `t6-phase0b-pgsql` `--filter` alternation) **when `vars.SELF_HOSTED_RUNNER_READY` flips** and `feature-lane-tenancy` starts running the `Identity` group — otherwise the class runs twice. Lower `Identity.classes` and `gated_ceiling` in the same edit. Recorded in the manifest note at `dev:apps/api/tests/feature-lane-manifest.json:817-821` (the note itself is `:820`) and repeated here so it survives the note. **Both citations are local-`dev` facts** — the S-1 allow-list and the `Identity.classes` 33 raise both arrived with the 0a-1 merge and exist at neither the audit worktree's HEAD nor `origin/dev` (plan gate r2 citation audit). | a repository variable only the owner sets |
 | **O-3** | **OQ-1 — do service accounts count toward the last-admin floor?** Design is written against the recommended default **No** (a tenant whose only admin is a machine has nobody who can log in when the token is lost). The "yes" diff is bounded and named in spec §9.2: drop `principal_kind = human` from *A*, drop EC-4, re-word the Service-account glossary row. **Needed before wave 2b.** | product decision |
 | **O-4** | **OQ-2 — default service-token TTL.** Default applied: **365 days, set explicitly at issue, no unlimited option**, plus `sanctum:prune-expired --hours=24` daily. Consequence stated: **human back-office tokens LENGTHEN from today's 30 days to 90**; POS terminal tokens keep their explicit one-year `expires_at`. **Needed before wave 2b.** | changes a live token policy |
 | **O-5** | **OQ-3 — retire any of the eighteen baselined SoD combinations?** Default applied: retire **three** from `manager` (`invoices.create`+`.post`, `credit-notes.create`+`.post`, `payments.create`+`.refund`), keep the rest, change nothing on `accountant`. Second half of the question: does `general_manager` mirror the retirement (18 → 15 → 12)? **Needed before wave 1's `PermissionSodTemplateTest` baseline is pinned.** | narrows what a real manager can do on day one |
@@ -292,7 +310,9 @@ discover them.
 that call.** Wave 0a-4 gates `GET /api/v1/roles` on
 `require.any.permission:roles.view,users.assign-roles` (spec §4.6.4). Neither key is
 granted to any seeded role except `admin` — they appear in
-`RolesAndPermissionsSeeder::permissionNames()` at `:379,382-383` and in **no**
+`RolesAndPermissionsSeeder::permissionNames()` at `:379,382` (**not** `:382-383` — `:383`
+is `roles.manage`, a third key this claim does not concern; plan gate r2 citation audit)
+and in **no**
 `rolePermissionGrants()` block other than `'admin' => self::permissionNames()`
 (`:582`). But `manager` holds `settings.view` and `users.view`, so a manager reaches
 Settings → Users (`apps/web/src/routes/index.tsx:2333-2341`, gated
@@ -333,7 +353,7 @@ not 0b-11.)*
 | Wave | Plan | Handback | Gate records |
 |---|---|---|---|
 | 0a-1 (done) | `docs/superpowers/plans/2026-09-03-request-hygiene-phase-a.md` Task 1 | `docs/handoff/HANDBACK-rbac-w0a-s1-2026-09-10.md` | `docs/superpowers/reviews/2026-09-10-rbac-w0a-s1-gate-r{1,2}.md` |
-| 0a | `docs/superpowers/plans/2026-09-10-rbac-wave-0a.md` (**rev 2**) | `docs/handoff/HANDBACK-rbac-w0a-2026-09-10.md` | plan gates: `docs/superpowers/reviews/2026-09-10-rbac-plan-0a-codex-gate-r*.md` · lane gates: `docs/superpowers/reviews/2026-09-10-rbac-w0a-gate-r*.md` |
+| 0a | `docs/superpowers/plans/2026-09-10-rbac-wave-0a.md` (**rev 3**) | `docs/handoff/HANDBACK-rbac-w0a-2026-09-10.md` | plan gates: `docs/superpowers/reviews/2026-09-10-rbac-plan-0a-codex-gate-r*.md` · lane gates: `docs/superpowers/reviews/2026-09-10-rbac-w0a-gate-r*.md` |
 | 0b | `docs/superpowers/plans/2026-09-10-rbac-wave-0b.md` (**rev 1.1** — task 0b-15 added by plan gate r1 B-3) | `docs/handoff/HANDBACK-rbac-w0b-*.md` | — |
 | 1 | `docs/superpowers/plans/2026-09-10-rbac-wave-1.md` (rev 1) | — | — |
 | 2a..4 | *(one plan per wave, written at its entry condition)* | — | — |
