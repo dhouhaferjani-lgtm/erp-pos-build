@@ -8,58 +8,9 @@ export type TransferCostDistribution =
   | 'pro_rata_quantity'
   | 'equal_per_line'
 
-export interface StockTransferLine {
-  id: string
-  product_id: string
-  product_name: string | null
-  product_sku: string | null
-  variant_id: string | null
-  variant_sku: string | null
-  variant_name: string | null
-  quantity: string
-  quantity_decimals: number | null
-  unit_cost_snapshot: string | null
-  allocated_transfer_cost: string
-  batch_allocations: StockTransferLineBatchAllocation[]
-}
-
-export interface StockTransferLineBatchAllocation {
-  id: string
-  batch_id: number
-  batch_number: string | null
-  expiry_date: string | null
-  expiry_status: string | null
-  can_be_sold: boolean | null
-  quantity: string
-}
-
-export interface StockTransfer {
-  id: string
-  transfer_number: string
-  transfer_type: StockTransferType
-  status: StockTransferStatus
-  source_location_id: string
-  source_location_name: string | null
-  destination_location_id: string
-  destination_location_name: string | null
-  notes: string | null
-  transfer_cost: string
-  transfer_cost_label: string | null
-  transfer_cost_distribution: TransferCostDistribution
-  initiated_by_user_id: string
-  initiated_by_name: string | null
-  completed_by_user_id: string | null
-  completed_by_name: string | null
-  cancelled_by_user_id: string | null
-  cancelled_by_name: string | null
-  initiated_at: string | null
-  completed_at: string | null
-  cancelled_at: string | null
-  cancellation_reason: string | null
-  created_at: string | null
-  updated_at: string | null
-  lines?: StockTransferLine[]
-}
+export type StockTransfer = App.Modules.Inventory.Application.DTOs.StockTransferData
+export type StockTransferLine = App.Modules.Inventory.Application.DTOs.StockTransferLineData
+export type StockTransferLineBatchAllocation = App.Modules.Inventory.Application.DTOs.StockTransferLineBatchAllocationData
 
 export interface CreateStockTransferLineInput {
   product_id: string

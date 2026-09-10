@@ -245,7 +245,7 @@ export function StockTransferDetailPage() {
                                 className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 text-sm"
                               >
                                 <span className={`font-medium ${textColors.primary}`}>
-                                  {allocation.batch_number ?? '—'}
+                                  {allocation.batch_number}
                                 </span>
                                 {allocation.expiry_date !== null && (
                                   <span className={textColors.tertiary}>
