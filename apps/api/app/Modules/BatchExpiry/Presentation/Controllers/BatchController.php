@@ -318,7 +318,8 @@ class BatchController extends Controller
     {
         $companyId = $this->companyContext->requireCompanyId();
         $daysThreshold = (int) $request->input('days', 30);
-        $locationId = $request->input('location_id') !== null ? (string) $request->input('location_id') : null;
+        $rawLocationId = $request->input('location_id');
+        $locationId = is_string($rawLocationId) && Str::isUuid($rawLocationId) ? $rawLocationId : null;
 
         if ($this->activation->enforced()) {
             $locationId = $this->resolvedReadLocationIds($request);

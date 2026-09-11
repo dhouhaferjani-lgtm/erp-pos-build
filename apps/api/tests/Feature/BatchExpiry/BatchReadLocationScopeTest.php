@@ -234,6 +234,10 @@ final class BatchReadLocationScopeTest extends BatchPermissionFixture
 
     public function test_transfer_missing_movement_reference_ticket_pins_failure_and_rollback(): void
     {
+        if (DB::getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('The ticketed transfer failure pins PostgreSQL SQLSTATE 23502.');
+        }
+
         // docs/superpowers/tickets/2026-09-10-batch-transfer-missing-movement-reference.md
         // Delete this failure pin and the sibling's skip together when the inventory owner repairs the writer.
         $batch = $this->lot();

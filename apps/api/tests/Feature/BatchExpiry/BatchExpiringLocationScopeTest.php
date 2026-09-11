@@ -23,6 +23,14 @@ final class BatchExpiringLocationScopeTest extends BatchPermissionFixture
         $response->assertJsonPath('data.0.total_quantity', '2.0000');
     }
 
+    public function test_flag_off_ignores_non_uuid_expiring_location(): void
+    {
+        $this->actingAs($this->user, 'sanctum');
+        config(['lot_action_permissions.enforce' => false]);
+        $this->stockAt($this->lot(), $this->location, '3.0000');
+        $this->getJson('/api/v1/batches/expiring?location_id=0')->assertOk();
+    }
+
     public function test_empty_membership_scope_returns_no_expiring_lots(): void
     {
         $this->stockAt($this->lot(), $this->location, '3.0000');
