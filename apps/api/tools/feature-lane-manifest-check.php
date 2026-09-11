@@ -1286,7 +1286,9 @@ if (is_file($quarantinePath)) {
 
                 continue;
             }
-            [$class, $method] = array_pad(explode('::', $target), 2, null);
+            $targetParts = explode('::', $target, 2);
+            $class = $targetParts[0];
+            $method = $targetParts[1] ?? null;
             $file = $apiRoot.'/'.str_replace('\\', '/', lcfirst($class)).'.php';
             if (! is_file($file)) {
                 $errors[] = sprintf(
