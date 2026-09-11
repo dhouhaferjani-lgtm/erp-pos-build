@@ -1,0 +1,74 @@
+[
+  {
+    "original_filename": "imp1-success.csv",
+    "status": "completed",
+    "successful_rows": 10,
+    "skipped_rows": 0,
+    "failed_rows": 0,
+    "error_code": null,
+    "error_message": null
+  },
+  {
+    "original_filename": "imp1-partial.csv",
+    "status": "partially_completed",
+    "successful_rows": 9,
+    "skipped_rows": 1,
+    "failed_rows": 2,
+    "error_code": null,
+    "error_message": null
+  },
+  {
+    "original_filename": "imp1-partial-async.csv",
+    "status": "partially_completed",
+    "successful_rows": 95,
+    "skipped_rows": 0,
+    "failed_rows": 5,
+    "error_code": null,
+    "error_message": null
+  },
+  {
+    "original_filename": "imp1-suppliers-balances-200.xlsx",
+    "status": "partially_completed",
+    "successful_rows": 200,
+    "skipped_rows": 0,
+    "failed_rows": 0,
+    "error_code": "internal_error",
+    "error_message": "Job failed: CurrencyScaleResolver::getScale() called with no currency code and no CompanyContext bound. Ensure CompanyContextMiddleware is applied or pass an explicit $currencyCode. For callers that intentionally run outside request context (queued jobs, console commands), use getScaleSafe($currencyCode, $fallback) instead. See audit finding F-RES-1."
+  },
+  {
+    "original_filename": "imp1-corrected.csv",
+    "status": "completed",
+    "successful_rows": 4,
+    "skipped_rows": 0,
+    "failed_rows": 0,
+    "error_code": null,
+    "error_message": null
+  },
+  {
+    "original_filename": "imp1-corrected.csv",
+    "status": "completed",
+    "successful_rows": 4,
+    "skipped_rows": 0,
+    "failed_rows": 0,
+    "error_code": null,
+    "error_message": null
+  },
+  {
+    "original_filename": "imp1-hard-fail.csv",
+    "status": "failed",
+    "successful_rows": 0,
+    "skipped_rows": 0,
+    "failed_rows": 0,
+    "error_code": "validation_failed",
+    "error_message": "Missing required columns: name"
+  },
+  {
+    "original_filename": "imp1-all-invalid.csv",
+    "status": "validated",
+    "successful_rows": 0,
+    "skipped_rows": 0,
+    "failed_rows": 3,
+    "error_code": null,
+    "error_message": null
+  }
+]

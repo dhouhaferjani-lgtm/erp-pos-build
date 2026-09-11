@@ -1,0 +1,5 @@
+﻿name,sku,sale_price,unit,barcode,_status,_code,_message
+"IMP1 Crème PARTIAL 0",IMP1-PARTIAL-0,12.500,pc,,warning,duplicate_in_file,"A later row for this product and location wins (row 11)."
+"Unknown unit",IMP1-BAD-UNIT,12.500,NO-SUCH-UNIT,,error,unit_unknown,"unit_unknown: Unknown unit ""NO-SUCH-UNIT""; enter a code exactly as spelled. Accepted unit codes: cl, cm, day, doz, floz, g, hr, in, kg, l, lb, m, mg, min, ml, mm, oz, pair, pc."
+"Invalid price",IMP1-BAD-PRICE,invalid,pc,,error,invalid_number,"The sale price field must be a number."
+"Warning barcode",IMP1-WARNING,12.500,pc,3337870000000,warning,barcode_float_corruption_suspected,"This barcode looks like a spreadsheet float conversion and ends in 00000; verify it against the source label."

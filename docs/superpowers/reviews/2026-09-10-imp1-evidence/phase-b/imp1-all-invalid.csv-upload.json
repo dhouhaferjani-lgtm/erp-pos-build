@@ -1,0 +1,63 @@
+{
+  "data": {
+    "id": "01a08ef0-b668-7340-a7d3-c01d1a7e98db",
+    "type": "products",
+    "status": "validated",
+    "column_mapping": {
+      "sku": "sku",
+      "name": "name",
+      "unit": "unit",
+      "barcode": "barcode",
+      "sale_price": "sale_price"
+    },
+    "original_filename": "imp1-all-invalid.csv",
+    "total_rows": 3,
+    "processed_rows": 3,
+    "successful_rows": 0,
+    "skipped_rows": 0,
+    "failed_rows": 3,
+    "warning_rows": 0,
+    "warning_summary": null,
+    "error_summary": {
+      "unknown_units": []
+    },
+    "options": {
+      "duplicate_census": {
+        "counts": {
+          "new": 0,
+          "existing_sku": 0,
+          "existing_barcode": 0,
+          "existing_name": 0,
+          "in_file": 0,
+          "refused": 0
+        },
+        "matched_by_name": [],
+        "refused": [],
+        "barcode_groups": {
+          "counts": {
+            "multi_location_products": 0,
+            "barcode_identity_conflict_groups": 0,
+            "barcode_identity_conflict_rows": 0
+          },
+          "groups": [],
+          "rows": []
+        }
+      },
+      "source_headers": [
+        "name",
+        "sku",
+        "sale_price",
+        "unit",
+        "barcode"
+      ]
+    },
+    "multi_location_products": 0,
+    "barcode_identity_conflict_rows": 0,
+    "progress_percentage": 100,
+    "error_message": null,
+    "started_at": null,
+    "completed_at": null,
+    "created_at": "2026-09-11T05:28:55+00:00"
+  },
+  "reimport_notice": null
+}

@@ -1,0 +1,20 @@
+PHPUnit 11.5.55 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.4.15
+Configuration: /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/api/phpunit.xml
+
+F                                                                   1 / 1 (100%)
+
+Time: 00:04.166, Memory: 157.00 MB
+
+There was 1 failure:
+
+1) Tests\Feature\Import\ImportRowExportTest::test_historical_job_with_committed_rows_and_finalize_error_reads_as_partial
+Failed asserting that null is identical to '01a08ee8-747f-70ca-8741-e55afc945b69'.
+
+/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/api/vendor/laravel/framework/src/Illuminate/Testing/AssertableJsonString.php:243
+/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/api/vendor/laravel/framework/src/Illuminate/Testing/TestResponse.php:880
+/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/api/tests/Feature/Import/ImportRowExportTest.php:215
+
+FAILURES!
+Tests: 1, Assertions: 5, Failures: 1.

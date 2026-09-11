@@ -1,0 +1,3 @@
+# IMP-1 realignment log
+
+2026-09-11 — §4.10 / G-1: correction exports now select failed and warning rows, preserve source-header spelling/order, and append `_status`, `_code`, `_message` in CSV and XLSX. `POST /imports` accepts `reimport_of`; same-tenant/company and entitlement checks precede mapping reuse. `column_mapping` is validated injectively; source-header order is retained in typed `options.source_headers` because PostgreSQL JSONB objects do not preserve key order. A `partially_completed` status distinguishes row/finalization errors after successful writes, including an effective display status for older failed jobs. Full report remains a separate three-sheet workbook. G-8 convention integration and the underlying supplier currency-context bug remain ticketed.

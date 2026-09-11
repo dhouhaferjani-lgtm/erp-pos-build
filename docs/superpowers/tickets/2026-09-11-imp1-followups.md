@@ -1,0 +1,10 @@
+# IMP-1 follow-ups
+
+- **G-8 CSV convention hookup:** `ImportRowExportService` emits UTF-8 BOM, comma, CRLF and unchanged stored strings. When the company convention writer lands, inject it here; retain the source-cell and SQLite/PostgreSQL parity tests. Do not reformat numeric values.
+- **Supplier finalization currency context:** locally reproduced with `imp1-suppliers-balances-200.xlsx`: 200 rows commit, then `ArApOpeningService::currencyScale()` calls `getScale()` without an explicit currency in a queue context. Fix the Document/Accounting currency propagation with its own tests; do not repair balances by direct SQL. IMP-1 distinguishes the partial outcome and exposes the error; it does not claim opening balances posted. Baseline: `docs/superpowers/reviews/2026-09-10-imp1-evidence/supplier-finalization.json`.
+- **All-invalid history state:** upload returns 201 with status validated and all rows rejected; execute is disabled/refused. Decide whether validation with zero usable rows should be terminal failed, including retry semantics. The missing-header case is already failed/422. Not changed by IMP-1.
+- **Optional full report All rows sheet:** the separate Imported / Skipped / Rejected workbook stays as-is. Add a fourth sheet only after a separate product decision.
+- **Staging confirmation:** the local failure is reproduced, but the specific PharmaBio staging job has not been queried. The linked runbook contains no verified SSH/database access recipe. An operator with the staging access recipe should compare that job's `error_message` and `error_code`; never paste credentials into the evidence.
+- **Historical source spelling:** older wizard jobs may have lowercase source names persisted by the former parser. New uploads preserve source spelling and order. Once the original file is purged, original capitalization cannot be recovered from the old mapping alone.
+
+- **Existing Arabic history translation gaps:** history title, column headings and older status labels fall back to English; translate that pre-existing surface separately. New correction controls and partial status are translated in this lane.
