@@ -20,6 +20,9 @@ Orchestrator session: Claude Fable 5.1 (`session_01AcU81as26G2apodoimmyq7`, star
 
 ## Lane C — IMP-1 (`.worktrees/imp1-history-export`, branch per the packet, PG `autoerp_test_z`) — DISPATCHED 2026-09-10 ~18:00, IN PROGRESS at the restart (first commit `310d86848` Phase 9.1.1: export + finalization-failure reproduction; WIP may be uncommitted — tell the Codex Desktop thread to continue). Packet `docs/handoff/CODEX-DISPATCH-IMP-1-imports-history-and-error-export-2026-09-10.md`. On `status: review`: imports-reviewer → frontend-conventions-reviewer, merge.
 
+## ⛔ CODEX HOLD (owner, 2026-09-11 ~00:50)
+- Codex quota is running out; the owner is activating another subscription AFTER the reboot. **Do NOT hand the owner any Codex prompt to paste until they say the new subscription is active.** Queued Codex work at the hold: lane A fix round 3 (`docs/handoff/CODEX-PROMPT-WLOTA-1a-fix-round-3-2026-09-10.md`, not pasted), lane B S1 fix round 3 (prompt to be written after gate r3), IMP-1 fix round 1 (prompt to be written after its gate). Claude reviewer gates continue normally.
+
 ## Owner-open
 - After the restart: paste the lane A fix-round-3 prompt; resume the IMP-1 Codex Desktop thread ("continue"); lane B is idle at clean HEAD `208449350` awaiting gate r3.
 - Overturnable rulings: A-1a B-2(r2) gating; A-1a transfer-500 out-of-scope; S1 M-2 option (a) (fallback (d)).
