@@ -201,6 +201,13 @@ jobs:
         # No database, no application boot (~1 s).
         run: ./vendor/bin/phpunit tests/Architecture/FeatureLaneManifestCheckerTest.php
 
+      - name: Preflight status liveness test
+        # Executes the repository's real preflight script in isolated fixtures.
+        # Every subordinate command is stubbed, including the full-mode PHPUnit
+        # dispatch, so this proves exit/status behavior without booting Laravel or
+        # running a broad test suite.
+        run: bash ../../scripts/tests/preflight-status-test.sh
+
       - name: Feature-lane local harness guards (destructive-run refusals)
         # gate-r2 R2-6. scripts/run-feature-lane-local.sh runs RefreshDatabase
         # suites, which DROP EVERY TABLE in the database they are pointed at, so its
@@ -2581,6 +2588,9 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      - name: Run TypeScript check
+        run: pnpm typecheck
+
   frontend-build:
     name: Frontend Build
     runs-on: ubuntu-latest
@@ -2766,7 +2776,7 @@ jobs:
     # cannot, so adding it is safe by the same argument already made above for
     # treasury-spine-pgsql. A guard visible in CI but absent from this list is
     # not merge-gating.
-    needs: [backend-lint, backend-analyse, backend-architecture, backend-dpa-guard, backend-test, backend-test-pgsql, security-regression, treasury-spine-pgsql, feature-lane-pos, feature-lane-fiscal-finance, feature-lane-inventory, feature-lane-catalog, feature-lane-documents, feature-lane-tenancy, feature-lane-data-console, feature-lane-platform-misc, frontend-lint, frontend-typecheck, frontend-test, pos-test, frontend-build, route-manifest-drift, types-drift]
+    needs: [backend-lint, backend-analyse, backend-architecture, backend-dpa-guard, backend-test, backend-test-pgsql, security-regression, treasury-spine-pgsql, feature-lane-pos, feature-lane-fiscal-finance, feature-lane-inventory, feature-lane-catalog, feature-lane-documents, feature-lane-tenancy, feature-lane-data-console, feature-lane-platform-misc, frontend-lint, frontend-typecheck, frontend-test, pos-test, frontend-build, route-manifest-drift, types-drift, chokepoint-gate, t6-phase0b-pgsql]
     steps:
       - name: Verify every dependency succeeded
         env:
@@ -2782,7 +2792,7 @@ jobs:
           # was empty, truncated or unparseable": without it, an absent or malformed
           # NEEDS_JSON produced zero loop iterations and a green step (gate-r1 R1-1,
           # reproduced by the reviewer).
-          EXPECTED_JOBS: backend-lint,backend-analyse,backend-architecture,backend-dpa-guard,backend-test,backend-test-pgsql,security-regression,treasury-spine-pgsql,feature-lane-pos,feature-lane-fiscal-finance,feature-lane-inventory,feature-lane-catalog,feature-lane-documents,feature-lane-tenancy,feature-lane-data-console,feature-lane-platform-misc,frontend-lint,frontend-typecheck,frontend-test,pos-test,frontend-build,route-manifest-drift,types-drift
+          EXPECTED_JOBS: backend-lint,backend-analyse,backend-architecture,backend-dpa-guard,backend-test,backend-test-pgsql,security-regression,treasury-spine-pgsql,feature-lane-pos,feature-lane-fiscal-finance,feature-lane-inventory,feature-lane-catalog,feature-lane-documents,feature-lane-tenancy,feature-lane-data-console,feature-lane-platform-misc,frontend-lint,frontend-typecheck,frontend-test,pos-test,frontend-build,route-manifest-drift,types-drift,chokepoint-gate,t6-phase0b-pgsql
         run: |
           set -o pipefail
           status=0

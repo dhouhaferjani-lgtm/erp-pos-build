@@ -851,6 +851,7 @@ $aggregateNeedsList = array_values(array_map(
     'strval',
     is_array($aggregateNeedsRaw) ? $aggregateNeedsRaw : [$aggregateNeedsRaw],
 ));
+$declaredExpected = [];
 if ($expectedJobsEnv === null) {
     $errors[] = 'AGGREGATE `all-checks-pass` has no `EXPECTED_JOBS` env on any step. Without it the '
         .'result-evaluation step cannot tell "every dependency succeeded" from "the needs context was '
@@ -874,6 +875,52 @@ if ($expectedJobsEnv === null) {
             count($aggregateNeedsList),
             json_encode(array_values(array_diff($sortedNeeds, $sortedExpected))),
             json_encode(array_values(array_diff($sortedExpected, $sortedNeeds))),
+        );
+    }
+}
+
+// These are reviewed gate obligations, not a census of every workflow job. A
+// future advisory job stays advisory unless it is deliberately added here with a
+// reason and an event policy. Conversely, removing a mandated guard from BOTH
+// hand-maintained aggregate lists still fails this independent check.
+$mandatedAggregateJobs = [
+    'chokepoint-gate' => [
+        'reason' => 'the §14.3 shell chokepoint detector is a required merge guard',
+        'if' => '', // unconditional: covers every event where the aggregate runs
+    ],
+    't6-phase0b-pgsql' => [
+        'reason' => 'the database-per-tenant PostgreSQL proof is a required merge guard',
+        'if' => "github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.base_ref == 'dev' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'))",
+    ],
+];
+foreach ($mandatedAggregateJobs as $jobId => $obligation) {
+    if (! isset(($workflowYaml['jobs'] ?? [])[$jobId])) {
+        $errors[] = sprintf(
+            'MANDATED AGGREGATE JOB "%s" is absent from the workflow: %s.',
+            $jobId,
+            $obligation['reason'],
+        );
+
+        continue;
+    }
+    if (! in_array($jobId, $aggregateNeedsList, true) || ! in_array($jobId, $declaredExpected, true)) {
+        $errors[] = sprintf(
+            'MANDATED AGGREGATE JOB "%s" must be present in both `all-checks-pass.needs` and '
+            .'`EXPECTED_JOBS`: %s.',
+            $jobId,
+            $obligation['reason'],
+        );
+    }
+    $actualIf = normalizeExpression((string) ($wf['ifs'][$jobId] ?? ''));
+    $requiredIf = normalizeExpression($obligation['if']);
+    if ($actualIf !== $requiredIf) {
+        $errors[] = sprintf(
+            'MANDATED AGGREGATE JOB "%s" no longer has its reviewed aggregate-event coverage. Expected '
+            .'`if: %s`, found `if: %s`: %s.',
+            $jobId,
+            $requiredIf === '' ? '<unconditional>' : $requiredIf,
+            $actualIf === '' ? '<unconditional>' : $actualIf,
+            $obligation['reason'],
         );
     }
 }
