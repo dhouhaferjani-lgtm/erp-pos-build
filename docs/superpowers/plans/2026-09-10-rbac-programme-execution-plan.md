@@ -27,11 +27,17 @@ widen — its owner's permissions.
 Tenancy 3.10 / PHPUnit 11 / PHPStan L8 / Pint / React 19 / TanStack Query 5 / Vitest.
 
 **Spec:** [`docs/superpowers/specs/2026-09-10-roles-permissions-catalogue-design.md`](../specs/2026-09-10-roles-permissions-catalogue-design.md)
-(**rev 9.1** — rev 9 ACCEPTED at Codex spec gate r9, 0 BLOCKER / 0 MAJOR / 3 minor editorial,
+(**rev 9.2** — rev 9 ACCEPTED at Codex spec gate r9, 0 BLOCKER / 0 MAJOR / 3 minor editorial,
 register at [`docs/superpowers/reviews/2026-09-10-rbac-spec-codex-gate-r9.md`](../reviews/2026-09-10-rbac-spec-codex-gate-r9.md);
 plus **editorial amendment A-1 of 2026-09-10**, recorded in that spec's own **Amendments**
 section, which moves item `0a-4` to wave 0b as `0b-15` and restates §8's wave-0a/0b rows and
-ceilings — `152 / 146 / 298` at the end of 0a, `152 / 142 / 294` at the end of 0b-15).
+ceilings — `152 / 146 / 298` at the end of 0a, `152 / 142 / 294` at the end of 0b-15;
+**and editorial amendment A-2 of 2026-09-11**, which applies the wave-2 plan's **Q-w2-7**
+ruling and re-spells the three keys that derive from neither `PermissionDefinition`
+constructor — `pos.discount_unlimited` → **`pos.override_discount_limit`**,
+`service-accounts.issue-token` → **`service-accounts.tokens.create`**,
+`service-accounts.revoke-token` → **`service-accounts.tokens.delete`** — with no change to
+any route, template default or entry condition).
 
 **Measured at:** `dev` = `630afa86f`, 2026-09-10, **re-measured after the wave-0a plan's
 Codex gate r2** (it was `d64db9a0e` when this document was written, `105b1b22b` when plan
@@ -190,7 +196,7 @@ is that residual's executable record.
 |---|---|
 | **Goal** | Make a service account a first-class principal whose MCP/API token can only ever narrow its owner's permissions. |
 | **Scope items (spec §8)** | `PrincipalKind`; the `users` migration (§5.1 — nullable `password`, the service CHECK); the `principal_kind` census edits across every writer in §4.1.1; six `service-accounts.*` permissions and their routes; `CreateServiceAccountRequest` + `ServiceAccountProvisioningService` + `PUT /service-accounts/{id}/memberships`; the seat exclusion across **all six** counters plus `max_service_accounts`; `EnforceTokenScope` on the global `api` group with its coverage and no-op tests; `tokenScopePermissionNames()`; the `tenant:` claim at issuance; `TokenScopeData` on `/auth/me`; the `X-Company-Id` contract; `MembershipRevocationService` + the queued `RevokePrincipalTokens` retry; FE service-account and token screens. **Also: the `PrincipalKind::Service` arm of `AllowSelfService`** — wave 0a ships the middleware without it, because `principal_kind` does not exist until this wave. |
-| **Entry condition** | **Wave 2a merged**, *and* `ScopedTokenIssuanceEntryConditionTest` green — no scoped token may be issuable while a role-name idiom can bypass the narrowing. `service-accounts.issue-token` stays unrouted until then. |
+| **Entry condition** | **Wave 2a merged**, *and* `ScopedTokenIssuanceEntryConditionTest` green — no scoped token may be issuable while a role-name idiom can bypass the narrowing. `service-accounts.tokens.create` stays unrouted until then. *(Re-spelled by the orchestrator's **Q-w2-7** ruling of 2026-09-11, recorded as spec editorial amendment **A-2**, rev 9.1 → 9.2 — the key derives as nested resource `service-accounts.tokens` + verb `Create`; the entry condition itself is unchanged.)* |
 | **Exit checklist** | ① `ServiceAccountLocationScopeTest` — a service token whose principal's membership carries `allowed_location_ids` is refused a write at another location. ② Issuing the same token twice creates two distinct tokens; revoking a membership twice is idempotent. ③ `EnforceTokenScopeNoOpTest` proves an unscoped human token's behaviour is byte-identical to today. ④ A real MCP-shaped probe: issue a scoped token, call `/auth/me`, assert `token_scope`, then assert a permission the owner holds but the token excludes is refused **403**, not 500. ⑤ UI happy path on the service-account screens with console + 5xx captured. |
 | **Reviewer gates** | `tenancy-authz-reviewer` (**mandatory**), `frontend-conventions-reviewer`. |
 | **Deploy steps** | `tenants:migrate-rolling`, `permissions:sync-fleet`, `permission:cache-reset`, `permissions:export-frontend-map`. |
