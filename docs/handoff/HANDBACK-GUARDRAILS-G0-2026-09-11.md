@@ -8,9 +8,11 @@ status: review
 - Worktree: `.worktrees/guardrails-g0`
 - Branch: `codex/guardrails-g0`
 - Verified application base: `45445eb50b26ec88da36ab62b96aa9377edf0a54`
-- Implementation tip: `97adecf7e6a7582ebcdb530c90350ea019acaf6e`
-- Review range: `45445eb50b26ec88da36ab62b96aa9377edf0a54..97adecf7e6a7582ebcdb530c90350ea019acaf6e`
-- Implementation commit: `Phase 0.1.1: Make pilot guardrails fail closed`
+- Implementation tip: `5a7ce376eab9fcfb8f6d47193dc04c0c60cab4a1`
+- Review range: `45445eb50b26ec88da36ab62b96aa9377edf0a54..5a7ce376eab9fcfb8f6d47193dc04c0c60cab4a1`
+- Implementation commits:
+  - `97adecf7e6a7582ebcdb530c90350ea019acaf6e` — `Phase 0.1.1: Make pilot guardrails fail closed`
+  - `5a7ce376eab9fcfb8f6d47193dc04c0c60cab4a1` — `Phase 0.1.3: Prove quarantine target types`
 
 This packet is handed over for review. The bounded G0 implementation is complete, but the required scoped preflight command is not a full green: it reached and passed the G0 checks, then exited 1 on two unchanged web test files outside this packet. The broad web baseline was not rerun, so this handback does not classify those web failures as proven baseline failures.
 
@@ -40,7 +42,7 @@ The implementation changes five files:
    - covers empty, whitespace-only and invalid selections, scoped success, exact child exit propagation, and full-mode dispatch without booting Laravel or running a PHP suite;
    - clears inherited `PREFLIGHT_*` and stub-control variables before applying each case.
 
-There are no domain, schema, lockfile, feature-flag, ceiling, quarantine, feature-lane ownership, or DTO generation changes.
+There are no domain, schema, lockfile, feature-flag, ceiling, quarantine-content or quarantine-behavior, feature-lane ownership, or DTO generation changes.
 
 ## Red-green evidence
 
@@ -50,6 +52,7 @@ There are no domain, schema, lockfile, feature-flag, ceiling, quarantine, featur
 | Aggregate mandatory-job completeness | New targeted PHP tests against baseline had 3 failures: failed/cancelled mandatory jobs were absent from aggregate context, and deleting a job from both lists left the checker green. | Targeted PHP file passes `81 tests, 463 assertions`; checker rejects each mandatory job removed from both lists. |
 | POS typecheck detector liveness | Temporary untracked `apps/pos/src/__guardrails_g0_typecheck_probe.ts` assigned a string to a number; actual `pnpm --dir apps/pos typecheck` exited 2 with TS2322. The probe was removed. | Clean `pnpm --dir apps/pos typecheck` exits 0. CI and preflight wiring are structurally guarded. |
 | Harness isolation under real preflight ambience | Review-found regression: `PREFLIGHT_TEST_PATHS=tests/Architecture/FeatureLaneManifestCheckerTest.php bash scripts/tests/preflight-status-test.sh` made the nominal empty-path case inherit the selection and return 0 instead of 2. | The harness unsets every tested `PREFLIGHT_*` input before case overrides. It passes with ambient `PREFLIGHT_SCOPE`, `PREFLIGHT_TEST_PATHS`, `PREFLIGHT_PINT_PATHS`, and stub failure controls populated. |
+| Checker target type proof | The identical both-file level-8 PHPStan command at immutable base `45445eb…` reported two `string|null` arguments from the quarantine target split. | A limit-two split keeps the required class component a string and makes only the method optional; the same PHPStan command passes with no errors. |
 
 The aggregate tests use the shell body extracted from `.github/workflows/ci.yml`. The preflight harness copies and invokes `scripts/preflight.sh`; it does not reproduce the script's decision logic.
 
@@ -67,9 +70,10 @@ All commands below ran from the isolated worktree. PHP tests were serial and res
 | `bash -n scripts/preflight.sh scripts/tests/preflight-status-test.sh` | pass |
 | `pnpm --dir apps/pos typecheck` | pass |
 | `actionlint -oneline .github/workflows/ci.yml` | pass with actionlint 1.7.12; no diagnostics |
+| `./vendor/bin/phpstan analyse tools/feature-lane-manifest-check.php tests/Architecture/FeatureLaneManifestCheckerTest.php --level=8 --memory-limit=2G` | pass — no errors |
 | `git diff --check` | pass |
 
-The combined level-8 PHPStan command over the changed checker and test exited 1 with two findings in unchanged checker code: `lcfirst()` and `class_exists()` receive `string|null`. Baseline provenance was established by running the identical command in a worktree whose `HEAD` was the immutable base `45445eb50b26ec88da36ab62b96aa9377edf0a54`; it produced the same two messages at base lines 1243 and 1261 (implementation lines 1290 and 1308). The changed test file alone passed level-8 PHPStan during preflight. These unrelated findings were not modified.
+The combined level-8 PHPStan command originally exited 1 because `array_pad(explode(...), 2, null)` inferred the already-regex-validated class component as `string|null`, which then reached `lcfirst()` and `class_exists()`. Baseline provenance was established by running the identical command in a worktree whose `HEAD` was the immutable base `45445eb50b26ec88da36ab62b96aa9377edf0a54`; it produced the same two findings at base lines 1243 and 1261. The review-authorized refinement now splits with `explode('::', $target, 2)`, takes the required first component directly, and defaults only the optional method component to `null`. Existing class and method validation remains unchanged. The same both-file PHPStan command is now green.
 
 ## Required preflight result
 
@@ -101,9 +105,10 @@ The held lanes at implementation start were:
 | A1a | `1e19a0f37f3f86efb45020a310def644a1ac77fb` | committed `.github/workflows/ci.yml` backend PostgreSQL allowlist additions |
 | T2/S1 | `2084493505f1fb6b99f2c58948fb1ef61ac7b1d4` | committed `.github/workflows/ci.yml` backend PostgreSQL allowlist additions |
 | IMP1 | `4300d9ff362f279664d8f2839dfb1b5c15b9e384` | committed `.github/workflows/ci.yml` backend PostgreSQL allowlist additions |
-| RBAC | `ed88aa2ed23db17b006850e0a0f2466a163f5e2f` | no CI diff observed |
 
 G0 edits disjoint workflow regions: backend architecture near line 200, POS tests near line 2,580, and the final aggregate near line 2,776. Integration must preserve the held lanes' backend PostgreSQL additions while also preserving all three G0 workflow changes. Their files, registers, branches, and holds were not changed or cleared.
+
+RBAC W0a-S1 tip `05455fa41d32531f908899884fc411e4684c2637` is already an ancestor of the verified application base through merge `6415062b9`; it is not a held overlapping lane. The previously recorded generic older RBAC worktree tip `ed88aa2ed23db17b006850e0a0f2466a163f5e2f` was incorrect and has been removed from the table.
 
 ## Limits and review state
 
