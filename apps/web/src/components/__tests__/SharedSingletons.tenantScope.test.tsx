@@ -149,17 +149,21 @@ beforeEach(() => {
     }
     return Promise.resolve({ data: { data: [] } })
   })
-  mockApiGetHelper.mockResolvedValue({
-    vertical: 'generic',
-    default_modules: [],
-    enabled_extras: [],
-    all_enabled_modules: ['Inventory'],
-    currency: 'EUR',
-    locale: 'en_US',
-    country_code: 'TN',
-    smart_prompts_enabled: false,
-    smart_prompts_variant: 'off',
-    line_designation_override_enabled: false,
+  mockApiGetHelper.mockImplementation((url: string) => {
+    if (url.startsWith('/countries')) return Promise.resolve([])
+
+    return Promise.resolve({
+      vertical: 'generic',
+      default_modules: [],
+      enabled_extras: [],
+      all_enabled_modules: ['Inventory'],
+      currency: 'EUR',
+      locale: 'en_US',
+      country_code: 'TN',
+      smart_prompts_enabled: false,
+      smart_prompts_variant: 'off',
+      line_designation_override_enabled: false,
+    })
   })
 })
 
