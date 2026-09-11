@@ -3,13 +3,7 @@ import { create } from 'zustand'
 /**
  * Import status enum matching backend ImportStatus
  */
-export type ImportStatus =
-  | 'pending'
-  | 'validating'
-  | 'validated'
-  | 'importing'
-  | 'completed'
-  | 'failed'
+export type ImportStatus = App.Modules.Import.Domain.Enums.ImportStatus
 
 /**
  * Active import progress state

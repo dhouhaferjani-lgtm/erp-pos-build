@@ -11,6 +11,7 @@ enum ImportStatus: string
     case Validated = 'validated';
     case Importing = 'importing';
     case Completed = 'completed';
+    case PartiallyCompleted = 'partially_completed';
     case Failed = 'failed';
 
     public function canStartImport(): bool
@@ -21,7 +22,7 @@ enum ImportStatus: string
 
     public function isTerminal(): bool
     {
-        return in_array($this, [self::Completed, self::Failed], true);
+        return in_array($this, [self::Completed, self::PartiallyCompleted, self::Failed], true);
     }
 
     public function isProcessing(): bool

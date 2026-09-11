@@ -13,10 +13,10 @@ function ImportProgressCard({ progress }: { progress: ImportProgress }) {
   const { t } = useTranslation('import')
   const { removeImport } = useImportProgressStore()
 
-  const isCompleted = progress.status === 'completed' || progress.status === 'failed'
-  const isSuccess = progress.isSuccess
-  const isFailed = progress.status === 'failed' || (isCompleted && !isSuccess && !progress.isPartialSuccess)
-  const isPartial = progress.isPartialSuccess
+  const isCompleted = progress.status === 'completed' || progress.status === 'partially_completed' || progress.status === 'failed'
+  const isPartial = progress.status === 'partially_completed' || progress.isPartialSuccess
+  const isSuccess = progress.isSuccess && !isPartial
+  const isFailed = progress.status === 'failed' || (isCompleted && !isSuccess && !isPartial)
 
   const getStatusIcon = () => {
     if (isFailed) {
@@ -74,7 +74,7 @@ function ImportProgressCard({ progress }: { progress: ImportProgress }) {
             {isCompleted
               ? isFailed
                 ? t('wizard.execute.failed')
-                : t('wizard.execute.completed')
+                : isPartial ? t('status.partially_completed') : t('wizard.execute.completed')
               : t('wizard.execute.importing')}
           </span>
           <span>{progress.progressPercentage}%</span>

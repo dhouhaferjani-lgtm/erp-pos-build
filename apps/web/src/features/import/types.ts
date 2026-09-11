@@ -38,13 +38,7 @@ export function isDeprecatedImportType(type: ImportType): type is DeprecatedImpo
   return (DEPRECATED_IMPORT_TYPES as readonly ImportType[]).includes(type)
 }
 
-export type ImportStatus =
-  | 'pending'
-  | 'validating'
-  | 'validated'
-  | 'importing'
-  | 'completed'
-  | 'failed'
+export type ImportStatus = App.Modules.Import.Domain.Enums.ImportStatus
 
 export interface UnknownUnitErrorSummary {
   text: string
@@ -56,7 +50,7 @@ export interface UnitErrorSummary {
   unknown_units: UnknownUnitErrorSummary[]
 }
 
-export interface ImportJob {
+export interface ImportJob extends Partial<App.Modules.Import.Domain.Data.ImportCorrectionData> {
   id: string
   type: ImportType
   status: ImportStatus

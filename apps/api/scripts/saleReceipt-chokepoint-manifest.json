@@ -86,7 +86,7 @@
     },
     {
       "file": "apps/api/app/Modules/Import/Services/ImportService.php",
-      "line_anchor": "$this->importJobClaimService->finalize($job, $status, $counters, null, null);",
+      "line_anchor": "$this->importJobClaimService->finalize($job, $status, $counters, $finalizeError !== null ? ImportErrorCode::InternalError : null, null, $finalizeError);",
       "calling_class": "App\\Modules\\Import\\Services\\ImportService",
       "calling_method": "executeImport",
       "receiver_type": "App\\Modules\\Import\\Services\\ImportJobClaimService",

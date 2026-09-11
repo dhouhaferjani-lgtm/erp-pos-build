@@ -1,16 +1,14 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, FileText, CheckCircle, XCircle, Clock, Loader2, Download } from 'lucide-react'
+import { ArrowLeft, FileText, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react'
 import { useImportJobs } from '../api/queries'
-import { importApi } from '../api/importApi'
-import { authenticatedDownload } from '@/lib/api'
-import { textColors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import type { ImportJob, ImportStatus } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { ImportCorrectionActions } from '../components/ImportCorrectionActions'
 import { UnknownUnitSummary } from '../components/UnknownUnitSummary'
 import { KNOWN_WARNING_CODES } from '../warningCodes'
 
@@ -20,6 +18,7 @@ const importStateGlyphs: Record<ImportStatus, ReactNode> = {
   validated: <Clock className={`h-4 w-4 ${colorTokens.text.disabled}`} />,
   importing: <Loader2 className={`h-4 w-4 animate-spin ${colorTokens.intent.primary.text}`} />,
   completed: <CheckCircle className={`h-4 w-4 ${colorTokens.intent.success.text}`} />,
+  partially_completed: <XCircle className={`h-4 w-4 ${colorTokens.intent.warning.text}`} />,
   failed: <XCircle className={`h-4 w-4 ${colorTokens.intent.danger.text}`} />,
 }
 
@@ -29,6 +28,7 @@ const importStateTone: Record<ImportStatus, string> = {
   validated: `${colorTokens.intent.verified.bgSoft} ${colorTokens.intent.verified.textStrong}`,
   importing: `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStrong}`,
   completed: `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStrong}`,
+  partially_completed: `${colorTokens.intent.warning.bgSoft} ${colorTokens.intent.warning.text}`,
   failed: `${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.textStrong}`,
 }
 
@@ -89,7 +89,7 @@ export function ImportHistoryPage() {
       <div className="flex items-center gap-2">
         <span className={`text-sm ${colorTokens.text.subtle}`}>{t('history.filterByStatus')}:</span>
         <div className="flex gap-2">
-          {(['all', 'completed', 'failed', 'importing', 'pending'] as const).map((status) => (
+          {(['all', 'completed', 'partially_completed', 'failed', 'importing', 'pending'] as const).map((status) => (
             <button
               key={status}
               type="button"
@@ -156,9 +156,10 @@ export function ImportHistoryPage() {
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
                     {renderImportStatePill(job.status)}
+                    {job.error_message && <p className={`mt-2 max-w-sm whitespace-normal text-xs ${colorTokens.intent.danger.text}`} role="alert">{job.error_message}</p>}
                   </td>
                   <td className="px-6 py-4">
-                    {job.status === 'completed' || job.status === 'failed' ? (
+                    {job.status === 'completed' || job.status === 'partially_completed' || job.status === 'failed' ? (
                       <div className="space-y-1 text-sm">
                         <div className="whitespace-nowrap">
                           <span data-testid={`import-history-count-imported-${job.id}`} className={colorTokens.intent.success.text}>
@@ -214,39 +215,10 @@ export function ImportHistoryPage() {
                     {formatDate(job.created_at)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end">
-                    {job.status === 'completed' || job.status === 'failed' ? (
-                      <div className="flex flex-col items-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            authenticatedDownload(
-                              importApi.downloadResultWorkbookUrl(job.id),
-                              `import-${job.id}-result.xlsx`
-                            )
-                          }
-                          className={cn('inline-flex items-center gap-1 text-sm', textColors.brand, textColors.hoverBrand)}
-                        >
-                          <Download className="h-4 w-4" />
-                          {t('results.downloadWorkbook')}
-                        </button>
-                        {(job.failed_rows ?? 0) > 0 && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              authenticatedDownload(
-                                importApi.downloadFailedRowsUrl(job.id),
-                                `import-${job.id}-failed-rows.csv`
-                              )
-                            }
-                            className={cn('inline-flex items-center gap-1 text-sm', textColors.brand, textColors.hoverBrand)}
-                          >
-                            <Download className="h-4 w-4" />
-                            {t('wizard.complete.downloadFailedRows')}
-                          </button>
-                        )}
-                      </div>
+                    {job.status === 'completed' || job.status === 'partially_completed' || job.status === 'failed' ? (
+                      <ImportCorrectionActions jobId={job.id} type={job.type} />
                     ) : (
-                      <span className={cn('text-sm', textColors.disabled)}>-</span>
+                      <span className={cn('text-sm', colorTokens.text.disabled)}>-</span>
                     )}
                   </td>
                 </tr>

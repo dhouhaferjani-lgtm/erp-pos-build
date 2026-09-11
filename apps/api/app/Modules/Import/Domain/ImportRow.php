@@ -11,6 +11,7 @@ use App\Modules\Import\Domain\Casts\ImportRowWarningCollectionCast;
 use App\Modules\Import\Domain\Enums\DuplicateBucket;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportRowOutcome;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -96,6 +97,17 @@ class ImportRow extends Model
     public function importJob(): BelongsTo
     {
         return $this->belongsTo(ImportJob::class);
+    }
+
+    /**
+     * @param  Builder<ImportRow>  $query
+     * @return Builder<ImportRow>
+     */
+    public function scopeHasWarnings(Builder $query): Builder
+    {
+        return $this->getConnection()->getDriverName() === 'sqlite'
+            ? $query->whereNotNull('warnings')->where('warnings', '!=', '[]')
+            : $query->whereRaw('jsonb_array_length(warnings) > 0');
     }
 
     /**

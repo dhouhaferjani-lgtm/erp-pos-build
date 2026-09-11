@@ -62,7 +62,7 @@ final class EnrichImportedProductsJob implements ShouldQueue
                 ->where('tenant_id', $this->tenantId)
                 ->where('company_id', $this->companyId)
                 ->where('type', ImportType::Products)
-                ->whereIn('status', [ImportStatus::Completed, ImportStatus::Failed])
+                ->whereIn('status', [ImportStatus::Completed, ImportStatus::PartiallyCompleted, ImportStatus::Failed])
                 ->first();
 
             if ($job === null || ! (bool) ($job->options['enrichment_enabled'] ?? false)) {
@@ -211,7 +211,7 @@ final class EnrichImportedProductsJob implements ShouldQueue
             ->where('id', $this->importJobId)
             ->where('tenant_id', $this->tenantId)
             ->where('company_id', $this->companyId)
-            ->whereIn('status', [ImportStatus::Completed, ImportStatus::Failed])
+            ->whereIn('status', [ImportStatus::Completed, ImportStatus::PartiallyCompleted, ImportStatus::Failed])
             ->update(['enrichment_summary' => json_encode($normalized, JSON_THROW_ON_ERROR)]);
     }
 

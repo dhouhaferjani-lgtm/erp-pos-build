@@ -116,11 +116,13 @@ export function useCreateImport() {
       type,
       file,
       columnMapping,
+      reimportOf,
     }: {
       type: ImportType
       file: File
       columnMapping?: Record<string, string>
-    }) => importApi.createJob(type, file, columnMapping),
+      reimportOf?: string
+    }) => importApi.createJob(type, file, columnMapping, reimportOf),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         predicate: importsListInvalidationPredicate(tenantId, companyId),

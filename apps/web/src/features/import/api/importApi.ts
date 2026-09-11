@@ -35,11 +35,13 @@ export const importApi = {
   createJob: async (
     type: ImportType,
     file: File,
-    columnMapping?: Record<string, string>
+    columnMapping?: Record<string, string>,
+    reimportOf?: string
   ): Promise<CreateImportResponse> => {
     const formData = new FormData()
     formData.append('type', type)
     formData.append('file', file)
+    if (reimportOf) formData.append('reimport_of', reimportOf)
     if (columnMapping && Object.keys(columnMapping).length > 0) {
       formData.append('column_mapping', JSON.stringify(columnMapping))
     }
@@ -70,8 +72,8 @@ export const importApi = {
     return apiGet<ImportErrorSummaryResponse>(`${IMPORT_URL}/${jobId}/error-summary`)
   },
 
-  downloadFailedRowsUrl: (jobId: string): string => {
-    return `${IMPORT_URL}/${jobId}/failed-rows.csv`
+  downloadFailedRowsUrl: (jobId: string, format: 'csv' | 'xlsx' = 'csv'): string => {
+    return `${IMPORT_URL}/${jobId}/failed-rows.${format}`
   },
 
   downloadResultWorkbookUrl: (jobId: string): string => {

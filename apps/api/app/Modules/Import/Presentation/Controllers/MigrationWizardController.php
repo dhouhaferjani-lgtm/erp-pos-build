@@ -46,7 +46,7 @@ class MigrationWizardController extends Controller
         }
 
         try {
-            $result = $this->spreadsheetParser->parse(Storage::disk('local')->path($path));
+            $result = $this->spreadsheetParser->parse(Storage::disk('local')->path($path), preserveHeaders: true);
 
             return response()->json([
                 'data' => [

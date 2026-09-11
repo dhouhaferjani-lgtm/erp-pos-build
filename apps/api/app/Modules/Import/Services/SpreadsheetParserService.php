@@ -21,16 +21,16 @@ final class SpreadsheetParserService
      *
      * @throws ReaderException
      */
-    public function parse(string $filePath): array
+    public function parse(string $filePath, bool $preserveHeaders = false): array
     {
         $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
 
         // For CSV files, use native parsing for better performance
         if ($extension === 'csv' || $extension === 'txt') {
-            return $this->parseCsv($filePath);
+            return $this->parseCsv($filePath, $preserveHeaders);
         }
 
-        return $this->parseExcel($filePath);
+        return $this->parseExcel($filePath, $preserveHeaders);
     }
 
     /**
@@ -51,7 +51,7 @@ final class SpreadsheetParserService
      *
      * @return array{headers: array<string>, rows: array<int, array<string, mixed>>}
      */
-    private function parseCsv(string $filePath): array
+    private function parseCsv(string $filePath, bool $preserveHeaders): array
     {
         $handle = fopen($filePath, 'rb');
         if ($handle === false) {
@@ -72,7 +72,7 @@ final class SpreadsheetParserService
             $delimiter = $this->detectDelimiter($headerLine);
             $rawHeaders = str_getcsv(rtrim($headerLine, "\r\n"), $delimiter, '"', '');
             /** @var array<string> $headers */
-            $headers = array_map(fn (?string $h) => strtolower(trim($this->toUtf8($h ?? ''))), $rawHeaders);
+            $headers = array_map(fn (?string $h) => $preserveHeaders ? trim($this->toUtf8($h ?? '')) : strtolower(trim($this->toUtf8($h ?? ''))), $rawHeaders);
 
             $rows = [];
             $rowNumber = 0;
@@ -153,7 +153,7 @@ final class SpreadsheetParserService
      *
      * @throws ReaderException
      */
-    private function parseExcel(string $filePath): array
+    private function parseExcel(string $filePath, bool $preserveHeaders): array
     {
         $spreadsheet = IOFactory::load($filePath);
         $worksheet = $spreadsheet->getActiveSheet();
@@ -183,7 +183,7 @@ final class SpreadsheetParserService
             // First row is headers
             if (empty($headers)) {
                 /** @var array<string> $headers */
-                $headers = array_map(fn (string $h) => strtolower(trim($h)), $rowData);
+                $headers = array_map(fn (string $h) => $preserveHeaders ? trim($h) : strtolower(trim($h)), $rowData);
 
                 continue;
             }

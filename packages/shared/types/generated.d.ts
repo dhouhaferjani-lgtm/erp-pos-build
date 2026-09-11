@@ -1027,6 +1027,9 @@ declare namespace App.Modules.Identity.Domain.Enums {
 export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending_verification';
 }
 declare namespace App.Modules.Import.Domain.Data {
+export type ImportCorrectionData = {
+column_mapping: Record<string, string> | null;
+};
 export type ImportErrorDetailData = {
 supplied?: string | null;
 accepted?: Array<string> | null;
@@ -1059,7 +1062,7 @@ export type DuplicateBucket = 'new' | 'existing_sku' | 'existing_barcode' | 'exi
 export type DuplicatePolicy = 'override' | 'skip';
 export type ImportErrorCode = 'units_not_seeded' | 'unit_unknown' | 'unit_ambiguous' | 'unit_default_missing' | 'barcode_ambiguous' | 'barcode_identity_conflict' | 'product_not_found' | 'partner_not_found' | 'sku_held_by_deleted_product' | 'vat_held_by_deleted_partner' | 'duplicate_sku_in_company' | 'invalid_number' | 'validation_failed' | 'internal_error' | 'worker_lost';
 export type ImportRowOutcome = 'pending' | 'imported' | 'merged_line' | 'duplicate_skipped' | 'duplicate_loser' | 'failed' | 'opening_locked';
-export type ImportStatus = 'pending' | 'validating' | 'validated' | 'importing' | 'completed' | 'failed';
+export type ImportStatus = 'pending' | 'validating' | 'validated' | 'importing' | 'completed' | 'partially_completed' | 'failed';
 export type ImportType = 'parties' | 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images' | 'composite_items';
 export type ImportWarningCode = 'price_conflict' | 'margin_without_cost' | 'balance_not_posted' | 'opening_failed' | 'quantity_ignored_service' | 'qty_without_cost' | 'expiry_in_past' | 'expiry_conflict_existing_lot' | 'expiry_ignored_not_batch_tracked' | 'expiry_ignored_no_default_lot' | 'category_matched_by_slug' | 'category_created' | 'category_restored' | 'sku_generated' | 'code_generated' | 'matched_by_name' | 'duplicate_in_file' | 'preview_drift' | 'opening_skipped_existing' | 'opening_corrected' | 'unit_defaulted' | 'location_not_supplied' | 'location_code_unknown' | 'location_unresolved' | 'opening_exists' | 'multi_location' | 'barcode_float_corruption_suspected' | 'numeric_normalized' | 'enrichment_not_found' | 'enrichment_unavailable' | 'enrichment_invalid_barcode' | 'enrichment_cap_exceeded' | 'enrichment_vertical_not_supported' | 'enrichment_barcode_missing';
 }

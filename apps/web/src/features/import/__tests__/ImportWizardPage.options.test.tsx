@@ -16,6 +16,7 @@ let nextJobData: ImportJob | undefined
 let createdJobId = 'job-1'
 const companyConfigState = vi.hoisted(() => ({ enrichmentAvailable: false }))
 
+const mockGetJob = vi.hoisted(() => vi.fn())
 const mockParseHeaders = vi.hoisted(() => vi.fn())
 const mockUpdateOptions = vi.hoisted(() => vi.fn())
 const mockCreateMutate = vi.hoisted(() => vi.fn())
@@ -54,6 +55,7 @@ vi.mock('@/contexts/CompanyConfigContext', () => ({
 
 vi.mock('../api/importApi', () => ({
   importApi: {
+    getJob: mockGetJob,
     parseHeaders: mockParseHeaders,
     updateOptions: mockUpdateOptions,
     getPreview: mockPreviewRequest,
@@ -114,7 +116,7 @@ vi.mock('../components/ImportPreviewTable', () => ({
   ImportPreviewTable: () => null,
 }))
 
-function renderWizard() {
+function renderWizard(path = '/settings/import/products') {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -127,7 +129,7 @@ function renderWizard() {
   }
 
   return render(
-    <MemoryRouter initialEntries={['/settings/import/products']}>
+    <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/settings/import/:type" element={<ImportWizardPage />} />
       </Routes>
@@ -149,6 +151,19 @@ async function uploadAndMap() {
 }
 
 describe('ImportWizardPage product options step', () => {
+  it('keeps Next disabled until the original re-import mapping has loaded', async () => {
+    let resolveMapping!: (value: { column_mapping: Record<string, string> }) => void
+    mockGetJob.mockReturnValueOnce(new Promise((resolve) => { resolveMapping = resolve }))
+    renderWizard('/settings/import/products?reimport_of=original-job')
+    await userEvent.click(screen.getByRole('button', { name: 'choose-file' }))
+    await waitFor(() => expect(mockGetJob).toHaveBeenCalledWith('original-job'))
+    expect(screen.getByRole('button', { name: 'common:actions.next' })).toBeDisabled()
+    await act(async () => { resolveMapping({ column_mapping: { name: 'name' } }) })
+    expect(screen.getByRole('button', { name: 'common:actions.next' })).toBeEnabled()
+    await userEvent.click(screen.getByRole('button', { name: 'common:actions.next' }))
+    expect(screen.queryByRole('button', { name: 'apply-mapping' })).not.toBeInTheDocument()
+  })
+
   afterEach(() => {
     vi.restoreAllMocks()
   })
@@ -617,7 +632,7 @@ describe('ImportWizardPage product options step', () => {
     expect(consoleErrorSpy).toHaveBeenCalledWith('Import wizard: final job refetch failed', refetchError)
   })
 
-  it('refetches a failed job before transitioning to complete', async () => {
+  it.each(['failed', 'partially_completed'] as const)('refetches a %s job before transitioning to complete', async (status) => {
     nextMapping = { name: 'name' }
     const staleJob: ImportJob = {
       id: 'job-1',
@@ -641,9 +656,10 @@ describe('ImportWizardPage product options step', () => {
     }
     const failedJob: ImportJob = {
       ...staleJob,
-      status: 'failed',
+      status,
       processed_rows: 100,
-      failed_rows: 100,
+      failed_rows: status === 'failed' ? 100 : 0,
+      successful_rows: status === 'partially_completed' ? 100 : 0,
       progress_percentage: 100,
       error_message: 'Import failed',
       completed_at: '2026-08-29T10:00:01Z',
@@ -669,11 +685,11 @@ describe('ImportWizardPage product options step', () => {
     act(() => {
       useImportProgressStore.getState().updateProgress({
         import_job_id: 'job-1',
-        status: 'failed',
+        status,
         total_rows: 100,
         processed_rows: 100,
-        successful_rows: 0,
-        failed_rows: 100,
+        failed_rows: status === 'failed' ? 100 : 0,
+        successful_rows: status === 'partially_completed' ? 100 : 0,
         progress_percentage: 100,
         import_type: 'products',
         original_filename: 'products.csv',
@@ -688,7 +704,7 @@ describe('ImportWizardPage product options step', () => {
       await Promise.resolve()
     })
 
-    expect(await screen.findByRole('heading', { name: 'wizard.complete.title' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: `status.${status}` })).toBeInTheDocument()
   })
 
   it('shows warning counts on the completion step', async () => {

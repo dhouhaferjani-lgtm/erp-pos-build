@@ -607,7 +607,12 @@ final class ImportService
             $job->update(['processed_rows' => $processedCount]);
         }
 
-        $this->finalizeImport($job, $this->companyContext->requireCompanyId());
+        $finalizeError = null;
+        try {
+            $this->finalizeImport($job, $this->companyContext->requireCompanyId());
+        } catch (\Throwable $exception) {
+            $finalizeError = $exception->getMessage();
+        }
 
         // Status AND counts come from row state after finalize, because a finalize
         // phase may demote rows that staged fine yet could not be committed. GL
@@ -618,7 +623,7 @@ final class ImportService
         $status = ($counters->successfulRows + $counters->skippedRows) === 0
             ? ImportStatus::Failed
             : ImportStatus::Completed;
-        $this->importJobClaimService->finalize($job, $status, $counters, null, null);
+        $this->importJobClaimService->finalize($job, $status, $counters, $finalizeError !== null ? ImportErrorCode::InternalError : null, null, $finalizeError);
 
         return [
             'imported_count' => $counters->successfulRows,

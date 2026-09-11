@@ -112,7 +112,8 @@
     "validated": "Validé",
     "importing": "Importation",
     "completed": "Terminé",
-    "failed": "Échec"
+    "failed": "Échec",
+    "partially_completed": "Terminé avec erreurs"
   },
   "wizard": {
     "steps": {
@@ -240,10 +241,10 @@
     "skipColumn": "-- Ignorer cette colonne --",
     "requiredFields": "Champs obligatoires",
     "optionalFields": "Champs optionnels",
-  "alreadyMapped": "déjà mappé",
-  "missingRequired": "Champs obligatoires manquants",
-  "automaticMatchingFailed": "La correspondance automatique des colonnes a échoué — mappez les colonnes manuellement.",
-  "legendMapped": "Mappé",
+    "alreadyMapped": "déjà mappé",
+    "missingRequired": "Champs obligatoires manquants",
+    "automaticMatchingFailed": "La correspondance automatique des colonnes a échoué — mappez les colonnes manuellement.",
+    "legendMapped": "Mappé",
     "legendSkipped": "Ignoré",
     "legendRequired": "Obligatoire",
     "suggested": "(suggéré)",
@@ -311,9 +312,18 @@
     },
     "policy": {
       "title": "Comment traiter les enregistrements existants ?",
-      "override": { "label": "Remplacer", "description": "Fusionner les cellules non vides dans les enregistrements existants." },
-      "skip": { "label": "Ignorer", "description": "Ne pas modifier les enregistrements existants correspondants." },
-      "cancel": { "label": "Annuler", "description": "Quitter cet assistant et supprimer l'import depuis l'historique." },
+      "override": {
+        "label": "Remplacer",
+        "description": "Fusionner les cellules non vides dans les enregistrements existants."
+      },
+      "skip": {
+        "label": "Ignorer",
+        "description": "Ne pas modifier les enregistrements existants correspondants."
+      },
+      "cancel": {
+        "label": "Annuler",
+        "description": "Quitter cet assistant et supprimer l'import depuis l'historique."
+      },
       "persistenceError": "La règle de doublons n'a pas pu être enregistrée. Réessayez avant de continuer."
     },
     "barcode": {
@@ -381,5 +391,19 @@
     "noJobs": "Aucun travail d'importation trouvé",
     "noJobsDescription": "Commencez par importer des données depuis le tableau de bord d'importation.",
     "startImport": "Commencer l'import"
+  },
+  "correction": {
+    "download": "Télécharger les lignes à corriger",
+    "format": "Format du fichier",
+    "csv": "CSV",
+    "xlsx": "Excel",
+    "caveat": "Inclut les erreurs et avertissements avec leur statut, code et message. Les colonnes source non associées sont omises.",
+    "reupload": "Réimporter le fichier corrigé",
+    "fullReport": "Rapport complet",
+    "headersChanged": "Les colonnes source ont changé. Vérifiez les correspondances avant l’import.",
+    "noRows": "Cet import ne contient aucune ligne à corriger.",
+    "downloadError": "Le téléchargement a échoué. Veuillez réessayer.",
+    "partialDescription": "Certaines données ont été importées. Vérifiez les erreurs ci-dessous avant de réessayer.",
+    "failedDescription": "Vérifiez les erreurs ci-dessous avant de relancer l’import."
   }
 }

@@ -164,6 +164,10 @@ final class ImportJobClaimService
             ]);
         }
 
+        if ($counters->successfulRows > 0 && ($counters->failedRows > 0 || $message !== null)) {
+            $terminal = ImportStatus::PartiallyCompleted;
+        }
+
         return ImportJob::query()
             ->where('tenant_id', $job->tenant_id)
             ->where('id', $job->id)

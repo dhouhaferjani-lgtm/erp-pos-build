@@ -85,6 +85,7 @@ final readonly class UnitResolver
                 sprintf('Unit code "%s" matches more than one visible unit.', $code),
                 [
                     'supplied' => $code,
+                    'accepted' => array_map(static fn (UnitCatalogEntryData $unit): string => $unit->code, $visible),
                     'candidates' => array_map(
                         static fn (UnitCatalogEntryData $unit): array => [
                             'id' => $unit->id,

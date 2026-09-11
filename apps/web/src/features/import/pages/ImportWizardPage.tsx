@@ -1,10 +1,11 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import axios from 'axios'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { ArrowLeft, ArrowRight, Upload, Loader2, CheckCircle, XCircle, Download } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Upload, Loader2, CheckCircle, XCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { ImportCorrectionActions } from '../components/ImportCorrectionActions'
 import { FileUpload } from '../components/FileUpload'
 import { ColumnMapper } from '../components/ColumnMapper'
 import { ValidationGrid } from '../components/ValidationGrid'
@@ -28,6 +29,7 @@ import { isDeprecatedImportType } from '../types'
 import { DUPLICATE_BUCKETS, type DuplicatePolicy, type ImportJobOptions, type ImportResult, type ImportType, type LiveImportType, type LocationNodeType } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { Button } from '@/components/atoms/Button/Button'
 import { Select } from '@/components/atoms/Select/Select'
 import { useScopedLocations } from '@/features/locations/hooks/useScopedLocations'
 import type { ScopedLocation } from '@/features/locations/api/scopedLocations'
@@ -269,6 +271,9 @@ export function ImportWizardPage() {
   const { type } = useParams<{ type: string }>()
   const importType = type as ImportType
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const reimportOf = searchParams.get('reimport_of') ?? undefined
+  const reimportMappingReadyRef = useRef(false)
   const { t } = useTranslation('import')
   const { data: scopedLocations = [] } = useScopedLocations()
   const companyConfig = useCompanyConfigOptional()
@@ -364,7 +369,7 @@ export function ImportWizardPage() {
     if (!apiJobData) return undefined
 
     // If we have real-time progress from WebSocket, merge it with API data
-    if (realtimeProgress && (realtimeProgress.status === 'importing' || realtimeProgress.status === 'completed' || realtimeProgress.status === 'failed')) {
+    if (realtimeProgress && (realtimeProgress.status === 'importing' || (realtimeProgress.status === 'completed' || realtimeProgress.status === 'partially_completed') || realtimeProgress.status === 'failed')) {
       return {
         ...apiJobData,
         status: realtimeProgress.status,
@@ -380,7 +385,7 @@ export function ImportWizardPage() {
 
   const completedImportedCount = importResults?.imported_count ?? jobData?.successful_rows ?? 0
   const completedSkippedCount = importResults?.skipped_count ?? jobData?.skipped_rows ?? 0
-  const completedFailedCount = importResults?.execution_error_count ?? jobData?.failed_rows ?? 0
+  const completedFailedCount = jobData?.failed_rows ?? importResults?.execution_error_count ?? 0
   const completedEnrichedCount = jobData?.warning_summary?.['enriched'] ?? 0
   const isSkipOnlyCompletion = completedImportedCount === 0
     && completedSkippedCount > 0
@@ -427,7 +432,7 @@ export function ImportWizardPage() {
       jobId &&
       apiJobData &&
       executeImport.isSuccess &&
-      apiJobData.status !== 'completed' &&
+      (apiJobData.status !== 'completed' && apiJobData.status !== 'partially_completed') &&
       apiJobData.status !== 'failed'
     ) {
       // Seed the progress store with initial data when execution starts
@@ -451,7 +456,7 @@ export function ImportWizardPage() {
       return
     }
 
-    if (apiJobData.status !== 'completed' && apiJobData.status !== 'failed') {
+    if ((apiJobData.status !== 'completed' && apiJobData.status !== 'partially_completed') && apiJobData.status !== 'failed') {
       updateProgress({
         import_job_id: jobId,
         status: apiJobData.status,
@@ -480,8 +485,8 @@ export function ImportWizardPage() {
       import_type: apiJobData.type,
       original_filename: apiJobData.original_filename,
       completed_at: apiJobData.completed_at ?? new Date().toISOString(),
-      is_success: apiJobData.status === 'completed' && apiJobData.failed_rows === 0,
-      is_partial_success: apiJobData.status === 'completed' && apiJobData.successful_rows > 0 && apiJobData.failed_rows > 0,
+      is_success: apiJobData.status === 'completed' && apiJobData.failed_rows === 0 && !apiJobData.error_message,
+      is_partial_success: apiJobData.status === 'partially_completed' || (apiJobData.status === 'completed' && apiJobData.successful_rows > 0 && apiJobData.failed_rows > 0),
       ...(apiJobData.error_message ? { error_message: apiJobData.error_message } : {}),
     })
   }, [apiJobData, completeImport, executeImport.isSuccess, jobId, updateProgress])
@@ -491,7 +496,7 @@ export function ImportWizardPage() {
     const status = realtimeProgress?.status ?? apiJobData?.status
     if (
       jobId
-      && (status === 'completed' || status === 'failed')
+      && ((status === 'completed' || status === 'partially_completed') || status === 'failed')
       && currentStep === 'execute'
       && !terminalTransitionJobsRef.current.has(jobId)
     ) {
@@ -505,7 +510,7 @@ export function ImportWizardPage() {
         markStepCompleted('execute')
         setCurrentStep('complete')
       }
-      if (realtimeProgress?.status === 'completed' || realtimeProgress?.status === 'failed') {
+      if ((realtimeProgress?.status === 'completed' || realtimeProgress?.status === 'partially_completed') || realtimeProgress?.status === 'failed') {
         void refetchJob().then((result) => {
           if (result.isError) {
             console.error('Import wizard: final job refetch failed', result.error)
@@ -570,9 +575,11 @@ export function ImportWizardPage() {
     mappingRequestIdRef.current = requestId
     mappingTouchedByUserRef.current = false
     setMappingSuggestionFailed(false)
+    reimportMappingReadyRef.current = false
     setColumnMapping({})
     setSuggestions({})
     setSelectedFile(file)
+    setSourceColumns([])
 
     // Parse headers server-side: handles XLSX/XLS and any CSV delimiter
     // (semicolon is the default Excel CSV export in French/European locales),
@@ -580,8 +587,21 @@ export function ImportWizardPage() {
     try {
       const { headers } = await importApi.parseHeaders(file)
       if (requestId !== mappingRequestIdRef.current) return
-      setSourceColumns(headers)
+      if (reimportOf) {
+        const original = await importApi.getJob(reimportOf)
+        if (requestId !== mappingRequestIdRef.current) return
+        const mapping = original.column_mapping
+        const sourceHeaderSet = new Set(headers)
+        if (mapping && Object.keys(mapping).every((header) => sourceHeaderSet.has(header))) {
+          setColumnMapping(mapping)
+          reimportMappingReadyRef.current = true
+          setSourceColumns(headers)
+          return
+        }
+        toast.info(t('correction.headersChanged'))
+      }
 
+      setSourceColumns(headers)
       // Get mapping suggestions
       suggestMapping.mutate(
         { type: importType, headers },
@@ -614,7 +634,7 @@ export function ImportWizardPage() {
       setSelectedFile(null)
       setSourceColumns([])
     }
-  }, [importType, suggestMapping, t])
+  }, [importType, reimportOf, suggestMapping, t])
 
   const handleColumnMappingChange = useCallback((mapping: Record<string, string>) => {
     mappingTouchedByUserRef.current = true
@@ -639,6 +659,7 @@ export function ImportWizardPage() {
         type: importType,
         file: selectedFile,
         columnMapping,
+        ...(reimportOf ? { reimportOf } : {}),
       },
       {
         onSuccess: (data) => {
@@ -650,7 +671,7 @@ export function ImportWizardPage() {
         },
       }
     )
-  }, [selectedFile, importType, columnMapping, createImport, markStepCompleted, shouldShowOptionsStep])
+  }, [selectedFile, importType, columnMapping, reimportOf, createImport, markStepCompleted, shouldShowOptionsStep])
 
   const handleOptionsComplete = useCallback(async () => {
     if (!previewJobId) return
@@ -764,7 +785,7 @@ export function ImportWizardPage() {
         }
 
         // Check if import completed synchronously (small imports < 100 rows)
-        if (response.status === 'completed' || response.status === 'failed') {
+        if ((response.status === 'completed' || response.status === 'partially_completed') || response.status === 'failed') {
           // Import finished synchronously - go directly to complete step
           setIsImporting(false)
           markStepCompleted('execute')
@@ -775,7 +796,7 @@ export function ImportWizardPage() {
           // Also populate the progress store with initial state so GlobalImportProgress shows
           updateProgress({
             import_job_id: response.id,
-            status: response.status as 'pending' | 'validating' | 'validated' | 'importing' | 'completed' | 'failed',
+            status: response.status,
             total_rows: response.total_rows,
             processed_rows: response.processed_rows,
             successful_rows: response.successful_rows,
@@ -864,16 +885,21 @@ export function ImportWizardPage() {
               >
                 {t('wizard.upload.downloadTemplate')}
               </button>
-              <button
+              <Button
                 data-testid="import-wizard-next"
                 type="button"
-                onClick={handleUploadComplete}
+                onClick={() => {
+                  if (reimportMappingReadyRef.current) {
+                    markStepCompleted('upload')
+                    void handleMappingComplete()
+                  } else handleUploadComplete()
+                }}
                 disabled={!selectedFile || sourceColumns.length === 0}
                 className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover} disabled:cursor-not-allowed ${colorTokens.surface.disabledWhenDisabled}`}
               >
                 {t('common:actions.next')}
                 <ArrowRight className="h-4 w-4" />
-              </button>
+              </Button>
             </div>
           </div>
         )
@@ -1317,7 +1343,7 @@ export function ImportWizardPage() {
             </div>
 
             {/* Progress during execution */}
-            {jobData && (jobData.status === 'importing' || jobData.status === 'completed' || jobData.status === 'failed') && (
+            {jobData && (jobData.status === 'importing' || (jobData.status === 'completed' || jobData.status === 'partially_completed') || jobData.status === 'failed') && (
               <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} p-6`}>
                 <div className="flex items-center gap-3 mb-4">
                   {jobData.status === 'importing' && (
@@ -1326,7 +1352,7 @@ export function ImportWizardPage() {
                       <span className={`font-medium ${colorTokens.text.primary}`}>{t('wizard.execute.importing')}</span>
                     </>
                   )}
-                  {jobData.status === 'completed' && (
+                  {(jobData.status === 'completed' || jobData.status === 'partially_completed') && (
                     <>
                       <CheckCircle className={`h-5 w-5 ${colorTokens.intent.success.text}`} />
                       <span className={`font-medium ${colorTokens.intent.success.textStrongest}`}>{t('wizard.execute.completed')}</span>
@@ -1400,7 +1426,7 @@ export function ImportWizardPage() {
                     </>
                   )}
                 </button>
-              ) : jobData.status === 'completed' ? (
+              ) : (jobData.status === 'completed' || jobData.status === 'partially_completed') ? (
                 <button
                   type="button"
                   onClick={() => { setCurrentStep('complete'); }}
@@ -1418,14 +1444,18 @@ export function ImportWizardPage() {
         return (
           <div className="space-y-6">
             <div className="text-center py-8">
-              <CheckCircle className={`mx-auto h-16 w-16 ${colorTokens.intent.success.textSubtle}`} />
+              {jobData?.status === 'partially_completed' || jobData?.status === 'failed' ? (
+                <XCircle className={`mx-auto h-16 w-16 ${jobData.status === 'failed' ? colorTokens.intent.danger.text : colorTokens.intent.warning.text}`} />
+              ) : <CheckCircle className={`mx-auto h-16 w-16 ${colorTokens.intent.success.textSubtle}`} />}
               <h2 className={`mt-4 text-2xl font-bold ${colorTokens.text.primary}`}>
-                {t('wizard.complete.title')}
+                {t(jobData?.status === 'partially_completed' ? 'status.partially_completed' : jobData?.status === 'failed' ? 'status.failed' : 'wizard.complete.title')}
               </h2>
               <p className={`mt-2 ${colorTokens.text.muted}`}>
-                {t(isSkipOnlyCompletion ? 'wizard.complete.noChanges' : 'wizard.complete.description')}
+                {t(jobData?.status === 'partially_completed' ? 'correction.partialDescription' : jobData?.status === 'failed' ? 'correction.failedDescription' : isSkipOnlyCompletion ? 'wizard.complete.noChanges' : 'wizard.complete.description')}
               </p>
             </div>
+
+            {jobData?.error_message && <p role="alert" className={`rounded p-3 ${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.text}`}>{jobData.error_message}</p>}
 
             {/* Results summary */}
             {(jobData || importResults) && (
@@ -1495,32 +1525,7 @@ export function ImportWizardPage() {
 
                 {jobData?.id && (
                   <div className={`mt-4 flex flex-wrap gap-4 border-t ${colorTokens.border.subtle} pt-4`}>
-                    <button
-                      data-testid="import-complete-download-workbook"
-                      type="button"
-                      onClick={() => authenticatedDownload(
-                        importApi.downloadResultWorkbookUrl(jobData.id),
-                        `import-${jobData.id}-result.xlsx`
-                      )}
-                      className={`inline-flex items-center gap-2 text-sm font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStronger}`}
-                    >
-                      <Download className="h-4 w-4" />
-                      {t('results.downloadWorkbook')}
-                    </button>
-                    {importResults?.failed_rows_csv_url && (
-                      <button
-                        data-testid="import-complete-download-rows_export_csv"
-                        type="button"
-                        onClick={() => authenticatedDownload(
-                          importResults.failed_rows_csv_url!,
-                          `import_failed_rows.csv`
-                        )}
-                        className={`inline-flex items-center gap-2 text-sm font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStronger}`}
-                      >
-                        <Download className="h-4 w-4" />
-                        {t('wizard.complete.downloadFailedRows')}
-                      </button>
-                    )}
+                    <ImportCorrectionActions jobId={jobData.id} type={importType} />
                   </div>
                 )}
               </div>

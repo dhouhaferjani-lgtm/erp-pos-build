@@ -8,7 +8,10 @@ use App\Modules\Import\Domain\Enums\DuplicatePolicy;
 
 final readonly class ImportJobOptionsData
 {
-    /** @param list<string>|null $placementNodeTypes */
+    /**
+     * @param  list<string>|null  $placementNodeTypes
+     * @param  list<string>|null  $sourceHeaders
+     */
     public function __construct(
         public ?DuplicateCensusData $duplicateCensus,
         public ?DuplicatePolicy $duplicatePolicy,
@@ -18,6 +21,7 @@ final readonly class ImportJobOptionsData
         public ?array $placementNodeTypes,
         public ?bool $enrichmentEnabled,
         public ?bool $multiLocationConfirmed,
+        public ?array $sourceHeaders = null,
     ) {}
 
     /**
@@ -27,6 +31,7 @@ final readonly class ImportJobOptionsData
     {
         $rawCensus = $payload['duplicate_census'] ?? null;
         $rawNodeTypes = $payload['placement_node_types'] ?? null;
+        $sourceHeaders = $payload['source_headers'] ?? null;
 
         return new self(
             is_array($rawCensus) ? DuplicateCensusData::fromStorage($rawCensus) : null,
@@ -41,6 +46,7 @@ final readonly class ImportJobOptionsData
                 : null,
             is_bool($payload['enrichment_enabled'] ?? null) ? $payload['enrichment_enabled'] : null,
             is_bool($payload['multi_location_confirmed'] ?? null) ? $payload['multi_location_confirmed'] : null,
+            is_array($sourceHeaders) ? array_values(array_filter($sourceHeaders, is_string(...))) : null,
         );
     }
 
@@ -62,6 +68,7 @@ final readonly class ImportJobOptionsData
      *   placement_mode?: string,
      *   placement_node_types?: list<string>,
      *   enrichment_enabled?: bool,
+     *   source_headers?: list<string>,
      *   multi_location_confirmed?: bool
      * }
      */
@@ -91,6 +98,10 @@ final readonly class ImportJobOptionsData
         }
         if ($this->multiLocationConfirmed !== null) {
             $options['multi_location_confirmed'] = $this->multiLocationConfirmed;
+        }
+
+        if ($this->sourceHeaders !== null) {
+            $options['source_headers'] = $this->sourceHeaders;
         }
 
         return $options;
