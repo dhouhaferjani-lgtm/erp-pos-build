@@ -568,3 +568,129 @@ Each row names the latest commit carrying that round-2 path (deleted paths retai
 | `packages/shared/types/generated.d.ts` | `2dc690554` |
 
 Reviewer verdicts remain in the orchestrator registers. No reviewer verdict is assigned by this handback.
+
+---
+
+## Fix round 3
+
+Base `208449350` (tree clean at start). Two code commits:
+
+| Commit | Subject |
+|---|---|
+| `87343cf80` | Phase 2.3.27: Drop cross-unit quantity totals from the V1 receipt and close events |
+| `6c0e0e4b3` | Phase 2.3.28: Stop the partial-completion dialog from naming an unshipped Close action |
+
+Authority: gate r3 inventory register `docs/superpowers/reviews/2026-09-12-t2-s1-impl-gate-r3-inventory.md` (I-15 MAJOR, I-19 minor) and `…-r3-frontend.md` (m1, m2); orchestrator ruling in plan rev 10 §7.12, "S1 fix round 3, I-15". Minors m3 (plurals), m4 (dead `StockTransferType` export) and m5 (`hasPermission` on Complete/Cancel) are ticketed for S4 and were NOT taken. I-16, I-17 and I-18 are other owners' seams and were not touched.
+
+### I-15 — the four cross-unit quantity totals are gone from both immutable V1 events
+
+`StockTransferReceivedV1` loses `totalReceived` / `totalDamaged`; `StockTransferClosedV1` loses `totalWrittenOff` / `totalReturned`; both gain the one-sentence docblock stating they carry no cross-line quantity totals and that per-line quantities live on `StockTransferReceiptLineRecordedV1`. `lineCount` stays on both. In `StockTransferReceiptService::post()` the `$totals = $this->quantities()` accumulator and the `$totals[$name] = bcadd(...)` line inside the posting loop are deleted, `persistEvents()` loses its `$totals` parameter and its `@param Quantities $totals` docblock line, and the four named arguments are removed from the two constructor calls. `quantities()` itself is KEPT — it still has four live call sites (`:214`, `:249`, `:290`, `:299`). Ruled before the two V1 classes first ship, so no V2 is needed (CLAUDE.md rule 8).
+
+**TDD.** The test was written first: `TransferReceiptEventStreamTest::test_header_events_carry_a_line_count_and_no_cross_unit_quantity_totals` performs a receive and then a close, decodes `event_properties` of both header rows in `stored_events`, and asserts `array_key_exists` is FALSE for each of `totalReceived`, `totalDamaged`, `totalWrittenOff`, `totalReturned` and TRUE for `lineCount` (value `1`).
+
+RED, new test alone, PostgreSQL:
+
+```
+1) Tests\Feature\Inventory\TransferReceiptEventStreamTest::test_header_events_carry_a_line_count_and_no_cross_unit_quantity_totals
+App\Modules\Inventory\Domain\Events\StockTransferReceivedV1 must carry no cross-unit quantity total, but it carries totalReceived
+Failed asserting that true is false.
+
+FAILURES!
+Tests: 1, Assertions: 4, Failures: 1.
+```
+
+RED, whole class, PostgreSQL: `Tests: 4, Assertions: 42, Failures: 1.` (same failure, `.F..`).
+
+GREEN, whole class, PostgreSQL: `OK (4 tests, 53 assertions)` — 00:24.448.
+
+### PostgreSQL verification (one class per invocation, serial, never the full suite, never `--parallel`)
+
+Native PostgreSQL 15.15 (Homebrew) at `127.0.0.1:5432`, private database `autoerp_test_s` for BOTH `DB_DATABASE` and `DB_CENTRAL_DATABASE`, user `autoerp` (credentials read from the main checkout's `apps/api/.env`). `pg_stat_activity` showed 0 other sessions on the database at the start. Command form:
+
+```sh
+DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_USERNAME=autoerp DB_PASSWORD=autoerp_secret \
+DB_DATABASE=autoerp_test_s DB_CENTRAL_DATABASE=autoerp_test_s \
+./vendor/bin/phpunit -c phpunit-pgsql.xml <FILE>
+```
+
+| Class | GREEN tail | Runtime |
+|---|---|---|
+| `tests/Feature/Inventory/TransferReceiptEventStreamTest.php` | `OK (4 tests, 53 assertions)` | 00:24.448 |
+| `tests/Feature/Inventory/StockTransferReceiveTest.php` | `OK (4 tests, 24 assertions)` | 00:20.297 |
+| `tests/Feature/Inventory/StockTransferReceiveDamageTest.php` | `OK (6 tests, 23 assertions)` | 00:28.860 |
+| `tests/Feature/Inventory/StockTransferCloseTest.php` | `OK (10 tests, 44 assertions)` | 01:07.059 |
+| `tests/Feature/Inventory/StockTransferReceiveLotsTest.php` | `OK (3 tests, 32 assertions)` | 00:23.375 |
+| `tests/Feature/Replenishment/TransferCloseReplenishmentSettlementTest.php` | `OK (1 test, 8 assertions)` | 00:05.671 |
+
+`TransferCloseReplenishmentSettlementTest` lives under `tests/Feature/Replenishment/`, not `tests/Feature/Inventory/`.
+
+### SQLite leg — one PRE-EXISTING failure, proven pre-existing
+
+`./vendor/bin/phpunit tests/Feature/Inventory/TransferReceiptEventStreamTest.php` (default SQLite config):
+
+```
+..F.                                                                4 / 4 (100%)
+1) Tests\Feature\Inventory\TransferReceiptEventStreamTest::test_replay_reproduces_every_row_and_leaves_legacy_receipts_untouched
+Failed asserting that 0 is identical to '0.0000'.
+tests/Feature/Inventory/TransferReceiptEventStreamTest.php:156
+FAILURES!
+Tests: 4, Assertions: 46, Failures: 1.
+```
+
+The new I-15 test PASSES on SQLite (positions 1, 2 and 4 are dots). The failure is in the untouched `test_replay_…` case, at the `foreach ($transfer as $column => $value)` assertion, and is a SQLite driver typing difference (`int 0` versus the decimal string `'0.0000'`), not an event-payload change.
+
+**Proof it pre-exists at the base tip:** the three production files and the test file were temporarily replaced with their `208449350` blobs (copies of the patched files saved outside the repo first) and the same SQLite command re-run:
+
+```
+.F.                                                                 3 / 3 (100%)
+1) Tests\Feature\Inventory\TransferReceiptEventStreamTest::test_replay_reproduces_every_row_and_leaves_legacy_receipts_untouched
+Failed asserting that 0 is identical to '0.0000'.
+tests/Feature/Inventory/TransferReceiptEventStreamTest.php:135
+FAILURES!
+Tests: 3, Assertions: 31, Failures: 1.
+```
+
+Identical failure and identical assertion (line 135 before this round's +21-line insert, line 156 after). The patched files were then restored byte-for-byte (`md5` of `StockTransferReceiptService.php` matched the pre-revert copy) before anything was committed. This class's PostgreSQL leg — the driver that matters for numeric readers — is fully green above.
+
+### Static legs
+
+| Command | Outcome |
+|---|---|
+| `./vendor/bin/phpstan analyse --level=8` over the three touched `app/` files | **`[OK] No errors`** (3/3) |
+| `./vendor/bin/pint --test` over all four touched PHP files | **`{"result":"pass"}`** |
+| `php artisan typescript:transform` then `git diff --stat -- packages/shared/types/generated.d.ts` | `Transformed 576 PHP types to TypeScript`; the diff is **EMPTY** — the two events are not `#[TypeScript]` DTOs, so no generated file is committed |
+
+PHPStan's configured `paths:` is `app/` only, so the test file is outside its scope; forcing it plus its parent fixture reports only pre-existing errors (`bcadd` numeric-string at `:132`/`:147`, `property.nonObject` at `:26`, and five in `StockTransferReceiveTest.php`) — none on a line added this round.
+
+### I-19 / m1 and m2 — frontend
+
+`apps/web/src/locales/en/stock-transfers.json:151` and `fr/stock-transfers.json:151` lose the trailing "; use Close to write off or return a short shipment" / " ; utilisez Clôturer pour perte ou retour" clause. Both keep the line-count disclosure and the statement that confirming books the entire outstanding quantity as received at the destination, and both remain grammatical. `.inTransitDescription` is untouched. `StockTransferDetailPage.tsx:279` now reads `bccomp(line.quantity_remaining, '0') !== 0` (`bccomp` imported from `@/lib/decimal`, big.js-backed) instead of the hardcoded `!== '0.0000'`. No `parseFloat`, no `Number`, no arithmetic.
+
+The assertion at `__tests__/StockTransferDetailPage.test.tsx:97` was changed FIRST and reproduced RED on the old copy:
+
+```
+ ❯ src/features/stock-transfers/__tests__/StockTransferDetailPage.test.tsx:97:19
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed (4)
+```
+
+GREEN after the copy and predicate change:
+
+```
+ ✓ src/features/stock-transfers/__tests__/StockTransferDetailPage.test.tsx (4 tests) 131ms
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Duration  1.53s
+```
+
+| Command (from `apps/web`) | Outcome |
+|---|---|
+| `pnpm typecheck` (`tsc --noEmit`) | **exit 0**, no output |
+| `pnpm audit:keys` | **exit 0** — `Gate C … : 0` / `0 acknowledged, 0 new, 0 stale baseline entries` |
+| `ps aux \| grep 'node (vitest' \| grep -v grep \| wc -l` after the Vitest run | **0** — no worker pool survived |
+
+The test file is at `src/features/stock-transfers/__tests__/StockTransferDetailPage.test.tsx` (feature root `__tests__/`, per F-7), not under `pages/__tests__/`.
+
+### Behaviour statement
+
+No movement, GL, counter, freight, `has_discrepancy`, WAC or status behaviour changed in this round. The receipt writer's only edits are the deletion of a write-only accumulator and the parameter it fed; `writeMovements()`, `addCounters()`, `capitalizeFreight()`, the nest guard, every migration and the whole of `apps/api/database` are byte-identical to `208449350`. No detector, baseline, pin or suppression was touched, and no test assertion was weakened — the round only adds assertions.
