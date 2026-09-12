@@ -63,9 +63,14 @@ for (const name of ['imp1-success.csv', 'imp1-partial.csv', 'imp1-partial-async.
       if (name === 'imp1-success.csv') await expect(row).toContainText('Completed')
       const expectedCounts = name === 'imp1-success.csv' ? ['10 imported', '0 failed'] : name === 'imp1-partial.csv' ? ['9 imported', '1 skipped', '2 failed'] : name.includes('async') ? ['95 imported', '5 failed'] : ['200 imported', '0 failed']
       for (const count of expectedCounts) await expect(row).toContainText(count)
-      if (name.includes('partial') || name.includes('suppliers')) await expect(row).toContainText('Completed with errors')
+      if (name.includes('partial')) await expect(row).toContainText('Completed with errors')
       if (name.includes('suppliers')) {
-        await expect(row.getByRole('alert')).toContainText('CurrencyScaleResolver')
+        // dev 477c877a3 fixed the queued supplier-balance currency scaling this
+        // scenario used to pin as a failure. The file now finalizes cleanly, so
+        // the row must read Completed with truthful counters and NO operator alert.
+        await expect(row).toContainText('Completed')
+        await expect(row).not.toContainText('Completed with errors')
+        await expect(row.getByRole('alert')).toHaveCount(0)
         await expect(row).toContainText('200')
       }
       await page.screenshot({ path: resolve(evidence, `${name}-history.png`), fullPage: true })
