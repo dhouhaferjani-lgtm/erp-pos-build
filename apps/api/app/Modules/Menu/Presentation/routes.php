@@ -15,17 +15,20 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('menus', [MenuController::class, 'store']);
     Route::get('menus/{id}', [MenuController::class, 'show']);
     Route::patch('menus/{id}', [MenuController::class, 'update']);
-    Route::delete('menus/{id}', [MenuController::class, 'destroy']);
+    Route::delete('menus/{id}', [MenuController::class, 'destroy'])
+        ->middleware('can:menus.manage');
 
     // Menu Categories (nested under menus for creation, standalone for update/delete)
     Route::post('menus/{menuId}/categories', [MenuCategoryController::class, 'store']);
     Route::patch('menu-categories/{id}', [MenuCategoryController::class, 'update']);
-    Route::delete('menu-categories/{id}', [MenuCategoryController::class, 'destroy']);
+    Route::delete('menu-categories/{id}', [MenuCategoryController::class, 'destroy'])
+        ->middleware('can:menus.manage');
 
     // Menu Category Items
     Route::put('menu-categories/{id}/items', [MenuCategoryController::class, 'syncItems']);
     Route::post('menu-categories/{id}/items', [MenuCategoryController::class, 'addItem']);
-    Route::delete('menu-categories/{categoryId}/items/{itemId}', [MenuCategoryController::class, 'removeItem']);
+    Route::delete('menu-categories/{categoryId}/items/{itemId}', [MenuCategoryController::class, 'removeItem'])
+        ->middleware('can:menus.manage');
 
     // Active Menu (POS-facing: resolve current menu)
     Route::get('active-menu', ActiveMenuController::class);

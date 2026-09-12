@@ -36,13 +36,23 @@ Route::prefix('api/v1/auth')->middleware('web')->group(function () {
         ->middleware('throttle:password-reset')
         ->name('auth.reset-password');
 
-    // Protected routes (no company context required for auth endpoints)
+    // Protected routes (no company context required for auth endpoints).
+    // All four are SELF-SERVICE: the resource IS the caller. They carry the
+    // `authz.self` DECLARATION so the route-coverage ratchet can tell
+    // "no permission by design" from "no permission by accident"; the marker
+    // is not coverage by itself (Tests\Architecture\Support\SelfServiceRouteRegistry).
     Route::middleware(['auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function () {
-        Route::get('me', [AuthController::class, 'me'])->name('auth.me');
-        Route::post('logout', [AuthController::class, 'logout'])->name('auth.logout');
-        Route::post('logout-all', [AuthController::class, 'logoutAll'])->name('auth.logout-all');
+        Route::get('me', [AuthController::class, 'me'])
+            ->middleware('authz.self')
+            ->name('auth.me');
+        Route::post('logout', [AuthController::class, 'logout'])
+            ->middleware('authz.self')
+            ->name('auth.logout');
+        Route::post('logout-all', [AuthController::class, 'logoutAll'])
+            ->middleware('authz.self')
+            ->name('auth.logout-all');
         Route::post('resend-verification', [AuthController::class, 'resendVerification'])
-            ->middleware('throttle:email-verification')
+            ->middleware(['authz.self', 'throttle:email-verification'])
             ->name('auth.resend-verification');
     });
 });

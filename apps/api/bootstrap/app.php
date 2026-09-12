@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\AllowSelfService;
 use App\Http\Middleware\CompanyContextMiddleware;
 use App\Http\Middleware\CrossTenantContext;
 use App\Http\Middleware\EnsureCentralAdmin;
@@ -120,6 +121,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'require.any.permission' => RequireAnyPermission::class,
             'scheduling.captcha' => VerifyCaptcha::class,
             'cross_tenant' => CrossTenantContext::class,
+            // Self-service DECLARATION, not a gate. See AllowSelfService and
+            // Tests\Architecture\Support\SelfServiceRouteRegistry: wearing it is
+            // not coverage, the exact (method, uri) allow-list is.
+            'authz.self' => AllowSelfService::class,
         ]);
 
         // Exclude auth endpoints from CSRF verification for token-based clients
