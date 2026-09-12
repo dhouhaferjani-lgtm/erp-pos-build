@@ -1,0 +1,53 @@
+{
+  "note": "Detector liveness for RoutePermissionCoverageRatchetTest (docs/conventions/08-DETECTOR-LIVENESS.md). Each record is a throw-away route LivenessRouteServiceProvider registers BEFORE the router boots, plus the EXACT RouteCoverage the classifier must report for it (asserted against RouteCoverageClassifier::classify(), not against a covered/uncovered reduction — gate r2 M-4) and whether it is inside the scanner's API universe (gate r2 B-1). A refactor that breaks the detector fails here instead of going quiet. The URIs use a __liveness__ segment that no application route uses; they exist only on the application this one test class builds and never reach a running app.",
+  "routes": [
+    {
+      "method": "POST",
+      "uri": "api/v1/__liveness__/uncovered-write",
+      "middleware": ["api", "auth:sanctum"],
+      "expected_classification": "uncovered",
+      "in_api_universe": true,
+      "why": "An authenticated write with no gating middleware is the exact shape the ratchet exists to count."
+    },
+    {
+      "method": "GET",
+      "uri": "api/v1/__liveness__/uncovered-read",
+      "middleware": ["api", "auth:sanctum"],
+      "expected_classification": "uncovered",
+      "in_api_universe": true,
+      "why": "Reads are counted on their own ceiling, so the detector must see them separately."
+    },
+    {
+      "method": "POST",
+      "uri": "api/v1/__liveness__/gated-write",
+      "middleware": ["api", "auth:sanctum", "can:roles.view"],
+      "expected_classification": "gated",
+      "in_api_universe": true,
+      "why": "A real `can:` gate must be recognised, or every fix would read as still-broken."
+    },
+    {
+      "method": "POST",
+      "uri": "api/v1/__liveness__/marker-without-allow-list-entry",
+      "middleware": ["api", "auth:sanctum", "authz.self"],
+      "expected_classification": "uncovered",
+      "in_api_universe": true,
+      "why": "THE bypass the marker's design closes: wearing `authz.self` without an entry in SelfServiceRouteRegistry::ALLOW_LIST is NOT coverage."
+    },
+    {
+      "method": "POST",
+      "uri": "api/v1/__liveness__/module-gated-only",
+      "middleware": ["api", "auth:sanctum", "module:Menu"],
+      "expected_classification": "uncovered",
+      "in_api_universe": true,
+      "why": "A module kill-switch is not an action gate. This is the shape that generalises to the flag-conditional BatchActionAccess middleware arriving with lane/w-lot-a-1a."
+    },
+    {
+      "method": "POST",
+      "uri": "__liveness__/non-api-ungated-write",
+      "middleware": ["web"],
+      "expected_classification": "uncovered",
+      "in_api_universe": false,
+      "why": "OUTSIDE the scanner's universe (gate r2 B-1). The CLASSIFIER still calls it uncovered — classification is not what excludes it — but scan() must report it nowhere: no baseline key, no write count, and no entry in any classification bucket. Without this record the scanner could quietly widen to the whole live router, which at dev 630afa86f is 1092 routes and 353 uncovered, and the 167/148 -> 152/146 -> 298 arithmetic could never close."
+    }
+  ]
+}

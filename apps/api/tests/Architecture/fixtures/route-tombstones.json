@@ -1,0 +1,33 @@
+{
+  "note": "The four inert tombstones: authenticated routes returning an unconditional HTTP 410 with no mutation. They are NOT public — calling them public would be a false statement about their auth stack — so they carry their own classification. THIS FILE IS NOT A LIST OF NAMES: TombstoneRouteBehaviourTest reads it and PINS THE SOURCE SHAPE of each closure (ReflectionFunction -> file + start/end line -> token stream with comments and whitespace dropped) against the `source` field below, AND proves the closure answers 410 with zero queries on EVERY configured database connection; RouteCoverageClassifier reads the same file. A planted branch, an extra call or a changed status code changes the normalised source and fails the pin — which is what makes the exemption earned rather than asserted (gate r2 B-3). To retire an entry, delete it here — the classifier then stops calling it a tombstone and the ratchet's growth direction fires, which is what 'a tombstone that stops returning 410 re-enters the uncovered count' means mechanically (spec 4.4.2, the paragraph at :1503). The `source` values are long (the retirement messages are long); the four below were DERIVED MECHANICALLY, not hand-written — token_get_all over each closure's own ReflectionFunction line range at `dev` 630afa86f, T_WHITESPACE/T_COMMENT/T_DOC_COMMENT dropped, tokens joined with one space — and each satisfies this test's own independent assertions (exactly one T_RETURN, body T_STRING identifiers exactly [response, json], no forbidden token, ends `, 410 ) ; }`). To re-derive after a deliberate change, run with TOMBSTONE_SOURCE_REGENERATE=1: it PRINTS/EMITS the four pins in the failure message and then DELIBERATELY FAILS, so a regeneration can never be a way to make this test green. It never writes this file.",
+  "tombstones": [
+    {
+      "key": "POST api/v1/pos/receipts",
+      "declared_at": "apps/api/app/Modules/POS/routes.php:187-194",
+      "error_code": "NEW_SALE_AUTHORING_RETIRED",
+      "parameters": {},
+      "source": "function ( ) { return response ( ) -> json ( [ 'error' => [ 'code' => 'NEW_SALE_AUTHORING_RETIRED' , 'message' => 'POST /api/v1/pos/receipts is retired for new-sale SALE_RECEIPT authoring per fiscal Phase 1 §14.2. Receipts are now device-authored and ingested via POST /api/v1/pos/sync/fiscal-events.' , ] , ] , 410 ) ; }"
+    },
+    {
+      "key": "POST api/v1/pos/receipts/{id}/void",
+      "declared_at": "apps/api/app/Modules/POS/routes.php:222-229",
+      "error_code": "LEGACY_VOID_RETIRED",
+      "parameters": { "id": "00000000-0000-4000-8000-000000000000" },
+      "source": "function ( ) { return response ( ) -> json ( [ 'error' => [ 'code' => 'LEGACY_VOID_RETIRED' , 'message' => 'POST /api/v1/pos/receipts/{id}/void is retired (document-per-action remediation V9, owner ruling D3). A sealed receipt is corrected by a device-authored refund (REFUND_RECEIPT / PARTIAL_REFUND) ingested via POST /api/v1/pos/sync/fiscal-events, never by mutating the original receipt.' , ] , ] , 410 ) ; }"
+    },
+    {
+      "key": "POST api/v1/pos/receipts/{id}/payments",
+      "declared_at": "apps/api/app/Modules/POS/routes.php:231-243",
+      "error_code": "NEW_SALE_AUTHORING_RETIRED",
+      "parameters": { "id": "00000000-0000-4000-8000-000000000000" },
+      "source": "function ( string $id ) { return response ( ) -> json ( [ 'error' => [ 'code' => 'NEW_SALE_AUTHORING_RETIRED' , 'message' => 'POST /api/v1/pos/receipts/{id}/payments is retired for new-sale Treasury payment authoring per fiscal Phase 1 §14.2. Receipts and their payment lines are now device-authored and ingested via POST /api/v1/pos/sync/fiscal-events.' , ] , ] , 410 ) ; }"
+    },
+    {
+      "key": "POST api/v1/pos/orders/{id}/close",
+      "declared_at": "apps/api/app/Modules/POS/routes_orders.php:60-67",
+      "error_code": "NEW_SALE_AUTHORING_RETIRED",
+      "parameters": { "id": "00000000-0000-4000-8000-000000000000" },
+      "source": "function ( string $id ) { return response ( ) -> json ( [ 'error' => [ 'code' => 'NEW_SALE_AUTHORING_RETIRED' , 'message' => 'POST /api/v1/pos/orders/{id}/close is retired for new-sale SALE_RECEIPT authoring per fiscal Phase 1 §14.2. Receipts are now device-authored and ingested via POST /api/v1/pos/sync/fiscal-events.' , ] , ] , 410 ) ; }"
+    }
+  ]
+}
