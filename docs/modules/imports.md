@@ -902,7 +902,9 @@ GET /api/v1/imports/{id}/failed-rows.xlsx
 Inside the single import route group (`['api','auth:sanctum',SetPermissionsTeam::class,EnforceTokenTenantClaim::class,'can:imports.manage']`),
 keyed on the **job id**, so async jobs are reachable. Per-request company check (409
 `IMPORT_COMPANY_MISMATCH`) and module-entitlement re-check on the job's type. An empty selection is a coded
-`404 {"error":{"code":"no_rows_to_fix"}}`, which the FE renders as `correction.noRows`.
+`404 {"error":{"code":"no_rows_to_fix"}}`, which the FE renders as `correction.noRows`. A job the tenant
+cannot see is `404 {"error":{"code":"import_not_found"}}` — a different sentence, so the FE reads the body
+code rather than branching on the status.
 
 - **Selection** — `is_valid = false` **OR** `outcome IN (failed, opening_locked)` **OR** at least one warning
   (`ImportRow::scopeHasWarnings()`, the one portable warning scope also used by the history counts).
@@ -920,14 +922,20 @@ keyed on the **job id**, so async jobs are reachable. Per-request company check 
 The artefact holds the operator's raw rows — partner names and codes, tax ids, balances — so it must not
 outlive the request that produced it:
 
-- the download deletes `imports/rows/{jobId}.{format}` as soon as the bytes are captured (the response
-  streams from memory);
-- `DELETE /api/v1/imports/{id}` deletes any artefact of the discarded job;
-- `imports:purge-expired` deletes any orphan for a job past the 90-day window.
+- the artefact is written **per request**, not per job — `imports/rows/{jobId}.{token}.{format}`, where the
+  token is a fresh UUID. The bytes land at a `.part` sibling and are renamed into place, so no reader can
+  observe a half-written workbook, and no other request can name (or delete) this artefact;
+- the download removes exactly the artefact it generated, via `deleteFileAfterSend(true)`;
+- `DELETE /api/v1/imports/{id}` and `imports:purge-expired` sweep the job-id **prefix**
+  (`ImportRowExportService::deleteArtifacts()`), which is what catches an orphan left by a connection that
+  dropped between `generate()` and the send.
 
-All three go through `ImportRowExportService::deleteArtifacts()`, so the writer and the deleters cannot
-drift on the path. A new artefact path under `imports/rows/` must be added to `FORMATS` there, not deleted
-by hand at a call site.
+Do not go back to a deterministic per-job name with an unconditional both-format delete: one finished
+download then destroyed an artefact another request was still writing, and that request streamed a **200
+with zero bytes** — which reads to an operator as "there is nothing to fix" (gate r2 M3-R). For the same
+reason the controller refuses a missing or empty artefact with `404 {"error":{"code":"correction_export_unavailable"}}`
+rather than sending an empty body: `filesystems.local` is configured `'throw' => false`, so a vanished
+artefact reads back as `NULL` silently.
 
 ### Full report — the secondary action
 

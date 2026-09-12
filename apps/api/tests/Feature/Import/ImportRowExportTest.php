@@ -25,6 +25,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Testing\TestResponse;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -265,11 +266,56 @@ final class ImportRowExportTest extends TestCase
         $job = $this->exportJob();
         $job->update(['status' => ImportStatus::Completed, 'total_rows' => 100]);
 
-        $this->actingAs($this->user, 'sanctum')->get('/api/v1/imports/'.$job->id.'/failed-rows.csv')->assertOk();
+        $csv = $this->actingAs($this->user, 'sanctum')->get('/api/v1/imports/'.$job->id.'/failed-rows.csv')->assertOk();
+        $this->assertNotSame('', $this->sendBody($csv));
         $this->assertSame([], Storage::disk('local')->files('imports/rows'));
 
-        $this->get('/api/v1/imports/'.$job->id.'/failed-rows.xlsx')->assertOk();
+        $xlsx = $this->get('/api/v1/imports/'.$job->id.'/failed-rows.xlsx')->assertOk();
+        $this->assertNotSame('', $this->sendBody($xlsx));
         $this->assertSame([], Storage::disk('local')->files('imports/rows'));
+    }
+
+    public function test_a_download_deletes_only_the_artefact_it_generated(): void
+    {
+        // M3-R: the path used to be per JOB and the delete swept both formats, so
+        // one operator's finished download destroyed another request's artefact
+        // mid-flight and that request streamed a 200 with zero bytes.
+        $job = $this->exportJob();
+        $inFlight = app(ImportRowExportService::class)->generate($job, 'xlsx');
+        $this->assertNotNull($inFlight);
+
+        $this->actingAs($this->user, 'sanctum')->get('/api/v1/imports/'.$job->id.'/failed-rows.csv')->assertOk();
+
+        Storage::disk('local')->assertExists($inFlight);
+    }
+
+    public function test_sequential_downloads_of_the_same_job_return_the_full_bytes_every_time(): void
+    {
+        $job = $this->exportJob();
+
+        foreach ([1, 2] as $cycle) {
+            $csv = $this->sendBody(
+                $this->actingAs($this->user, 'sanctum')->get('/api/v1/imports/'.$job->id.'/failed-rows.csv')->assertOk(),
+            );
+            $this->assertStringContainsString('_status,_code,_message', $csv, 'csv cycle '.$cycle);
+            $this->assertStringStartsWith("\xEF\xBB\xBF", $csv, 'csv cycle '.$cycle);
+
+            $xlsx = $this->sendBody(
+                $this->get('/api/v1/imports/'.$job->id.'/failed-rows.xlsx')->assertOk(),
+            );
+            // A truncated or emptied workbook loses the zip magic; a full one keeps it.
+            $this->assertStringStartsWith('PK', $xlsx, 'xlsx cycle '.$cycle);
+            $this->assertGreaterThan(1000, strlen($xlsx), 'xlsx cycle '.$cycle);
+        }
+    }
+
+    /** Drives the response the way the framework does, so deleteFileAfterSend runs. */
+    private function sendBody(TestResponse $response): string
+    {
+        ob_start();
+        $response->baseResponse->sendContent();
+
+        return (string) ob_get_clean();
     }
 
     public function test_discarding_a_job_removes_its_correction_exports(): void

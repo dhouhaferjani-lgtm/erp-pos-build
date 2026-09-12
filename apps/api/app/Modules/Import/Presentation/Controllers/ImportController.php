@@ -824,7 +824,7 @@ class ImportController extends Controller
     /**
      * Download failed rows CSV for an import job.
      */
-    public function downloadFailedRows(Request $request, string $id): StreamedResponse|JsonResponse
+    public function downloadFailedRows(Request $request, string $id): BinaryFileResponse|JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
         $company = $this->companyContext->requireCompany();
@@ -851,17 +851,34 @@ class ImportController extends Controller
         if ($filePath === null) {
             return response()->json(['error' => ['code' => 'no_rows_to_fix', 'message' => 'No rows to fix.']], 404);
         }
-        $content = Storage::disk('local')->get($filePath);
-        // The bytes are captured, so the artefact is ephemeral: it never outlives
-        // the request that generated it (spec 4.10 retention).
-        $this->rowExportService->deleteArtifacts($job);
+
+        $disk = Storage::disk('local');
+        // filesystems.local is configured 'throw' => false, so a vanished artefact
+        // reads back as NULL and would stream a 200 with an empty body — which an
+        // operator reads as "there is nothing to fix". Refuse with a code instead.
+        if (! $disk->exists($filePath) || $disk->size($filePath) === 0) {
+            Log::warning('import_jobs.correction_export_missing', [
+                'id' => $job->id,
+                'tenant_id' => $tenantId,
+                'storage_key' => $filePath,
+            ]);
+
+            return response()->json([
+                'error' => ['code' => 'correction_export_unavailable', 'message' => 'The correction export could not be produced. Try again.'],
+            ], 404);
+        }
+
         $filename = sprintf('%s-rows-to-fix.%s', pathinfo($job->original_filename, PATHINFO_FILENAME), $format);
 
-        return response()->streamDownload(static function () use ($content): void {
-            echo $content;
-        }, $filename, ['Content-Type' => $format === 'xlsx'
-            ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            : 'text/csv; charset=UTF-8']);
+        // deleteFileAfterSend removes exactly the artefact THIS request generated
+        // (the name carries a per-request token), so a concurrent download of the
+        // same job is untouched. Orphans from a dropped connection are swept by
+        // discard and by imports:purge-expired.
+        return response()->download($disk->path($filePath), $filename, [
+            'Content-Type' => $format === 'xlsx'
+                ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                : 'text/csv; charset=UTF-8',
+        ])->deleteFileAfterSend(true);
     }
 
     /**

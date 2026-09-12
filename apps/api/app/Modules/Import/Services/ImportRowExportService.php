@@ -12,6 +12,7 @@ use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -67,9 +68,13 @@ final class ImportRowExportService
             $cells[] = [...$values, ...$this->diagnostic($row)];
         }
 
-        // Stable names bound storage growth; the controller streams the captured
-        // bytes and then deletes the artefact (see deleteArtifacts()).
-        $path = self::artifactPath($job, $format);
+        // Per REQUEST, not per job: a deterministic per-job name let one finished
+        // download delete an artefact another request was still writing, which
+        // shipped an empty 200 (gate r2 M3-R). The token makes every artefact
+        // private to the request that wrote it, and the bytes land at the final
+        // name in one rename so no reader can observe a half-written workbook.
+        $path = self::artifactPath($job, $format, (string) Str::uuid());
+        $staging = $path.'.part';
         if ($format === 'csv') {
             $stream = fopen('php://temp', 'w+');
             if ($stream === false) {
@@ -85,7 +90,7 @@ final class ImportRowExportService
                 if ($content === false) {
                     throw new RuntimeException('Unable to read import row export.');
                 }
-                Storage::disk('local')->put($path, $content);
+                Storage::disk('local')->put($staging, $content);
             } finally {
                 fclose($stream);
             }
@@ -100,11 +105,13 @@ final class ImportRowExportService
             }
             Storage::disk('local')->makeDirectory('imports/rows');
             try {
-                (new Xlsx($spreadsheet))->save(Storage::disk('local')->path($path));
+                (new Xlsx($spreadsheet))->save(Storage::disk('local')->path($staging));
             } finally {
                 $spreadsheet->disconnectWorksheets();
             }
         }
+
+        Storage::disk('local')->move($staging, $path);
 
         return $path;
     }
@@ -115,23 +122,30 @@ final class ImportRowExportService
      * Spec 4.10 rules generated exports ephemeral: the file holds the operator's
      * raw rows (partner names and codes, tax ids, balances), so it must not
      * survive the download that produced it, the job's discard, or the retention
-     * window. Downloads delete their own artefact; this also covers one orphaned
-     * by a request that died between generate() and the stream.
+     * window. A download deletes its OWN artefact (`deleteFileAfterSend`); this
+     * is the prefix sweep for the job as a whole — it covers orphans left by a
+     * request that died between generate() and the stream, and it must stay a
+     * prefix sweep because artefact names now carry a per-request token.
      */
     public function deleteArtifacts(ImportJob $job): void
     {
         $disk = Storage::disk('local');
-        foreach (self::FORMATS as $format) {
-            $path = self::artifactPath($job, $format);
-            if ($disk->exists($path)) {
-                $disk->delete($path);
+        $prefix = self::artifactPrefix($job);
+        foreach ($disk->files('imports/rows') as $file) {
+            if (str_starts_with($file, $prefix)) {
+                $disk->delete($file);
             }
         }
     }
 
-    private static function artifactPath(ImportJob $job, string $format): string
+    private static function artifactPrefix(ImportJob $job): string
     {
-        return 'imports/rows/'.$job->id.'.'.$format;
+        return 'imports/rows/'.$job->id.'.';
+    }
+
+    private static function artifactPath(ImportJob $job, string $format, string $token): string
+    {
+        return self::artifactPrefix($job).$token.'.'.$format;
     }
 
     public function getDownloadUrl(ImportJob $job): string
