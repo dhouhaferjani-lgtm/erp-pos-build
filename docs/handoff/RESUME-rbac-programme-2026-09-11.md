@@ -2,6 +2,8 @@
 
 > Branch `docs/rbac-audit-2026-09-09` in worktree `.worktrees/rbac-audit`, HEAD `d9cbb8368`. Everything below is committed there and NOT merged to dev. Memory file: `~/.claude/projects/-Users-houssamr-Projects-syneriva-apps-erp/memory/project_rbac_audit_and_roadmap_2026_09_09.md`.
 
+> **2026-09-12 update:** wave 0a resumes from Task 1 (Task 0 landed at `ed88aa2ed` on `lane/rbac-w0a`; `dev` moved to `477c877a3` with the G0 guardrails — merge-tree clean, all 32 wave-0a paths unclaimed by the three active lanes). The self-contained resume packet is `docs/handoff/CODEX-DISPATCH-RBAC-W0a-resume-2026-09-12.md`; it supersedes the 2026-09-10 brief. The Codex audit of the current state (guardrails, launch pilot, posting recovery, account-payment R1/R1b, operational-ledgers ADR) lives on the `codex/*` branches, not on `dev` — see the orchestrator memory file.
+
 ## Where things stand
 
 | Item | State | Location |
