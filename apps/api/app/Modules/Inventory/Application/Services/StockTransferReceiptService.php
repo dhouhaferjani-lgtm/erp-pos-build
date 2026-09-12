@@ -339,7 +339,6 @@ final class StockTransferReceiptService
             'notes' => $kind === TransferReceiptKind::Close ? ($payload['note'] ?? null) : ($payload['notes'] ?? null),
         ]);
         $recorded = [];
-        $totals = $this->quantities();
         $discrepancyCount = 0;
         foreach ($postings as $posting) {
             $line = $posting['line'];
@@ -378,7 +377,6 @@ final class StockTransferReceiptService
             foreach ($q as $name => $quantity) {
                 $column = 'quantity_'.$name;
                 $receiptLine->setAttribute($column, $quantity);
-                $totals[$name] = bcadd($totals[$name], $quantity, QuantityScale::SCALE);
             }
             $this->addCounters($line, $q);
             $line->save();
@@ -416,7 +414,7 @@ final class StockTransferReceiptService
             $this->capitalizeFreight($transfer);
         }
         $transfer->refresh();
-        $this->persistEvents($transfer, $receipt, $recorded, $totals, $previousStatus);
+        $this->persistEvents($transfer, $receipt, $recorded, $previousStatus);
         $this->glBuffer->flushIfOutermost();
         DB::afterCommit(function () use ($transfer, $receipt, $discrepancyCount, $userId): void {
             event(new StockTransferReceiptPosted($receipt->id, $transfer->id, $transfer->tenant_id, $transfer->company_id,
@@ -509,9 +507,8 @@ final class StockTransferReceiptService
 
     /**
      * @param  list<RecordedLine>  $records
-     * @param  Quantities  $totals
      */
-    private function persistEvents(StockTransfer $transfer, StockTransferReceipt $receipt, array $records, array $totals, string $previousStatus): void
+    private function persistEvents(StockTransfer $transfer, StockTransferReceipt $receipt, array $records, string $previousStatus): void
     {
         $versions = range(2, count($records) + 1);
         $occurredAt = $receipt->received_at->toIso8601String();
@@ -523,7 +520,7 @@ final class StockTransferReceiptService
                 closedByUserId: $receipt->received_by_user_id, disposition: ($receipt->disposition ?? throw new \LogicException('Close receipt lacks its disposition.'))->value,
                 closeReason: ($transfer->close_reason ?? throw new \LogicException('Closed transfer lacks its reason.'))->value, closeNote: $transfer->close_note,
                 previousStatus: $previousStatus, newStatus: $transfer->status->value, lineCount: count($records),
-                totalWrittenOff: $totals['written_off'], totalReturned: $totals['returned'], idempotencyKey: $receipt->idempotency_key,
+                idempotencyKey: $receipt->idempotency_key,
                 payloadHash: $receipt->payload_hash, freightUncapitalized: $transfer->freight_uncapitalized,
                 lineEventVersions: $versions, occurredAt: $occurredAt,
             )
@@ -533,7 +530,7 @@ final class StockTransferReceiptService
                 sourceLocationId: $transfer->source_location_id, destinationLocationId: $transfer->destination_location_id,
                 receivedByUserId: $receipt->received_by_user_id, isBlind: false, hasDiscrepancy: $receipt->has_discrepancy,
                 previousStatus: $previousStatus, newStatus: $transfer->status->value, lineCount: count($records),
-                totalReceived: $totals['received'], totalDamaged: $totals['damaged'], receiptNotes: $receipt->notes,
+                receiptNotes: $receipt->notes,
                 idempotencyKey: $receipt->idempotency_key, payloadHash: $receipt->payload_hash,
                 freightUncapitalized: $transfer->freight_uncapitalized, lineEventVersions: $versions, occurredAt: $occurredAt,
             );

@@ -9,6 +9,8 @@ use App\Shared\Domain\Events\DomainEvent;
 final class StockTransferClosedV1 extends DomainEvent
 {
     /**
+     * Carries no cross-line quantity totals: mixed-unit quantities are never summed (plan rev 10 §7.12, I-12/I-15). Per-line quantities live on StockTransferReceiptLineRecordedV1.
+     *
      * @param  list<int>  $lineEventVersions
      */
     public function __construct(
@@ -28,8 +30,6 @@ final class StockTransferClosedV1 extends DomainEvent
         public readonly string $previousStatus,
         public readonly string $newStatus,
         public readonly int $lineCount,
-        public readonly string $totalWrittenOff,
-        public readonly string $totalReturned,
         public readonly string $idempotencyKey,
         public readonly string $payloadHash,
         public readonly string $freightUncapitalized,

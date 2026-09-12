@@ -33,6 +33,27 @@ final class TransferReceiptEventStreamTest extends TransferReceiptFeatureTestCas
         self::assertSame(2, DB::table('stored_events')->where('aggregate_uuid', $receiptId)->count());
     }
 
+    /**
+     * Plan rev 10 §7.12 (S1 fix round 3, I-15): mixed-unit quantities are never summed,
+     * so neither immutable header event may carry a cross-line quantity total. The
+     * line COUNT stays — it counts lines, not quantities.
+     */
+    public function test_header_events_carry_a_line_count_and_no_cross_unit_quantity_totals(): void
+    {
+        $this->receive()->assertCreated();
+        $this->close('write_off')->assertCreated();
+        $headers = DB::table('stored_events')->whereIn('event_class', [StockTransferReceivedV1::class, StockTransferClosedV1::class])->orderBy('id')->get();
+        self::assertSame([StockTransferReceivedV1::class, StockTransferClosedV1::class], $headers->pluck('event_class')->all());
+        foreach ($headers as $header) {
+            $properties = json_decode($header->event_properties, true, flags: JSON_THROW_ON_ERROR);
+            foreach (['totalReceived', 'totalDamaged', 'totalWrittenOff', 'totalReturned'] as $total) {
+                self::assertFalse(array_key_exists($total, $properties), $header->event_class.' must carry no cross-unit quantity total, but it carries '.$total);
+            }
+            self::assertTrue(array_key_exists('lineCount', $properties), $header->event_class.' must still carry lineCount');
+            self::assertSame(1, $properties['lineCount'], $header->event_class.' lineCount');
+        }
+    }
+
     public function test_replay_reproduces_every_row_and_leaves_legacy_receipts_untouched(): void
     {
         $legacy = $this->transfer;
