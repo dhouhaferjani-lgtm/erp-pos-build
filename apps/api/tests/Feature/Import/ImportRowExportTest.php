@@ -26,6 +26,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
+use Mockery;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -358,6 +359,101 @@ final class ImportRowExportTest extends TestCase
         $this->assertCount(2, Storage::disk('local')->files('imports/rows'));
 
         $this->actingAs($this->user, 'sanctum')->deleteJson('/api/v1/imports/'.$job->id)->assertNoContent();
+
+        $this->assertSame([], Storage::disk('local')->files('imports/rows'));
+    }
+
+    public function test_a_corrected_mapping_submitted_on_a_reimport_wins_over_the_original(): void
+    {
+        // M-NEW-1: the wizard's re-import pre-check routes the operator to the
+        // mapping step when the saved mapping misses a required target. The
+        // mapping they then submit has to survive — re-applying the original
+        // over it put them back in the same 422 with no way out of it.
+        $this->actingAs($this->user, 'sanctum');
+        $original = $this->postJson('/api/v1/imports', [
+            'type' => 'products', 'column_mapping' => json_encode(['Marge' => 'margin']),
+            'file' => UploadedFile::fake()->createWithContent('original.csv', "Marge\n10\n"),
+        ])->assertStatus(422)->json('data.id');
+
+        // 'Marge' still exists in the corrected file, so the reuse rule applies
+        // — and would drop the 'Produit' => 'name' the operator just mapped.
+        $corrected = ['Marge' => 'margin', 'Produit' => 'name'];
+        $response = $this->postJson('/api/v1/imports', [
+            'type' => 'products', 'reimport_of' => $original,
+            'column_mapping' => json_encode($corrected),
+            'file' => UploadedFile::fake()->createWithContent('corrected.csv', "Marge,Produit\n12,Widget\n"),
+        ])->assertCreated();
+
+        // Nothing about the headers changed, so the notice stays silent.
+        $response->assertJsonPath('reimport_notice', null);
+        $this->assertSame($corrected, ImportJob::findOrFail($response->json('data.id'))->column_mapping);
+
+        // With no mapping on the request the original is still reused, so this
+        // upload earns the header refusal that names the same missing target.
+        $reused = $this->postJson('/api/v1/imports', [
+            'type' => 'products', 'reimport_of' => $original,
+            'file' => UploadedFile::fake()->createWithContent('corrected.csv', "Marge,Produit\n12,Widget\n"),
+        ])->assertStatus(422);
+        $reused->assertJsonPath('errors.missing_columns', ['name']);
+        $this->assertSame(['Marge' => 'margin'], ImportJob::findOrFail($reused->json('data.id'))->column_mapping);
+    }
+
+    public function test_a_vanished_artefact_is_refused_with_a_code_not_an_empty_body(): void
+    {
+        // N-1: the guard is the only thing between a vanished artefact and a raw
+        // failure on the operator's single feedback channel, and the FE has a
+        // dedicated branch for the code. Faking the DISK (not the final service)
+        // is the seam: generate() still writes through the partial mock.
+        $job = $this->exportJob();
+
+        $real = Storage::disk('local');
+        $spy = Mockery::mock($real)->makePartial();
+        $spy->shouldReceive('exists')->andReturnFalse();
+        Storage::set('local', $spy);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/imports/'.$job->id.'/failed-rows.csv')
+            ->assertStatus(404)
+            ->assertJsonPath('error.code', 'correction_export_unavailable');
+    }
+
+    public function test_another_tenants_job_is_refused_as_not_found_on_reimport_and_download(): void
+    {
+        // N-2: both lookups scope on tenant_id and answer the same code. This is
+        // the one place a slip would be a cross-tenant read of another
+        // operator's raw rows, so the refusal is pinned rather than assumed.
+        $foreignTenant = Tenant::create([
+            'name' => 'Foreign Tenant',
+            'slug' => 'test-import-foreign',
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+        ]);
+        $foreignCompany = Company::create([
+            'tenant_id' => $foreignTenant->id,
+            'name' => 'Foreign Company',
+            'legal_name' => 'Foreign Company LLC',
+            'tax_id' => 'FOREIGN-TAX',
+            'country_code' => 'FR',
+            'locale' => 'fr_FR',
+            'timezone' => 'Europe/Paris',
+            'currency' => 'EUR',
+            'status' => CompanyStatus::Active,
+        ]);
+        $foreign = app(ImportService::class)->createJob(
+            tenantId: $foreignTenant->id, companyId: $foreignCompany->id, userId: $this->user->id,
+            type: ImportType::Products, filename: 'foreign.csv', filePath: 'imports/foreign.csv', totalRows: 1,
+            columnMapping: ['Produit' => 'name'],
+        );
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/imports/'.$foreign->id.'/failed-rows.csv')
+            ->assertStatus(404)
+            ->assertJsonPath('error.code', 'import_not_found');
+
+        $this->postJson('/api/v1/imports', [
+            'type' => 'products', 'reimport_of' => $foreign->id,
+            'file' => UploadedFile::fake()->createWithContent('corrected.csv', "Produit\nWidget\n"),
+        ])->assertStatus(404)->assertJsonPath('error.code', 'import_not_found');
 
         $this->assertSame([], Storage::disk('local')->files('imports/rows'));
     }

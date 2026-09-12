@@ -269,11 +269,19 @@ class ImportController extends Controller
 
             $reimportNotice = null;
             if ($reimport !== null && $reimport->column_mapping !== null) {
-                if (array_diff(array_keys($reimport->column_mapping), $parseResult['headers']) === []) {
+                $originalHeadersSurvive = array_diff(array_keys($reimport->column_mapping), $parseResult['headers']) === [];
+                if (! $originalHeadersSurvive) {
+                    $reimportNotice = 'reimport_headers_changed';
+                }
+                // Reusing the saved mapping is a CONVENIENCE for an upload that
+                // carries none. A mapping the operator submitted on this upload
+                // always wins: the wizard sends them to the mapping step exactly
+                // when the saved mapping misses a required target, and
+                // overwriting their correction here handed them back the same
+                // 422 missing_columns refusal with no way out of it.
+                if ($originalHeadersSurvive && ($columnMapping === null || $columnMapping === [])) {
                     $columnMapping = $reimport->column_mapping;
                     $this->assertInjectiveMapping($columnMapping);
-                } else {
-                    $reimportNotice = 'reimport_headers_changed';
                 }
                 $job->update(['column_mapping' => $columnMapping]);
             }
