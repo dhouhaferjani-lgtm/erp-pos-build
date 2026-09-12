@@ -1530,7 +1530,11 @@ export function ImportWizardPage() {
 
                 {jobData?.id && (
                   <div className={`mt-4 flex flex-wrap gap-4 border-t ${colorTokens.border.subtle} pt-4`}>
-                    <ImportCorrectionActions jobId={jobData.id} type={importType} />
+                    <ImportCorrectionActions
+                      jobId={jobData.id}
+                      type={importType}
+                      canDownloadRows={(jobData.failed_rows ?? 0) + (jobData.warning_rows ?? 0) > 0}
+                    />
                   </div>
                 )}
               </div>

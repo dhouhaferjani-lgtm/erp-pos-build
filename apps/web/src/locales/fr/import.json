@@ -408,7 +408,9 @@
     "fullReport": "Rapport complet",
     "headersChanged": "Les colonnes source ont changé. Vérifiez les correspondances avant l’import.",
     "noRows": "Cet import ne contient aucune ligne à corriger.",
+    "importNotFound": "Cet import n'est plus disponible. Il a peut-être été supprimé, ou il appartient à une autre société.",
     "downloadError": "Le téléchargement a échoué. Veuillez réessayer.",
+    "reportUnavailable": "Le rapport complet n'est pas disponible pour cet import.",
     "partialDescription": "Certaines données ont été importées. Vérifiez les erreurs ci-dessous avant de réessayer.",
     "failedDescription": "Vérifiez les erreurs ci-dessous avant de relancer l’import."
   }

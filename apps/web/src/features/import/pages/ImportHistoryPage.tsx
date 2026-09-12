@@ -221,7 +221,11 @@ export function ImportHistoryPage() {
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end">
                     {job.status === 'completed' || job.status === 'partially_completed' || job.status === 'failed' ? (
-                      <ImportCorrectionActions jobId={job.id} type={job.type} />
+                      <ImportCorrectionActions
+                        jobId={job.id}
+                        type={job.type}
+                        canDownloadRows={(job.failed_rows ?? 0) + (job.warning_rows ?? 0) > 0}
+                      />
                     ) : (
                       <span className={cn('text-sm', colorTokens.text.disabled)}>-</span>
                     )}

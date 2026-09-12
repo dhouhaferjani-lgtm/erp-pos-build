@@ -407,7 +407,9 @@
     "fullReport": "Full report",
     "headersChanged": "The source columns changed. Review the mapping before importing.",
     "noRows": "There are no rows to fix for this import.",
+    "importNotFound": "This import is no longer available. It may have been discarded, or it belongs to another company.",
     "downloadError": "The download failed. Please try again.",
+    "reportUnavailable": "The full report is not available for this import.",
     "partialDescription": "Some data was imported. Review the errors below before retrying.",
     "failedDescription": "Review the errors below before retrying the import."
   }
