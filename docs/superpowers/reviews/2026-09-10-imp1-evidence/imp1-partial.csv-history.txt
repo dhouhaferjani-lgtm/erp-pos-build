@@ -1,0 +1,8 @@
+Products
+	imp1-partial.csv
+	
+Completed	
+9 imported / 1 skipped / 2 failed / 12 total
+	9/10/2026, 11:10:14 PM	
+Download result workbook
+Download failed rows (CSV)

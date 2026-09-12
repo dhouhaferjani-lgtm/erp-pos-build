@@ -1,0 +1,15 @@
+
+Running 6 tests using 1 worker
+
+(node:20743) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:20743) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chromium] › e2e/imports/imp1-history-export.spec.ts:63:124 › IMP1 history and rows-to-fix: imp1-success.csv (9.8s)
+  ✓  2 [chromium] › e2e/imports/imp1-history-export.spec.ts:63:124 › IMP1 history and rows-to-fix: imp1-partial.csv (10.5s)
+  ✓  3 [chromium] › e2e/imports/imp1-history-export.spec.ts:63:124 › IMP1 history and rows-to-fix: imp1-partial-async.csv (1.3m)
+  ✓  4 [chromium] › e2e/imports/imp1-history-export.spec.ts:63:124 › IMP1 history and rows-to-fix: imp1-suppliers-balances-200.xlsx (13.8s)
+  ✓  5 [chromium] › e2e/imports/imp1-history-export.spec.ts:152:1 › corrected export reuses mapping and can be re-run (11.6s)
+  ✓  6 [chromium] › e2e/imports/imp1-history-export.spec.ts:196:1 › history filters and second-company isolation (13.0s)
+
+  6 passed (2.3m)

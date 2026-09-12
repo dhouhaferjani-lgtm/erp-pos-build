@@ -1,0 +1,8 @@
+Business partners
+	imp1-suppliers-balances-200.xlsx
+	
+Completed	
+200 imported / 0 skipped / 0 failed / 200 total
+	9/12/2026, 6:36:20 PM	
+Re-upload corrected file
+Full report

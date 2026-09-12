@@ -97,6 +97,19 @@ class ProcessImportJobStatusTest extends TestCase
         app(ChartOfAccountsService::class)->seedForCompany($this->company);
     }
 
+    public function test_finalize_exception_preserves_imported_counters_and_marks_partial_completion(): void
+    {
+        $job = $this->seedJob([['data' => ['name' => 'Imported'], 'is_valid' => true]]);
+        $job->rows()->update(['is_imported' => true, 'outcome' => ImportRowOutcome::Imported->value]);
+        $job->update(['status' => ImportStatus::Importing]);
+        (new ProcessImportJob($job->id, $this->company->id, $this->tenant->id))->failed(new \RuntimeException('Finalize failed'));
+        $this->assertSame('partially_completed', $job->refresh()->status->value);
+        $this->assertSame(1, $job->successful_rows);
+        $this->assertSame(0, $job->failed_rows);
+        $this->assertStringContainsString('Finalize failed', $job->error_message);
+        $this->assertSame(ImportErrorCode::InternalError, $job->error_code);
+    }
+
     /**
      * @param  array<int, array{data: array<string, mixed>, is_valid: bool}>  $rows
      */
@@ -179,7 +192,7 @@ class ProcessImportJobStatusTest extends TestCase
         $this->runJob($job);
 
         $job->refresh();
-        $this->assertSame(ImportStatus::Completed, $job->status, 'Partial success must not mark the whole job failed');
+        $this->assertSame(ImportStatus::PartiallyCompleted, $job->status, 'Partial success must not mark the whole job failed');
         $this->assertSame(2, $job->successful_rows);
         $this->assertSame(1, $job->failed_rows);
     }
@@ -195,7 +208,7 @@ class ProcessImportJobStatusTest extends TestCase
         $this->runJob($job);
 
         $job->refresh();
-        $this->assertSame(ImportStatus::Completed, $job->status);
+        $this->assertSame(ImportStatus::PartiallyCompleted, $job->status);
         $this->assertSame(1, $job->successful_rows);
         $this->assertSame(1, $job->failed_rows, 'failed_rows must include validation-skipped rows (sync-path parity)');
     }
@@ -274,6 +287,11 @@ class ProcessImportJobStatusTest extends TestCase
             1 => ['name' => 'Async Customer', 'type' => 'customer', 'code' => 'ASYNC-CUST', 'opening_balance' => '120'],
         ]);
         $importService->validateJob($job->refresh());
+
+        // Rule 20: a queued worker runs with NO CompanyContext. setUp() binds one
+        // for the controller-side fixture work above, so clear it here — leaving it
+        // bound is what let the staging currency-scale defect through a green suite.
+        app(CompanyContext::class)->clear();
 
         $this->runJob($job->refresh());
 

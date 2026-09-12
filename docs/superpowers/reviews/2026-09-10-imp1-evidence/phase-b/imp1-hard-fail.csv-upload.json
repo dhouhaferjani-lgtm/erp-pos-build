@@ -1,0 +1,51 @@
+{
+  "data": {
+    "id": "01a096b1-7409-71d9-a060-faaf93c10def",
+    "type": "products",
+    "status": "failed",
+    "column_mapping": {
+      "sku": "sku",
+      "sale_price": "sale_price"
+    },
+    "original_filename": "imp1-hard-fail.csv",
+    "total_rows": 1,
+    "processed_rows": 0,
+    "successful_rows": 0,
+    "skipped_rows": 0,
+    "failed_rows": 0,
+    "warning_rows": 0,
+    "warning_summary": [],
+    "error_summary": {
+      "unknown_units": []
+    },
+    "options": {
+      "source_headers": [
+        "sku",
+        "sale_price"
+      ]
+    },
+    "multi_location_products": 0,
+    "barcode_identity_conflict_rows": 0,
+    "progress_percentage": 0,
+    "error_code": "validation_failed",
+    "error_detail": {
+      "missing_columns": [
+        "name"
+      ]
+    },
+    "error_message": "Missing required columns: name",
+    "started_at": null,
+    "completed_at": null,
+    "created_at": "2026-09-12T17:36:47+00:00"
+  },
+  "error": {
+    "code": "validation_failed",
+    "message": "Missing required columns: name"
+  },
+  "errors": {
+    "missing_columns": [
+      "name"
+    ],
+    "unknown_columns": []
+  }
+}

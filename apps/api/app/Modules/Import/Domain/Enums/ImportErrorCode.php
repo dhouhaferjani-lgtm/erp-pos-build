@@ -29,12 +29,14 @@ enum ImportErrorCode: string
     case ValidationFailed = 'validation_failed';
     case InternalError = 'internal_error';
     case WorkerLost = 'worker_lost';
+    case CompanyContextMissing = 'company_context_missing';
 
     public function isJobLevel(): bool
     {
         return match ($this) {
             self::UnitsNotSeeded,
-            self::WorkerLost => true,
+            self::WorkerLost,
+            self::CompanyContextMissing => true,
             self::UnitUnknown,
             self::UnitAmbiguous,
             self::UnitDefaultMissing,

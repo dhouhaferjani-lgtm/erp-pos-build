@@ -18,7 +18,13 @@
     "validation_failed": "The row did not pass validation.",
     "internal_error": "The row could not be imported because of an internal error.",
     "worker_lost": "The import worker stopped before the job finished.",
-    "unknown": "This historical import error has no current code."
+    "company_context_missing": "Re-upload this import so it can be processed for a company.",
+    "unknown": "The import failed. Contact support with the import reference.",
+    "job": {
+      "validation_failed": "The file did not pass validation. Fix it and import again.",
+      "internal_error": "The import could not be completed because of an internal error.",
+      "missing_columns": "The file is missing required columns: {{columns}}."
+    }
   },
   "upload": {
     "dragDrop": "Drag and drop your file here",
@@ -112,7 +118,8 @@
     "validated": "Validated",
     "importing": "Importing",
     "completed": "Completed",
-    "failed": "Failed"
+    "failed": "Failed",
+    "partially_completed": "Completed with errors"
   },
   "wizard": {
     "steps": {
@@ -239,10 +246,10 @@
     "skipColumn": "-- Skip this column --",
     "requiredFields": "Required Fields",
     "optionalFields": "Optional Fields",
-  "alreadyMapped": "already mapped",
-  "missingRequired": "Missing required fields",
-  "automaticMatchingFailed": "Automatic column matching failed — map the columns manually.",
-  "legendMapped": "Mapped",
+    "alreadyMapped": "already mapped",
+    "missingRequired": "Missing required fields",
+    "automaticMatchingFailed": "Automatic column matching failed — map the columns manually.",
+    "legendMapped": "Mapped",
     "legendSkipped": "Skipped",
     "legendRequired": "Required",
     "suggested": "(suggested)",
@@ -310,9 +317,18 @@
     },
     "policy": {
       "title": "How should existing records be handled?",
-      "override": { "label": "Override", "description": "Merge non-blank cells into existing records." },
-      "skip": { "label": "Skip", "description": "Leave matched existing records unchanged." },
-      "cancel": { "label": "Cancel", "description": "Leave this wizard and discard the import from import history." },
+      "override": {
+        "label": "Override",
+        "description": "Merge non-blank cells into existing records."
+      },
+      "skip": {
+        "label": "Skip",
+        "description": "Leave matched existing records unchanged."
+      },
+      "cancel": {
+        "label": "Cancel",
+        "description": "Leave this wizard and discard the import from import history."
+      },
       "persistenceError": "The duplicate policy could not be saved. Try again before continuing."
     },
     "barcode": {
@@ -380,5 +396,22 @@
     "noJobs": "No import jobs found",
     "noJobsDescription": "Start by importing some data from the import dashboard.",
     "startImport": "Start Import"
+  },
+  "correction": {
+    "download": "Download rows to fix",
+    "format": "File format",
+    "csv": "CSV",
+    "xlsx": "Excel",
+    "caveat": "Includes errors and warnings with status, code and message columns. Unmapped source columns are omitted.",
+    "reupload": "Re-upload corrected file",
+    "fullReport": "Full report",
+    "headersChanged": "The source columns changed. Review the mapping before importing.",
+    "originalUnavailable": "The original import is no longer available, so its column mapping could not be reused. Map the columns again.",
+    "noRows": "There are no rows to fix for this import.",
+    "importNotFound": "This import is no longer available. It may have been discarded, or it belongs to another company.",
+    "downloadError": "The download failed. Please try again.",
+    "reportUnavailable": "The full report is not available for this import.",
+    "partialDescription": "Some data was imported. Review the errors below before retrying.",
+    "failedDescription": "Review the errors below before retrying the import."
   }
 }

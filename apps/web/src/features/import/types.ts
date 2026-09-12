@@ -38,13 +38,7 @@ export function isDeprecatedImportType(type: ImportType): type is DeprecatedImpo
   return (DEPRECATED_IMPORT_TYPES as readonly ImportType[]).includes(type)
 }
 
-export type ImportStatus =
-  | 'pending'
-  | 'validating'
-  | 'validated'
-  | 'importing'
-  | 'completed'
-  | 'failed'
+export type ImportStatus = App.Modules.Import.Domain.Enums.ImportStatus
 
 export interface UnknownUnitErrorSummary {
   text: string
@@ -56,7 +50,7 @@ export interface UnitErrorSummary {
   unknown_units: UnknownUnitErrorSummary[]
 }
 
-export interface ImportJob {
+export interface ImportJob extends Partial<App.Modules.Import.Domain.Data.ImportCorrectionData> {
   id: string
   type: ImportType
   status: ImportStatus
@@ -73,6 +67,14 @@ export interface ImportJob {
   error_summary: UnitErrorSummary
   progress_percentage: number
   options?: ImportJobOptions | null
+  /**
+   * Durable coded reason for a terminal failure. This — not `error_message` — is
+   * what operator surfaces render, through `importJobErrorMessage()`.
+   */
+  error_code: App.Modules.Import.Domain.Enums.ImportErrorCode | null
+  /** Structured detail behind the code (e.g. the missing header list). Rendered through `importJobErrorMessage`. */
+  error_detail?: App.Modules.Import.Domain.Data.ImportErrorDetailData | null
+  /** Raw server text (class names, file paths, SQLSTATE). Diagnosis only — never rendered. */
   error_message: string | null
   started_at: string | null
   completed_at: string | null
@@ -144,6 +146,13 @@ export interface ImportJobResponse {
   data: ImportJob
 }
 
+/** Server-side history filter + page window (see `ImportController::index()`). */
+export interface ImportJobListParams {
+  status?: ImportStatus
+  page?: number
+  per_page?: number
+}
+
 export interface ImportJobListResponse {
   data: ImportJob[]
   meta: OffsetPaginationMeta
@@ -152,6 +161,8 @@ export interface ImportJobListResponse {
 export interface ImportErrorsResponse {
   data: ImportRow[]
   meta?: Partial<OffsetPaginationMeta> & {
+    job_error_code: App.Modules.Import.Domain.Enums.ImportErrorCode | null
+    job_error_detail?: App.Modules.Import.Domain.Data.ImportErrorDetailData | null
     job_error_message: string | null
     error_summary: UnitErrorSummary
     validation_errors: number
@@ -164,6 +175,11 @@ export interface ImportErrorSummary {
   validation_errors: number
   execution_errors: number
   has_errors: boolean
+  /** Coded failure channel — this is what the screen renders (see `importJobErrorMessage`). */
+  job_error_code: App.Modules.Import.Domain.Enums.ImportErrorCode | null
+  /** Structured detail behind the code (e.g. the missing header list). */
+  job_error_detail?: App.Modules.Import.Domain.Data.ImportErrorDetailData | null
+  /** Raw server text. Diagnosis only — never rendered. */
   job_error_message: string | null
   error_summary: UnitErrorSummary
 }
@@ -172,8 +188,23 @@ export interface ImportErrorSummaryResponse {
   data: ImportErrorSummary
 }
 
+/**
+ * The only value `ImportController::store()` puts on `reimport_notice`: the
+ * saved mapping could not be re-applied because its source headers are gone.
+ * A wire value the server owns, so it is named on both sides rather than
+ * spelled out at the comparison — a rename then fails typecheck here.
+ */
+export const REIMPORT_HEADERS_CHANGED = 'reimport_headers_changed'
+
+export type ReimportNotice = typeof REIMPORT_HEADERS_CHANGED
+
 export interface CreateImportResponse {
   data: ImportJob
+  /**
+   * The server's verdict on a `reimport_of` upload. One writer for the rule
+   * (`ImportController::store`); the wizard only renders this.
+   */
+  reimport_notice?: ReimportNotice | null
   errors?: {
     missing_columns: string[]
     unknown_columns: string[]

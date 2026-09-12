@@ -1,0 +1,8 @@
+Products
+	imp1-partial-async.csv
+	
+Completed	
+95 imported / 0 skipped / 5 failed / 100 total
+	9/10/2026, 11:10:53 PM	
+Download result workbook
+Download failed rows (CSV)

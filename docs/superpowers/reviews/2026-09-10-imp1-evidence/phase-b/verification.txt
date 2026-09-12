@@ -1,0 +1,67 @@
+export-green
+OK (10 tests, 49 assertions)
+
+export-pg
+OK (10 tests, 49 assertions)
+
+status-pg
+OK (7 tests, 29 assertions)
+
+ReapStuckImportsTest
+OK (7 tests, 25 assertions)
+
+ImportRowWarningsTest
+OK (2 tests, 11 assertions)
+
+ProcessImportJobStatusTest
+OK (7 tests, 29 assertions)
+
+UnitResolutionTest
+OK (12 tests, 50 assertions)
+
+SpreadsheetParserServiceTest
+OK (12 tests, 27 assertions)
+
+SpreadsheetParserDateCellTest
+OK (5 tests, 6 assertions)
+
+vitest-options-final
+(Use `node --trace-warnings ...` to show where the warning was created)
+ Test Files  1 passed (1)
+      Tests  19 passed (19)
+
+vitest-history-final
+(Use `node --trace-warnings ...` to show where the warning was created)
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+
+vitest-duplicates-final
+(Use `node --trace-warnings ...` to show where the warning was created)
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+
+fiscal-encoder
+ Test Files  1 passed (1)
+      Tests  10 passed (10)
+
+fiscal-vectors
+ Test Files  1 passed (1)
+      Tests  19 passed (19)
+
+design-final
+[gate-summary] Design-system baseline: 797 acknowledged, 0 new, 0 stale baseline entries
+
+chokepoints
+manifest receiver_type validator: PASS — 6 entry/entries validated
+§14.3 chokepoint gate: PASS — 11 call site(s) reconciled
+
+react-doctor-final
+Score: 90 / 100 Great
+Maintainability: 1 warning
+
+phpstan-controller
+ [OK] No errors
+
+Final export regression (SQLite + PostgreSQL): 10 tests / 49 assertions each.
+Final browser: 6 passed (2.3m). The default worker had exited its memory cap after a previous run; restarted one worker with --memory=512 while the async test was polling.
+Final TypeScript and scoped ESLint: pass (zero ESLint errors).

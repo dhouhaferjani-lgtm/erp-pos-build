@@ -1,0 +1,13 @@
+Fix round 2 (2026-09-12) — lane/imp1-history-export, full six-scenario run
+harness: apps/web/e2e/imports/pw.config.ts — API :8012, Vite :5176, queue worker (imports,default), PG 5433 / Redis 6380 containers, fresh tenant
+
+Running 6 tests using 1 worker
+
+  ✓  1 [chromium] › e2e/imports/imp1-history-export.spec.ts:63:124 › IMP1 history and rows-to-fix: imp1-success.csv (8.9s)
+  ✓  2 [chromium] › e2e/imports/imp1-history-export.spec.ts:63:124 › IMP1 history and rows-to-fix: imp1-partial.csv (8.5s)
+  ✓  3 [chromium] › e2e/imports/imp1-history-export.spec.ts:63:124 › IMP1 history and rows-to-fix: imp1-partial-async.csv (13.0s)
+  ✓  4 [chromium] › e2e/imports/imp1-history-export.spec.ts:63:124 › IMP1 history and rows-to-fix: imp1-suppliers-balances-200.xlsx (15.4s)
+  ✓  5 [chromium] › e2e/imports/imp1-history-export.spec.ts:163:1 › corrected export reuses mapping and can be re-run (14.7s)
+  ✓  6 [chromium] › e2e/imports/imp1-history-export.spec.ts:244:1 › history filters and second-company isolation (15.8s)
+
+  6 passed (1.3m)

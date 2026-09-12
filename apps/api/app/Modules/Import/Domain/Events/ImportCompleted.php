@@ -39,7 +39,8 @@ final readonly class ImportCompleted
      */
     public function isPartialSuccess(): bool
     {
-        return $this->status === ImportStatus::Completed && $this->failedRows > 0 && $this->successfulRows > 0;
+        return $this->status === ImportStatus::PartiallyCompleted
+            || ($this->status === ImportStatus::Completed && $this->failedRows > 0 && $this->successfulRows > 0);
     }
 
     /**

@@ -43,6 +43,22 @@ describe('importApi envelope handling', () => {
     expect(result.meta.total).toBe(1)
   })
 
+  it('list() sends the status filter and the page window to the server', async () => {
+    // The history status filter used to run client-side over the server's first
+    // 20 rows, so "Completed with errors" could read empty while such jobs
+    // existed beyond page 1 (gate r1 M5). The server owns the filter.
+    mockApiGet.mockResolvedValue({
+      data: { data: [], meta: { current_page: 2, last_page: 3, per_page: 50, total: 120, from: 51, to: 100 } },
+    })
+
+    await importApi.list({ status: 'partially_completed', page: 2, per_page: 50 })
+
+    const url = mockApiGet.mock.calls[0]?.[0] as string
+    expect(url).toContain('status=partially_completed')
+    expect(url).toContain('page=2')
+    expect(url).toContain('per_page=50')
+  })
+
   it('getErrors() preserves the paginated {data, meta} envelope', async () => {
     mockApiGet.mockResolvedValue({
       data: {

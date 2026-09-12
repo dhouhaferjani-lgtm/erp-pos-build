@@ -13,7 +13,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\Enums\ImportWarningCode;
 use App\Modules\Import\Domain\ImportJob;
-use App\Modules\Import\Services\FailedRowsExportService;
+use App\Modules\Import\Services\ImportRowExportService;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -110,8 +110,9 @@ final class ImportRowWarningsTest extends TestCase
         $this->assertTrue($row->refresh()->is_valid);
         $this->assertSame(0, $job->refresh()->failed_rows);
 
-        $exportPath = app(FailedRowsExportService::class)->generateFailedRowsCsv($job->refresh());
-        $this->assertNull($exportPath);
+        $exportPath = app(ImportRowExportService::class)->generate($job->refresh(), 'csv');
+        $this->assertNotNull($exportPath);
+        $this->assertStringContainsString('warning,price_conflict', Storage::disk('local')->get($exportPath));
     }
 
     public function test_float_shaped_barcode_ending_in_five_zeroes_gets_a_non_blocking_corruption_warning(): void

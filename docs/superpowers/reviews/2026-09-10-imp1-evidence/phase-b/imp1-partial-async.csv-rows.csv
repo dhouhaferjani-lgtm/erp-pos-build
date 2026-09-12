@@ -1,0 +1,6 @@
+﻿name,sku,sale_price,unit,barcode,_status,_code,_message
+"IMP1 Crème ASYNC 95",IMP1-ASYNC-95,invalid,pc,,error,invalid_number,"The sale price field must be a number."
+"IMP1 Crème ASYNC 96",IMP1-ASYNC-96,invalid,pc,,error,invalid_number,"The sale price field must be a number."
+"IMP1 Crème ASYNC 97",IMP1-ASYNC-97,invalid,pc,,error,invalid_number,"The sale price field must be a number."
+"IMP1 Crème ASYNC 98",IMP1-ASYNC-98,invalid,pc,,error,invalid_number,"The sale price field must be a number."
+"IMP1 Crème ASYNC 99",IMP1-ASYNC-99,invalid,pc,,error,invalid_number,"The sale price field must be a number."

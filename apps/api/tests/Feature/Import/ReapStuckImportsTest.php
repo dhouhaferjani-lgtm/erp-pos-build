@@ -87,7 +87,7 @@ final class ReapStuckImportsTest extends TestCase
         $orphan = $this->createJobForTenantId((string) Str::uuid(), $old);
 
         $protected = [];
-        foreach ([ImportStatus::Pending, ImportStatus::Completed, ImportStatus::Failed] as $status) {
+        foreach ([ImportStatus::Pending, ImportStatus::Completed, ImportStatus::PartiallyCompleted, ImportStatus::Failed] as $status) {
             $protected[] = $this->createJob($tenantA, [...$old, 'status' => $status]);
         }
 
@@ -98,7 +98,7 @@ final class ReapStuckImportsTest extends TestCase
         $this->assertSame(ImportStatus::Importing, $orphan->refresh()->status);
         foreach ($protected as $index => $job) {
             $this->assertSame(
-                [ImportStatus::Pending, ImportStatus::Completed, ImportStatus::Failed][$index],
+                [ImportStatus::Pending, ImportStatus::Completed, ImportStatus::PartiallyCompleted, ImportStatus::Failed][$index],
                 $job->refresh()->status,
             );
         }

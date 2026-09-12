@@ -1,0 +1,53 @@
+{
+  "imp1-partial-async.csv-rows.csv": {
+    "bom": false,
+    "headers": [
+      "row_number",
+      "sku",
+      "name",
+      "unit",
+      "barcode",
+      "sale_price",
+      "error_type",
+      "error_reason"
+    ],
+    "rows": 5,
+    "warning_present": false
+  },
+  "imp1-partial.csv-rows.csv": {
+    "bom": false,
+    "headers": [
+      "row_number",
+      "sku",
+      "name",
+      "unit",
+      "barcode",
+      "sale_price",
+      "error_type",
+      "error_reason"
+    ],
+    "rows": 2,
+    "warning_present": false
+  },
+  "imp1-partial-async.csv-full-report.xlsx": {
+    "sheets": [
+      "Imported",
+      "Skipped",
+      "Rejected"
+    ]
+  },
+  "imp1-success.csv-full-report.xlsx": {
+    "sheets": [
+      "Imported",
+      "Skipped",
+      "Rejected"
+    ]
+  },
+  "imp1-partial.csv-full-report.xlsx": {
+    "sheets": [
+      "Imported",
+      "Skipped",
+      "Rejected"
+    ]
+  }
+}

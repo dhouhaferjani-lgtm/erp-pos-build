@@ -359,7 +359,7 @@ final class ProcessImportJob implements ShouldQueue
                     $job,
                     ImportStatus::Failed,
                     ImportCountersData::fromJob($job),
-                    null,
+                    ImportErrorCode::InternalError,
                     null,
                     $message,
                 );

@@ -104,7 +104,7 @@ class ImportServiceProvider extends ServiceProvider
                     Route::get('/imports/{id}/errors', [ImportController::class, 'errors']);
                     Route::get('/imports/{id}/error-summary', [ImportController::class, 'errorSummary']);
                     Route::post('/imports/{id}/execute', [ImportController::class, 'execute']);
-                    Route::get('/imports/{id}/failed-rows.csv', [ImportController::class, 'downloadFailedRows']);
+                    Route::get('/imports/{id}/failed-rows.{format}', [ImportController::class, 'downloadFailedRows'])->where('format', 'csv|xlsx');
                     Route::get('/imports/{id}/source-file', [ImportController::class, 'downloadSourceFile']);
                     Route::get('/imports/{id}/result-workbook', [ImportController::class, 'downloadResultWorkbook']);
                 });

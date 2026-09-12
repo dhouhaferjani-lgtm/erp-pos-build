@@ -11,14 +11,17 @@ use App\Modules\Import\Application\Jobs\ProcessImportJob;
 use App\Modules\Import\Application\Jobs\ProcessProductImageImport;
 use App\Modules\Import\Application\Services\ImportEnrichmentDispatcher;
 use App\Modules\Import\Application\Services\ModuleEntitlementCheck;
+use App\Modules\Import\Domain\Data\ImportCorrectionData;
 use App\Modules\Import\Domain\Data\ImportCountersData;
+use App\Modules\Import\Domain\Data\ImportErrorDetailData;
 use App\Modules\Import\Domain\Enums\BarcodeGroupClassification;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
-use App\Modules\Import\Services\FailedRowsExportService;
+use App\Modules\Import\Domain\ImportJobOutcome;
 use App\Modules\Import\Services\ImportJobClaimService;
+use App\Modules\Import\Services\ImportRowExportService;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Import\Services\ImportUnitErrorSummaryService;
 use App\Modules\Import\Services\ResultWorkbookService;
@@ -26,6 +29,7 @@ use App\Modules\Import\Services\SpreadsheetParserService;
 use App\Modules\Import\Services\ValidationEngine;
 use App\Modules\Inventory\Domain\Enums\LocationNodeType;
 use App\Shared\Contracts\UnitCatalogQueryInterface;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -57,7 +61,7 @@ class ImportController extends Controller
         private readonly ValidationEngine $validationEngine,
         private readonly CompanyContext $companyContext,
         private readonly SpreadsheetParserService $spreadsheetParser,
-        private readonly FailedRowsExportService $failedRowsExportService,
+        private readonly ImportRowExportService $rowExportService,
         private readonly ResultWorkbookService $resultWorkbookService,
         private readonly UnitCatalogQueryInterface $unitCatalog,
         private readonly ModuleEntitlementCheck $moduleEntitlement,
@@ -85,10 +89,16 @@ class ImportController extends Controller
 
         $jobs = ImportJob::where('tenant_id', $tenantId)
             ->where(fn ($query) => $query->where('company_id', $companyId)->orWhereNull('company_id'))
-            ->when(isset($filters['status']), fn ($query) => $query->where('status', $filters['status']))
+            // Jobs stored before ImportStatus::PartiallyCompleted existed still carry
+            // completed/failed, so the filter classifies in SQL — from the same rule
+            // the writer and the read model use.
+            ->when(isset($filters['status']), fn ($query) => $query->whereRaw(
+                ...ImportJobOutcome::effectiveStatusExpression(ImportStatus::from($filters['status'])),
+            ))
             ->when(isset($filters['type']), fn ($query) => $query->where('type', $filters['type']))
             ->when(isset($filters['q']), fn ($query) => $query->where('original_filename', 'like', '%'.$filters['q'].'%'))
             ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->paginate($perPage, ['*'], 'page', $page);
 
         return response()->json([
@@ -109,6 +119,10 @@ class ImportController extends Controller
                 'last_page' => $jobs->lastPage(),
                 'per_page' => $jobs->perPage(),
                 'total' => $jobs->total(),
+                // The history renders the shared OffsetPagination control, whose
+                // "showing x–y of n" line needs the window, not just the totals.
+                'from' => $jobs->firstItem(),
+                'to' => $jobs->lastItem(),
             ],
         ]);
     }
@@ -130,6 +144,7 @@ class ImportController extends Controller
                 ? ['required', 'file', 'mimes:zip', 'max:102400'] // 100MB for ZIP
                 : ['required', 'file', 'mimes:csv,txt,xlsx,xls', 'max:10240'],
             'type' => ['required', 'string', new Enum(ImportType::class)],
+            'reimport_of' => ['sometimes', 'nullable', 'uuid'],
             'options' => ['sometimes', 'array'],
             'options.location_code' => ['sometimes', 'string', 'max:100'],
             'options.enrichment_enabled' => ['sometimes', 'boolean'],
@@ -193,9 +208,21 @@ class ImportController extends Controller
             ], 422);
         }
 
-        $columnMapping = $request->has('column_mapping')
-            ? json_decode($request->input('column_mapping'), true)
-            : null;
+        $columnMapping = $this->validatedColumnMapping($request);
+        $reimport = null;
+        if ($request->filled('reimport_of')) {
+            $reimport = ImportJob::where('tenant_id', $tenantId)->where('id', $request->input('reimport_of'))->first();
+            if ($reimport === null) {
+                return response()->json(['error' => ['code' => 'import_not_found', 'message' => 'Import job not found.']], 404);
+            }
+            if ($mismatch = $this->companyMismatch($reimport, $companyId)) {
+                return $mismatch;
+            }
+            $this->moduleEntitlement->ensure($reimport->type, $user);
+            if ($reimport->type !== $type) {
+                return response()->json(['error' => ['code' => 'reimport_type_mismatch', 'message' => 'The original import has a different type.']], 422);
+            }
+        }
         $options = $this->optionsFromRequest($request);
 
         // Special handling for ProductImages (ZIP file)
@@ -215,7 +242,7 @@ class ImportController extends Controller
         // Store the file
         $path = $file->store('imports/'.$tenantId, 'local');
         if ($path === false) {
-            return response()->json(['error' => 'Failed to store file'], 500);
+            return response()->json(['error' => ['code' => 'internal_error', 'message' => 'Failed to store file']], 500);
         }
 
         // Get the full file path
@@ -238,12 +265,40 @@ class ImportController extends Controller
 
         try {
             // Parse spreadsheet file (CSV, XLSX, XLS)
-            $parseResult = $this->spreadsheetParser->parse($fullPath);
+            $parseResult = $this->spreadsheetParser->parse($fullPath, preserveHeaders: true);
+
+            $reimportNotice = null;
+            if ($reimport !== null && $reimport->column_mapping !== null) {
+                $originalHeadersSurvive = array_diff(array_keys($reimport->column_mapping), $parseResult['headers']) === [];
+                if (! $originalHeadersSurvive) {
+                    $reimportNotice = 'reimport_headers_changed';
+                }
+                // Reusing the saved mapping is a CONVENIENCE for an upload that
+                // carries none. A mapping the operator submitted on this upload
+                // always wins: the wizard sends them to the mapping step exactly
+                // when the saved mapping misses a required target, and
+                // overwriting their correction here handed them back the same
+                // 422 missing_columns refusal with no way out of it.
+                if ($originalHeadersSurvive && ($columnMapping === null || $columnMapping === [])) {
+                    $columnMapping = $reimport->column_mapping;
+                    $this->assertInjectiveMapping($columnMapping);
+                }
+                $job->update(['column_mapping' => $columnMapping]);
+            }
+
+            if ($columnMapping === null || $columnMapping === []) {
+                $columnMapping = [];
+                foreach ($parseResult['headers'] as $source) {
+                    if (! str_starts_with($source, '_')) {
+                        $columnMapping[$source] = strtolower(trim($source));
+                    }
+                }
+            }
+            $this->assertInjectiveMapping($columnMapping);
+            $job->update(['column_mapping' => $columnMapping, 'options' => array_merge($job->options ?? [], ['source_headers' => $parseResult['headers']])]);
 
             $mappedRows = $this->importService->applyColumnMapping($parseResult['rows'], $columnMapping);
-            $mappedHeaders = $columnMapping !== null
-                ? array_values($columnMapping)
-                : $parseResult['headers'];
+            $mappedHeaders = array_values($columnMapping);
 
             // Add rows to the import job using batch insert (10x faster for large imports)
             $this->importService->addRowsBatch($job, $mappedRows);
@@ -258,11 +313,19 @@ class ImportController extends Controller
             if (! $headerValidation['is_valid']) {
                 $job->update([
                     'status' => ImportStatus::Failed,
+                    'error_code' => ImportErrorCode::ValidationFailed,
                     'error_message' => 'Missing required columns: '.implode(', ', $headerValidation['missing']),
+                    // The column list is the actionable, non-sensitive half of this
+                    // failure. error_message is never rendered, so it travels in the
+                    // coded channel's detail instead (errors.job.missing_columns).
+                    'error_detail' => ImportErrorDetailData::from([
+                        'missing_columns' => array_values($headerValidation['missing']),
+                    ]),
                 ]);
 
                 return response()->json([
                     'data' => $this->formatJob($job, true),
+                    'error' => ['code' => 'validation_failed', 'message' => $job->error_message],
                     'errors' => [
                         'missing_columns' => $headerValidation['missing'],
                         'unknown_columns' => $headerValidation['unknown'],
@@ -282,16 +345,20 @@ class ImportController extends Controller
 
             return response()->json([
                 'data' => $this->formatJob($freshJob, true),
+                'reimport_notice' => $reimportNotice,
             ], 201);
-        } catch (\Exception $e) {
+        } catch (HttpResponseException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
             $job->update([
                 'status' => ImportStatus::Failed,
                 'error_message' => 'Failed to parse file: '.$e->getMessage(),
+                'error_code' => ImportErrorCode::InternalError,
             ]);
 
             return response()->json([
                 'data' => $this->formatJob($job, true),
-                'error' => 'Failed to parse file: '.$e->getMessage(),
+                'error' => ['code' => ImportErrorCode::InternalError->value, 'message' => 'Failed to parse file: '.$e->getMessage()],
             ], 422);
         }
     }
@@ -310,7 +377,7 @@ class ImportController extends Controller
             ->first();
 
         if (! $job) {
-            return response()->json(['error' => 'Import job not found'], 404);
+            return response()->json(['error' => ['code' => 'import_not_found', 'message' => 'Import job not found']], 404);
         }
 
         if ($mismatch = $this->companyMismatch($job, $companyId)) {
@@ -340,7 +407,7 @@ class ImportController extends Controller
             ->first();
 
         if (! $job) {
-            return response()->json(['error' => 'Import job not found'], 404);
+            return response()->json(['error' => ['code' => 'import_not_found', 'message' => 'Import job not found']], 404);
         }
 
         if ($mismatch = $this->companyMismatch($job, $companyId)) {
@@ -427,7 +494,7 @@ class ImportController extends Controller
             ->first();
 
         if (! $job) {
-            return response()->json(['error' => 'Import job not found'], 404);
+            return response()->json(['error' => ['code' => 'import_not_found', 'message' => 'Import job not found']], 404);
         }
 
         if ($mismatch = $this->companyMismatch($job, $companyId)) {
@@ -474,6 +541,8 @@ class ImportController extends Controller
                 'per_page' => $errorRows->perPage(),
                 'total' => $errorRows->total(),
                 'job_error_message' => $job->error_message,
+                'job_error_code' => $job->error_code?->value,
+                'job_error_detail' => $job->error_detail?->toArray(),
                 'error_summary' => $this->unitErrorSummary->summarize($job),
                 'validation_errors' => $validationErrorCount,
                 'execution_errors' => $executionErrorCount,
@@ -492,7 +561,7 @@ class ImportController extends Controller
             ->first();
 
         if (! $job) {
-            return response()->json(['error' => 'Import job not found'], 404);
+            return response()->json(['error' => ['code' => 'import_not_found', 'message' => 'Import job not found']], 404);
         }
 
         if ($mismatch = $this->companyMismatch($job, $companyId)) {
@@ -519,6 +588,7 @@ class ImportController extends Controller
             'options.multi_location_confirmed' => ['sometimes', 'boolean'],
         ]);
 
+        $this->validatedColumnMapping($request);
         $requestOptions = $this->optionsFromRequest($request) ?? [];
 
         $job->update([
@@ -552,7 +622,7 @@ class ImportController extends Controller
             ->first();
 
         if (! $job) {
-            return response()->json(['error' => 'Import job not found'], 404);
+            return response()->json(['error' => ['code' => 'import_not_found', 'message' => 'Import job not found']], 404);
         }
 
         if ($mismatch = $this->companyMismatch($job, $companyId)) {
@@ -580,6 +650,8 @@ class ImportController extends Controller
                 'execution_errors' => $executionErrorCount,
                 'has_errors' => $totalErrorCount > 0,
                 'job_error_message' => $job->error_message,
+                'job_error_code' => $job->error_code?->value,
+                'job_error_detail' => $job->error_detail?->toArray(),
                 'error_summary' => $this->unitErrorSummary->summarize($job),
             ],
         ]);
@@ -606,7 +678,7 @@ class ImportController extends Controller
             ->first();
 
         if (! $job) {
-            return response()->json(['error' => 'Import job not found'], 404);
+            return response()->json(['error' => ['code' => 'import_not_found', 'message' => 'Import job not found']], 404);
         }
 
         if ($mismatch = $this->companyMismatch($job, $companyId)) {
@@ -641,7 +713,7 @@ class ImportController extends Controller
             && $job->started_at === null
             && $job->completed_at === null) {
             return response()->json([
-                'error' => 'Import cannot be started. No valid rows to import.',
+                'error' => ['code' => 'validation_failed', 'message' => 'Import cannot be started. No valid rows to import.'],
                 'failed_rows' => $job->failed_rows,
                 'valid_rows' => $job->getValidRowsCount(),
             ], 422);
@@ -711,7 +783,7 @@ class ImportController extends Controller
             $this->importJobClaimService->release($job, $claim->priorStatus);
 
             return response()->json([
-                'error' => 'Import cannot be started. No valid rows to import.',
+                'error' => ['code' => 'validation_failed', 'message' => 'Import cannot be started. No valid rows to import.'],
                 'failed_rows' => $job->failed_rows,
                 'valid_rows' => 0,
             ], 422);
@@ -730,10 +802,7 @@ class ImportController extends Controller
             $this->importEnrichmentDispatcher->dispatchIfEnabled($freshJob, $companyId, $tenantId);
 
             // Generate failed rows CSV if there are any skipped/failed rows
-            $failedRowsCsvUrl = null;
-            if ($result['skipped_count'] > 0 || $result['execution_error_count'] > 0) {
-                $failedRowsCsvUrl = $this->failedRowsExportService->getDownloadUrl($freshJob);
-            }
+            $failedRowsCsvUrl = $this->rowExportService->getDownloadUrl($freshJob);
 
             return response()->json([
                 'data' => $this->formatJob($freshJob, true),
@@ -767,7 +836,7 @@ class ImportController extends Controller
     /**
      * Download failed rows CSV for an import job.
      */
-    public function downloadFailedRows(Request $request, string $id): StreamedResponse|JsonResponse
+    public function downloadFailedRows(Request $request, string $id): BinaryFileResponse|JsonResponse
     {
         $companyId = $this->companyContext->requireCompanyId();
         $company = $this->companyContext->requireCompany();
@@ -778,7 +847,7 @@ class ImportController extends Controller
             ->first();
 
         if (! $job) {
-            return response()->json(['error' => 'Import job not found'], 404);
+            return response()->json(['error' => ['code' => 'import_not_found', 'message' => 'Import job not found']], 404);
         }
 
         if ($mismatch = $this->companyMismatch($job, $companyId)) {
@@ -789,21 +858,39 @@ class ImportController extends Controller
         $user = $request->user();
         $this->moduleEntitlement->ensure($job->type, $user);
 
-        // Generate or get existing CSV file
-        $filePath = $this->failedRowsExportService->generateFailedRowsCsv($job);
-
+        $format = $request->route('format', 'csv');
+        $filePath = $this->rowExportService->generate($job, $format);
         if ($filePath === null) {
-            return response()->json(['error' => 'No failed rows to export'], 404);
+            return response()->json(['error' => ['code' => 'no_rows_to_fix', 'message' => 'No rows to fix.']], 404);
         }
 
-        $filename = sprintf('%s-failed-rows.csv', $job->original_filename);
+        $disk = Storage::disk('local');
+        // filesystems.local is configured 'throw' => false, so a vanished artefact
+        // reads back as NULL and would stream a 200 with an empty body — which an
+        // operator reads as "there is nothing to fix". Refuse with a code instead.
+        if (! $disk->exists($filePath) || $disk->size($filePath) === 0) {
+            Log::warning('import_jobs.correction_export_missing', [
+                'id' => $job->id,
+                'tenant_id' => $tenantId,
+                'storage_key' => $filePath,
+            ]);
 
-        return response()->streamDownload(function () use ($filePath) {
-            echo Storage::disk('local')->get($filePath);
-        }, $filename, [
-            'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
-        ]);
+            return response()->json([
+                'error' => ['code' => 'correction_export_unavailable', 'message' => 'The correction export could not be produced. Try again.'],
+            ], 404);
+        }
+
+        $filename = sprintf('%s-rows-to-fix.%s', pathinfo($job->original_filename, PATHINFO_FILENAME), $format);
+
+        // deleteFileAfterSend removes exactly the artefact THIS request generated
+        // (the name carries a per-request token), so a concurrent download of the
+        // same job is untouched. Orphans from a dropped connection are swept by
+        // discard and by imports:purge-expired.
+        return response()->download($disk->path($filePath), $filename, [
+            'Content-Type' => $format === 'xlsx'
+                ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                : 'text/csv; charset=UTF-8',
+        ])->deleteFileAfterSend(true);
     }
 
     /**
@@ -812,7 +899,7 @@ class ImportController extends Controller
     public function downloadSourceFile(Request $request, string $id): StreamedResponse|JsonResponse
     {
         if (! Str::isUuid($id)) {
-            return response()->json(['error' => 'Import job not found'], 404);
+            return response()->json(['error' => ['code' => 'import_not_found', 'message' => 'Import job not found']], 404);
         }
 
         $companyId = $this->companyContext->requireCompanyId();
@@ -825,7 +912,7 @@ class ImportController extends Controller
             ->first();
 
         if ($job === null) {
-            return response()->json(['error' => 'Import job not found'], 404);
+            return response()->json(['error' => ['code' => 'import_not_found', 'message' => 'Import job not found']], 404);
         }
 
         if ($mismatch = $this->companyMismatch($job, $companyId)) {
@@ -846,7 +933,7 @@ class ImportController extends Controller
         }
 
         if (! Storage::disk('local')->exists($job->file_path)) {
-            return response()->json(['error' => 'Import source file not found'], 404);
+            return response()->json(['error' => ['code' => 'import_source_not_found', 'message' => 'Import source file not found']], 404);
         }
 
         return response()->streamDownload(function () use ($job): void {
@@ -860,7 +947,7 @@ class ImportController extends Controller
     public function destroy(Request $request, string $id): JsonResponse|Response
     {
         if (! Str::isUuid($id)) {
-            return response()->json(['error' => 'Import job not found'], 404);
+            return response()->json(['error' => ['code' => 'import_not_found', 'message' => 'Import job not found']], 404);
         }
 
         $companyId = $this->companyContext->requireCompanyId();
@@ -873,7 +960,7 @@ class ImportController extends Controller
             ->first();
 
         if ($job === null) {
-            return response()->json(['error' => 'Import job not found'], 404);
+            return response()->json(['error' => ['code' => 'import_not_found', 'message' => 'Import job not found']], 404);
         }
 
         if ($mismatch = $this->companyMismatch($job, $companyId)) {
@@ -898,6 +985,8 @@ class ImportController extends Controller
         if ($deleted !== 1) {
             return $this->importHasEffectsConflict();
         }
+
+        $this->rowExportService->deleteArtifacts($job);
 
         if (! Storage::disk('local')->delete($job->file_path)) {
             Log::warning('import_jobs.discard_orphaned_source', [
@@ -934,7 +1023,7 @@ class ImportController extends Controller
             ->first();
 
         if (! $job) {
-            return response()->json(['error' => 'Import job not found'], 404);
+            return response()->json(['error' => ['code' => 'import_not_found', 'message' => 'Import job not found']], 404);
         }
 
         if ($mismatch = $this->companyMismatch($job, $companyId)) {
@@ -983,11 +1072,18 @@ class ImportController extends Controller
     private function formatJob(ImportJob $job, bool $withWarningSummary): array
     {
         $counters = ImportCountersData::fromJob($job);
+        $status = ImportJobOutcome::effectiveStatus(
+            $job->status,
+            $counters->successfulRows,
+            $counters->failedRows,
+            $job->error_message,
+        );
 
         return [
             'id' => $job->id,
             'type' => $job->type->value,
-            'status' => $job->status->value,
+            'status' => $status->value,
+            ...((new ImportCorrectionData($job->column_mapping))->toArray()),
             'original_filename' => $job->original_filename,
             'total_rows' => $counters->totalRows,
             'processed_rows' => $job->processed_rows,
@@ -1011,6 +1107,11 @@ class ImportController extends Controller
                 'barcode_identity_conflict_rows',
             ),
             'progress_percentage' => $job->getProgressPercentage(),
+            // error_code is the operator-facing failure channel: the screens translate it.
+            // error_message stays for support/diagnosis only — it carries exception class
+            // names, file paths and full SQLSTATE text and is never rendered.
+            'error_code' => $job->error_code?->value,
+            'error_detail' => $job->error_detail?->toArray(),
             'error_message' => $job->error_message,
             'started_at' => $job->started_at?->toIso8601String(),
             'completed_at' => $job->completed_at?->toIso8601String(),
@@ -1018,19 +1119,50 @@ class ImportController extends Controller
         ];
     }
 
+    /** @return array<string, string>|null */
+    private function validatedColumnMapping(Request $request): ?array
+    {
+        if (! $request->has('column_mapping')) {
+            return null;
+        }
+        $mapping = $request->input('column_mapping');
+        if (is_string($mapping)) {
+            $mapping = json_decode($mapping, true);
+        }
+        if (! is_array($mapping)) {
+            throw ValidationException::withMessages(['column_mapping' => ['Expected a source-to-target mapping.']]);
+        }
+        foreach ($mapping as $source => $target) {
+            if (! is_string($source) || $source === '' || ! is_string($target) || $target === '') {
+                throw ValidationException::withMessages(['column_mapping' => ['Source and target columns must be non-empty strings.']]);
+            }
+        }
+        $this->assertInjectiveMapping($mapping);
+
+        return $mapping;
+    }
+
+    /** @param array<string, string> $mapping */
+    private function assertInjectiveMapping(array $mapping): void
+    {
+        $sources = [];
+        foreach ($mapping as $source => $target) {
+            if (isset($sources[$target])) {
+                throw new HttpResponseException(response()->json([
+                    'error' => ['code' => 'mapping_not_injective', 'message' => 'Each destination column must have one source.',
+                        'sources' => [$sources[$target], $source], 'target' => $target],
+                ], 422));
+            }
+            $sources[$target] = $source;
+        }
+    }
+
     /**
      * Count rows with at least one warning without hydrating row models.
      */
     private function countWarningRows(ImportJob $job): int
     {
-        if ($job->getConnection()->getDriverName() === 'sqlite') {
-            return $job->rows()
-                ->whereNotNull('warnings')
-                ->where('warnings', '!=', '[]')
-                ->count();
-        }
-
-        return $job->rows()->whereRaw('jsonb_array_length(warnings) > 0')->count();
+        return $job->rows()->hasWarnings()->count();
     }
 
     /**
@@ -1194,7 +1326,7 @@ class ImportController extends Controller
         // Store the ZIP file
         $path = $file->store('imports/'.$tenantId.'/product-images', 'local');
         if ($path === false) {
-            return response()->json(['error' => 'Failed to store ZIP file'], 500);
+            return response()->json(['error' => ['code' => 'internal_error', 'message' => 'Failed to store ZIP file']], 500);
         }
 
         // Create import job

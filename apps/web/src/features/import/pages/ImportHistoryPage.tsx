@@ -1,16 +1,16 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, FileText, CheckCircle, XCircle, Clock, Loader2, Download } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, FileText, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react'
 import { useImportJobs } from '../api/queries'
-import { importApi } from '../api/importApi'
-import { authenticatedDownload } from '@/lib/api'
-import { textColors } from '@/lib/designTokens'
 import { cn } from '@/lib/utils'
 import type { ImportJob, ImportStatus } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { OffsetPagination } from '@/components/ui/OffsetPagination'
+import { importJobErrorMessage } from '../jobErrorMessage'
+import { ImportCorrectionActions } from '../components/ImportCorrectionActions'
 import { UnknownUnitSummary } from '../components/UnknownUnitSummary'
 import { KNOWN_WARNING_CODES } from '../warningCodes'
 
@@ -20,6 +20,9 @@ const importStateGlyphs: Record<ImportStatus, ReactNode> = {
   validated: <Clock className={`h-4 w-4 ${colorTokens.text.disabled}`} />,
   importing: <Loader2 className={`h-4 w-4 animate-spin ${colorTokens.intent.primary.text}`} />,
   completed: <CheckCircle className={`h-4 w-4 ${colorTokens.intent.success.text}`} />,
+  // Partial SUCCESS: the failure mark would read as a failed import, and the
+  // sibling pills all use *.textStrong rather than the neighbouring shade.
+  partially_completed: <AlertTriangle className={`h-4 w-4 ${colorTokens.intent.warning.textStrong}`} />,
   failed: <XCircle className={`h-4 w-4 ${colorTokens.intent.danger.text}`} />,
 }
 
@@ -29,22 +32,43 @@ const importStateTone: Record<ImportStatus, string> = {
   validated: `${colorTokens.intent.verified.bgSoft} ${colorTokens.intent.verified.textStrong}`,
   importing: `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStrong}`,
   completed: `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStrong}`,
+  partially_completed: `${colorTokens.intent.warning.bgSoft} ${colorTokens.intent.warning.textStrong}`,
   failed: `${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.textStrong}`,
 }
 
 const defaultImportStateGlyph = <Clock className={`h-4 w-4 ${colorTokens.text.disabled}`} />
 const defaultImportStateTone = `${colorTokens.surface.muted} ${colorTokens.text.secondary}`
 
+// One of OffsetPagination's own options (10/25/50/100): a size it does not
+// offer leaves its Select with no matching option, so the control displays 10
+// while the server returns (and meta reports) another number entirely.
+const DEFAULT_PER_PAGE = 25
+
 export function ImportHistoryPage() {
   const { t } = useTranslation('import')
-  const [statusFilter, setStatusFilter] = useState<ImportStatus | 'all'>('all')
+  const [statusFilter, setStatusFilterState] = useState<ImportStatus | 'all'>('all')
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(DEFAULT_PER_PAGE)
 
-  const { data: jobs, isLoading } = useImportJobs()
+  // Changing the filter changes the result set, so the page window has to reset
+  // with it — page 3 of "all" is rarely page 3 of "Completed with errors".
+  const setStatusFilter = (next: ImportStatus | 'all') => {
+    setStatusFilterState(next)
+    setPage(1)
+  }
 
-  const filteredJobs = jobs?.data?.filter((job) => {
-    if (statusFilter === 'all') return true
-    return job.status === statusFilter
+  // The status filter is applied by the server (ImportController::index()),
+  // which classifies legacy completed/failed rows through
+  // ImportJobOutcome::effectiveStatusExpression. Filtering the fetched page
+  // client-side made the filter lie about anything past the first page.
+  const { data: jobs, isLoading } = useImportJobs({
+    ...(statusFilter === 'all' ? {} : { status: statusFilter }),
+    page,
+    per_page: perPage,
   })
+
+  const filteredJobs = jobs?.data
+  const meta = jobs?.meta
 
   const renderImportStatePill = (value: ImportStatus | string) => {
     const status = value as ImportStatus
@@ -89,7 +113,7 @@ export function ImportHistoryPage() {
       <div className="flex items-center gap-2">
         <span className={`text-sm ${colorTokens.text.subtle}`}>{t('history.filterByStatus')}:</span>
         <div className="flex gap-2">
-          {(['all', 'completed', 'failed', 'importing', 'pending'] as const).map((status) => (
+          {(['all', 'completed', 'partially_completed', 'failed', 'importing', 'pending'] as const).map((status) => (
             <button
               key={status}
               type="button"
@@ -113,6 +137,8 @@ export function ImportHistoryPage() {
           <Loader2 className={`h-8 w-8 animate-spin ${colorTokens.intent.primary.text}`} />
         </div>
       ) : filteredJobs && filteredJobs.length > 0 ? (
+        <div className="space-y-3">
+          <p className={`text-xs ${colorTokens.text.subtle}`}>{t('correction.caveat')}</p>
         <div className={`overflow-hidden rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base}`}>
           <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
             <thead className={colorTokens.surface.page}>
@@ -156,9 +182,14 @@ export function ImportHistoryPage() {
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
                     {renderImportStatePill(job.status)}
+                    {(() => {
+                      const message = importJobErrorMessage(t, job)
+
+                      return message === null ? null : <p className={`mt-2 max-w-sm whitespace-normal text-xs ${colorTokens.intent.danger.text}`} role="alert">{message}</p>
+                    })()}
                   </td>
                   <td className="px-6 py-4">
-                    {job.status === 'completed' || job.status === 'failed' ? (
+                    {job.status === 'completed' || job.status === 'partially_completed' || job.status === 'failed' ? (
                       <div className="space-y-1 text-sm">
                         <div className="whitespace-nowrap">
                           <span data-testid={`import-history-count-imported-${job.id}`} className={colorTokens.intent.success.text}>
@@ -214,45 +245,34 @@ export function ImportHistoryPage() {
                     {formatDate(job.created_at)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-end">
-                    {job.status === 'completed' || job.status === 'failed' ? (
-                      <div className="flex flex-col items-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            authenticatedDownload(
-                              importApi.downloadResultWorkbookUrl(job.id),
-                              `import-${job.id}-result.xlsx`
-                            )
-                          }
-                          className={cn('inline-flex items-center gap-1 text-sm', textColors.brand, textColors.hoverBrand)}
-                        >
-                          <Download className="h-4 w-4" />
-                          {t('results.downloadWorkbook')}
-                        </button>
-                        {(job.failed_rows ?? 0) > 0 && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              authenticatedDownload(
-                                importApi.downloadFailedRowsUrl(job.id),
-                                `import-${job.id}-failed-rows.csv`
-                              )
-                            }
-                            className={cn('inline-flex items-center gap-1 text-sm', textColors.brand, textColors.hoverBrand)}
-                          >
-                            <Download className="h-4 w-4" />
-                            {t('wizard.complete.downloadFailedRows')}
-                          </button>
-                        )}
-                      </div>
+                    {job.status === 'completed' || job.status === 'partially_completed' || job.status === 'failed' ? (
+                      <ImportCorrectionActions
+                        jobId={job.id}
+                        type={job.type}
+                        canDownloadRows={(job.failed_rows ?? 0) + (job.warning_rows ?? 0) > 0}
+                        layout="row"
+                      />
                     ) : (
-                      <span className={cn('text-sm', textColors.disabled)}>-</span>
+                      <span className={cn('text-sm', colorTokens.text.disabled)}>-</span>
                     )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </DataTable>
+        </div>
+          {meta !== undefined && meta.last_page > 1 && (
+            <OffsetPagination
+              currentPage={meta.current_page}
+              lastPage={meta.last_page}
+              total={meta.total}
+              perPage={meta.per_page}
+              from={meta.from}
+              to={meta.to}
+              onPageChange={(next) => { setPage(next) }}
+              onPerPageChange={(next) => { setPerPage(next); setPage(1) }}
+            />
+          )}
         </div>
       ) : (
         <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-12 text-center`}>

@@ -1,0 +1,185 @@
+
+Running 4 tests using 1 worker
+
+(node:68795) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68795) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chromium] › e2e/imports/imp1-history-export.spec.ts:32:124 › IMP1 history and rows-to-fix: imp1-success.csv (31.3s)
+  ✘  2 [chromium] › e2e/imports/imp1-history-export.spec.ts:32:124 › IMP1 history and rows-to-fix: imp1-partial.csv (29.8s)
+(node:69611) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:69611) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  3 [chromium] › e2e/imports/imp1-history-export.spec.ts:32:124 › IMP1 history and rows-to-fix: imp1-partial-async.csv (45.4s)
+(node:70819) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:70819) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  4 [chromium] › e2e/imports/imp1-history-export.spec.ts:32:124 › IMP1 history and rows-to-fix: imp1-suppliers-balances-200.xlsx (36.7s)
+
+
+  1) [chromium] › e2e/imports/imp1-history-export.spec.ts:32:124 › IMP1 history and rows-to-fix: imp1-partial.csv › imp1-partial.csv
+
+    Error: imp1-partial.csv: completion rows-to-fix action
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      39 |       await runImportWizard(page, name.includes('suppliers') ? 'parties' : 'products', resolve(fixtures, name))
+      40 |       await page.screenshot({ path: resolve(evidence, `${name}-completion.png`), fullPage: true })
+    > 41 |       if (name.includes('partial')) expect.soft(await page.getByRole('button', { name: /download rows to fix/i }).count(), `${name}: completion rows-to-fix action`).toBeGreaterThan(0)
+         |                                                                                                                                                                      ^
+      42 |       await page.goto('/settings/import/history')
+      43 |       await page.screenshot({ path: resolve(evidence, `${name}-history-loading.png`), fullPage: true })
+      44 |       const row = page.getByRole('row').filter({ hasText: name }).first()
+        at /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/web/e2e/imports/imp1-history-export.spec.ts:41:166
+        at /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/web/e2e/imports/imp1-history-export.spec.ts:38:5
+
+    Error: imp1-partial.csv: UTF-8 BOM
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "efbbbf"
+    Received: "726f77"
+
+      57 |         const bytes = readFileSync(resolve(evidence, `${name}-rows.csv`))
+      58 |         const csv = bytes.toString('utf8')
+    > 59 |         expect.soft(bytes.subarray(0, 3).toString('hex'), `${name}: UTF-8 BOM`).toBe('efbbbf')
+         |                                                                                 ^
+      60 |         expect.soft(csv, `${name}: status/code/message headers`).toContain('_status,_code,_message')
+      61 |         if (name === 'imp1-partial.csv') expect.soft(csv, 'warning-only row exported').toContain('IMP1-WARNING')
+      62 |       }
+        at /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/web/e2e/imports/imp1-history-export.spec.ts:59:81
+        at /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/web/e2e/imports/imp1-history-export.spec.ts:38:5
+
+    Error: imp1-partial.csv: status/code/message headers
+
+    expect(received).toContain(expected) // indexOf
+
+    Expected substring: "_status,_code,_message"
+    Received string:    "row_number,sku,name,unit,barcode,sale_price,error_type,error_reason
+    9,IMP1-BAD-UNIT,Unknown unit,NO-SUCH-UNIT,,12.500,validation,\"unit: unit_unknown: Unknown unit \"\"NO-SUCH-UNIT\"\"; enter a code exactly as spelled.\"
+    10,IMP1-BAD-PRICE,Invalid price,pc,,invalid,validation,\"sale_price: The sale price field must be a number., The sale price field format is invalid.\""
+
+      58 |         const csv = bytes.toString('utf8')
+      59 |         expect.soft(bytes.subarray(0, 3).toString('hex'), `${name}: UTF-8 BOM`).toBe('efbbbf')
+    > 60 |         expect.soft(csv, `${name}: status/code/message headers`).toContain('_status,_code,_message')
+         |                                                                  ^
+      61 |         if (name === 'imp1-partial.csv') expect.soft(csv, 'warning-only row exported').toContain('IMP1-WARNING')
+      62 |       }
+      63 |     })
+        at /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/web/e2e/imports/imp1-history-export.spec.ts:60:66
+        at /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/web/e2e/imports/imp1-history-export.spec.ts:38:5
+
+    Error: warning-only row exported
+
+    expect(received).toContain(expected) // indexOf
+
+    Expected substring: "IMP1-WARNING"
+    Received string:    "row_number,sku,name,unit,barcode,sale_price,error_type,error_reason
+    9,IMP1-BAD-UNIT,Unknown unit,NO-SUCH-UNIT,,12.500,validation,\"unit: unit_unknown: Unknown unit \"\"NO-SUCH-UNIT\"\"; enter a code exactly as spelled.\"
+    10,IMP1-BAD-PRICE,Invalid price,pc,,invalid,validation,\"sale_price: The sale price field must be a number., The sale price field format is invalid.\""
+
+      59 |         expect.soft(bytes.subarray(0, 3).toString('hex'), `${name}: UTF-8 BOM`).toBe('efbbbf')
+      60 |         expect.soft(csv, `${name}: status/code/message headers`).toContain('_status,_code,_message')
+    > 61 |         if (name === 'imp1-partial.csv') expect.soft(csv, 'warning-only row exported').toContain('IMP1-WARNING')
+         |                                                                                        ^
+      62 |       }
+      63 |     })
+      64 |   }
+        at /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/web/e2e/imports/imp1-history-export.spec.ts:61:88
+        at /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/web/e2e/imports/imp1-history-export.spec.ts:38:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../docs/superpowers/reviews/2026-09-10-imp1-evidence/browser/imp1-history-export-IMP1-h-111f9-ows-to-fix-imp1-partial-csv-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../docs/superpowers/reviews/2026-09-10-imp1-evidence/browser/imp1-history-export-IMP1-h-111f9-ows-to-fix-imp1-partial-csv-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ../../docs/superpowers/reviews/2026-09-10-imp1-evidence/browser/imp1-history-export-IMP1-h-111f9-ows-to-fix-imp1-partial-csv-chromium/trace.zip
+    Usage:
+
+        npx playwright show-trace ../../docs/superpowers/reviews/2026-09-10-imp1-evidence/browser/imp1-history-export-IMP1-h-111f9-ows-to-fix-imp1-partial-csv-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [chromium] › e2e/imports/imp1-history-export.spec.ts:32:124 › IMP1 history and rows-to-fix: imp1-partial-async.csv › imp1-partial-async.csv
+
+    Error: imp1-partial-async.csv: completion rows-to-fix action
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      39 |       await runImportWizard(page, name.includes('suppliers') ? 'parties' : 'products', resolve(fixtures, name))
+      40 |       await page.screenshot({ path: resolve(evidence, `${name}-completion.png`), fullPage: true })
+    > 41 |       if (name.includes('partial')) expect.soft(await page.getByRole('button', { name: /download rows to fix/i }).count(), `${name}: completion rows-to-fix action`).toBeGreaterThan(0)
+         |                                                                                                                                                                      ^
+      42 |       await page.goto('/settings/import/history')
+      43 |       await page.screenshot({ path: resolve(evidence, `${name}-history-loading.png`), fullPage: true })
+      44 |       const row = page.getByRole('row').filter({ hasText: name }).first()
+        at /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/web/e2e/imports/imp1-history-export.spec.ts:41:166
+        at /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/web/e2e/imports/imp1-history-export.spec.ts:38:5
+
+    Error: imp1-partial-async.csv: UTF-8 BOM
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "efbbbf"
+    Received: "726f77"
+
+      57 |         const bytes = readFileSync(resolve(evidence, `${name}-rows.csv`))
+      58 |         const csv = bytes.toString('utf8')
+    > 59 |         expect.soft(bytes.subarray(0, 3).toString('hex'), `${name}: UTF-8 BOM`).toBe('efbbbf')
+         |                                                                                 ^
+      60 |         expect.soft(csv, `${name}: status/code/message headers`).toContain('_status,_code,_message')
+      61 |         if (name === 'imp1-partial.csv') expect.soft(csv, 'warning-only row exported').toContain('IMP1-WARNING')
+      62 |       }
+        at /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/web/e2e/imports/imp1-history-export.spec.ts:59:81
+        at /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/web/e2e/imports/imp1-history-export.spec.ts:38:5
+
+    Error: imp1-partial-async.csv: status/code/message headers
+
+    expect(received).toContain(expected) // indexOf
+
+    Expected substring: "_status,_code,_message"
+    Received string:    "row_number,sku,name,unit,barcode,sale_price,error_type,error_reason
+    96,IMP1-ASYNC-95,IMP1 Crème ASYNC 95,pc,,invalid,validation,\"sale_price: The sale price field must be a number., The sale price field format is invalid.\"
+    97,IMP1-ASYNC-96,IMP1 Crème ASYNC 96,pc,,invalid,validation,\"sale_price: The sale price field must be a number., The sale price field format is invalid.\"
+    98,IMP1-ASYNC-97,IMP1 Crème ASYNC 97,pc,,invalid,validation,\"sale_price: The sale price field must be a number., The sale price field format is invalid.\"
+    99,IMP1-ASYNC-98,IMP1 Crème ASYNC 98,pc,,invalid,validation,\"sale_price: The sale price field must be a number., The sale price field format is invalid.\"
+    100,IMP1-ASYNC-99,IMP1 Crème ASYNC 99,pc,,invalid,validation,\"sale_price: The sale price field must be a number., The sale price field format is invalid.\""
+
+      58 |         const csv = bytes.toString('utf8')
+      59 |         expect.soft(bytes.subarray(0, 3).toString('hex'), `${name}: UTF-8 BOM`).toBe('efbbbf')
+    > 60 |         expect.soft(csv, `${name}: status/code/message headers`).toContain('_status,_code,_message')
+         |                                                                  ^
+      61 |         if (name === 'imp1-partial.csv') expect.soft(csv, 'warning-only row exported').toContain('IMP1-WARNING')
+      62 |       }
+      63 |     })
+        at /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/web/e2e/imports/imp1-history-export.spec.ts:60:66
+        at /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/web/e2e/imports/imp1-history-export.spec.ts:38:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../docs/superpowers/reviews/2026-09-10-imp1-evidence/browser/imp1-history-export-IMP1-h-d3b5a--fix-imp1-partial-async-csv-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../docs/superpowers/reviews/2026-09-10-imp1-evidence/browser/imp1-history-export-IMP1-h-d3b5a--fix-imp1-partial-async-csv-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ../../docs/superpowers/reviews/2026-09-10-imp1-evidence/browser/imp1-history-export-IMP1-h-d3b5a--fix-imp1-partial-async-csv-chromium/trace.zip
+    Usage:
+
+        npx playwright show-trace ../../docs/superpowers/reviews/2026-09-10-imp1-evidence/browser/imp1-history-export-IMP1-h-d3b5a--fix-imp1-partial-async-csv-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2 failed
+    [chromium] › e2e/imports/imp1-history-export.spec.ts:32:124 › IMP1 history and rows-to-fix: imp1-partial.csv
+    [chromium] › e2e/imports/imp1-history-export.spec.ts:32:124 › IMP1 history and rows-to-fix: imp1-partial-async.csv
+  2 passed (2.6m)

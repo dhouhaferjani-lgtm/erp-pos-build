@@ -14,6 +14,7 @@ import type {
   ImportPreview,
   ImportJobOptions,
   ImportJobResponse,
+  ImportJobListParams,
 } from '../types'
 
 const IMPORT_URL = '/imports'
@@ -21,10 +22,20 @@ const WIZARD_URL = '/migration-wizard'
 
 export const importApi = {
   // Import Jobs
-  list: async (): Promise<ImportJobListResponse> => {
+  list: async (params: ImportJobListParams = {}): Promise<ImportJobListResponse> => {
+    // The status filter and the page window belong to the server: filtering the
+    // first page client-side made "Completed with errors" read empty while such
+    // jobs existed further down (gate r1 M5). ImportController::index()
+    // classifies legacy completed/failed rows in SQL, which no client can do.
+    const query = new URLSearchParams()
+    if (params.status !== undefined) query.set('status', params.status)
+    if (params.page !== undefined) query.set('page', String(params.page))
+    if (params.per_page !== undefined) query.set('per_page', String(params.per_page))
+    const url = query.toString() === '' ? IMPORT_URL : `${IMPORT_URL}?${query.toString()}`
+
     // Paginated {data, meta} envelope — apiGet would unwrap to the array
     // and drop meta, so use the raw client and return response.data intact.
-    const response = await api.get<ImportJobListResponse>(IMPORT_URL)
+    const response = await api.get<ImportJobListResponse>(url)
     return response.data
   },
 
@@ -35,11 +46,13 @@ export const importApi = {
   createJob: async (
     type: ImportType,
     file: File,
-    columnMapping?: Record<string, string>
+    columnMapping?: Record<string, string>,
+    reimportOf?: string
   ): Promise<CreateImportResponse> => {
     const formData = new FormData()
     formData.append('type', type)
     formData.append('file', file)
+    if (reimportOf) formData.append('reimport_of', reimportOf)
     if (columnMapping && Object.keys(columnMapping).length > 0) {
       formData.append('column_mapping', JSON.stringify(columnMapping))
     }
@@ -70,8 +83,8 @@ export const importApi = {
     return apiGet<ImportErrorSummaryResponse>(`${IMPORT_URL}/${jobId}/error-summary`)
   },
 
-  downloadFailedRowsUrl: (jobId: string): string => {
-    return `${IMPORT_URL}/${jobId}/failed-rows.csv`
+  downloadFailedRowsUrl: (jobId: string, format: 'csv' | 'xlsx' = 'csv'): string => {
+    return `${IMPORT_URL}/${jobId}/failed-rows.${format}`
   },
 
   downloadResultWorkbookUrl: (jobId: string): string => {

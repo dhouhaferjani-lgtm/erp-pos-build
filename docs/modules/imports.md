@@ -835,6 +835,134 @@ GET    /api/v1/imports/can-import/{type}    # Check dependencies
 
 ---
 
+## Import history and the correction round trip (spec §4.10)
+
+The surface an operator uses after an import finishes. Every noun here is registered in
+[`docs/glossary.md`](../glossary.md) — **Rows to fix**, **Full report**, **Partially completed**,
+**Re-import of** — and each has exactly one writer and one operator surface (convention 11).
+
+### Terminal outcomes
+
+`ImportStatus` has three terminal cases: `completed`, `partially_completed` and `failed`.
+
+`partially_completed` ("Completed with errors") means the job **committed rows AND** either rejected rows
+or failed to finalize — data is in the system and work is left to do. That rule is expressed exactly once,
+in `App\Modules\Import\Domain\ImportJobOutcome`:
+
+- `isPartiallyCompleted(int $successful, int $failed, ?string $errorMessage): bool` — the predicate;
+- `effectiveStatus(...)` — applies it to terminal statuses only (an in-flight job is never reclassified);
+- `effectiveStatusExpression(ImportStatus $status): array{string, list<string>}` — the same rule as SQL,
+  with its terminal `IN` list generated from `ImportStatus::cases()`.
+
+All three readers call it: the durable terminal CAS write (`ImportJobClaimService::terminalUpdate()`),
+the detail/list read model (`ImportController::formatJob()`) and the history status filter
+(`ImportController::index()`). The filter classifies in SQL rather than reading the column because jobs
+written before the status existed still carry `completed`/`failed` — do not "simplify" it to a column
+comparison without migrating those rows.
+
+Counters on a terminal job are recomputed from row state, never from the loop's optimistic tally, so
+"200 imported" always means 200 rows are really there.
+
+### Failure messages are coded, never raw
+
+`import_jobs.error_code` (`ImportErrorCode`) is the **operator** channel; `import_jobs.error_message` is the
+**support** channel and holds raw server text (exception class names, file paths, full SQLSTATE strings
+including key values). It is still *disclosed* to the client (`formatJob()` publishes it, and so do the
+`errors` / `error-summary` payloads) for support and diagnosis, but **no surface renders it**. Every surface
+that shows a job failure goes through `apps/web/src/features/import/jobErrorMessage.ts`, which reads
+`error_code` only, translates it (en/fr/ar) and degrades an absent or unrecognised code to one generic
+sentence. The four surfaces, exhaustively:
+
+| Surface | Fed by |
+|---|---|
+| history row alert (`ImportHistoryPage.tsx`) | `GET /imports` → `formatJob()` `error_code` / `error_detail` |
+| wizard execute + completion alerts (`ImportWizardPage.tsx`) | `GET /imports/{id}` → `formatJob()` |
+| validation step job banner (`ValidationResults.tsx`, via `ErrorViewer`) | `GET /imports/{id}/error-summary` → `job_error_code` / `job_error_detail` |
+| global progress toast (`GlobalImportProgress.tsx`) | the progress store — `error_code` from the wizard's API feeder; the WebSocket `ImportCompleted` broadcast carries no code yet, so that feeder resolves to the generic sentence |
+
+Scope matters: the shared catalogue `errors.<code>` is written for a ROW. A job-level failure with the same
+code reads `errors.job.<code>` instead (`validation_failed`, `internal_error`), and a header failure
+interpolates `error_detail.missing_columns` into `errors.job.missing_columns` — the one actionable,
+non-sensitive part of a parse/validate failure.
+
+Consequence for any new terminal-failure path: **stamp a code**, and stamp the *named* one — a condition the
+code can name (`company_context_missing`) gets its own `ImportErrorCode` case (rule 9), because
+`InternalError` erases the remedy. `ImportErrorCode::InternalError` is the honest fallback only for genuinely
+unexpected failures; a `CodedImportRowException` keeps its own code through the sync finalize catch. A path
+that writes `error_message` without `error_code` silently turns its message into the generic sentence on
+screen.
+
+### Rows to fix — the correction export
+
+```
+GET /api/v1/imports/{id}/failed-rows.csv
+GET /api/v1/imports/{id}/failed-rows.xlsx
+```
+
+Inside the single import route group (`['api','auth:sanctum',SetPermissionsTeam::class,EnforceTokenTenantClaim::class,'can:imports.manage']`),
+keyed on the **job id**, so async jobs are reachable. Per-request company check (409
+`IMPORT_COMPANY_MISMATCH`) and module-entitlement re-check on the job's type. An empty selection is a coded
+`404 {"error":{"code":"no_rows_to_fix"}}`, which the FE renders as `correction.noRows`. A job the tenant
+cannot see is `404 {"error":{"code":"import_not_found"}}` — a different sentence, so the FE reads the body
+code rather than branching on the status.
+
+- **Selection** — `is_valid = false` **OR** `outcome IN (failed, opening_locked)` **OR** at least one warning
+  (`ImportRow::scopeHasWarnings()`, the one portable warning scope also used by the history counts).
+  `pending` rows are excluded.
+- **Columns** — the mapped source columns in the uploaded file's order, under the operator's own header
+  spelling, then `_status`, `_code`, `_message`. Unmapped source columns are omitted.
+- **Cells** — the stored strings, unchanged. No float ever touches them (rule 19).
+- **`_status`** — an error outranks a warning on the same row.
+- **CSV** — UTF-8 BOM, comma, CRLF. **XLSX** — every cell written as explicit text, so `001` and `12.500`
+  survive.
+- **One writer** — `ImportRowExportService`. `FailedRowsExportService` is deleted, not shadowed.
+
+### Retention: the correction export is ephemeral
+
+The artefact holds the operator's raw rows — partner names and codes, tax ids, balances — so it must not
+outlive the request that produced it:
+
+- the artefact is written **per request**, not per job — `imports/rows/{jobId}.{token}.{format}`, where the
+  token is a fresh UUID. The bytes land at a `.part` sibling and are renamed into place, so no reader can
+  observe a half-written workbook, and no other request can name (or delete) this artefact;
+- the download removes exactly the artefact it generated, via `deleteFileAfterSend(true)`;
+- `DELETE /api/v1/imports/{id}` and `imports:purge-expired` sweep the job-id **prefix**
+  (`ImportRowExportService::deleteArtifacts()`), which is what catches an orphan left by a connection that
+  dropped between `generate()` and the send.
+
+Do not go back to a deterministic per-job name with an unconditional both-format delete: one finished
+download then destroyed an artefact another request was still writing, and that request streamed a **200
+with zero bytes** — which reads to an operator as "there is nothing to fix" (gate r2 M3-R). For the same
+reason the controller refuses a missing or empty artefact with `404 {"error":{"code":"correction_export_unavailable"}}`
+rather than sending an empty body: `filesystems.local` is configured `'throw' => false`, so a vanished
+artefact reads back as `NULL` silently.
+
+### Full report — the secondary action
+
+`ResultWorkbookService` produces the read-only Imported / Skipped / Rejected workbook for one run. It is a
+**different concept** from the correction export: not shaped for re-upload, and never the primary action on
+a completion or history row. Both surfaces label it "Full report" / "Rapport complet" / "التقرير الكامل".
+
+### Re-import of
+
+A corrected file is uploaded with `reimport_of=<original job id>`. Same tenant (otherwise 404), same company
+(409 `IMPORT_COMPANY_MISMATCH`), same import type (coded 422), and the entitlement is re-checked on the
+referenced job's type. If the new file's headers still contain every source of the original mapping, that
+mapping is pre-applied and the operator skips straight to preview; otherwise the upload still succeeds and
+carries a non-blocking `reimport_notice = 'reimport_headers_changed'`, and the operator maps again. A column
+mapping that is not injective (two sources onto one destination) is refused 422 `mapping_not_injective` on
+both upload and options update. Re-applying a mapping does **not** exempt the upload from header validation:
+a saved mapping that no longer covers the type's required targets is refused 422 `validation_failed` with
+`errors.missing_columns`.
+
+**One writer.** `ImportController::store()` decides reuse-or-not and reports its verdict as
+`reimport_notice`; the wizard renders that verdict and never re-derives it. The wizard's own `getJob()`
+pre-check answers only a presentation question — "can the operator skip the mapping step?" — and its failure
+(a purged or foreign original) is its own `correction.originalUnavailable` message, never the
+parse-headers "invalid file" path, which clears the operator's file selection (BUG-004 class).
+
+---
+
 ## Error Handling
 
 ### Error Report Generation

@@ -3,13 +3,7 @@ import { create } from 'zustand'
 /**
  * Import status enum matching backend ImportStatus
  */
-export type ImportStatus =
-  | 'pending'
-  | 'validating'
-  | 'validated'
-  | 'importing'
-  | 'completed'
-  | 'failed'
+export type ImportStatus = App.Modules.Import.Domain.Enums.ImportStatus
 
 /**
  * Active import progress state
@@ -24,6 +18,9 @@ export interface ImportProgress {
   progressPercentage: number
   importType: string
   originalFilename: string
+  /** Durable coded reason — this is what the card renders (`importJobErrorMessage`). */
+  errorCode?: App.Modules.Import.Domain.Enums.ImportErrorCode
+  /** Raw broadcast text. Diagnosis only — never rendered. */
   errorMessage?: string
   completedAt?: string
   isSuccess?: boolean
@@ -66,6 +63,7 @@ interface ImportProgressActions {
     failed_rows: number
     import_type: string
     original_filename: string
+    error_code?: App.Modules.Import.Domain.Enums.ImportErrorCode
     error_message?: string
     completed_at: string
     is_success: boolean
@@ -142,7 +140,10 @@ export const useImportProgressStore = create<ImportProgressStore>((set, get) => 
         isSuccess: data.is_success,
         isPartialSuccess: data.is_partial_success,
       }
-      // Only set errorMessage if it's defined (for exactOptionalPropertyTypes)
+      // Only set these if defined (for exactOptionalPropertyTypes)
+      if (data.error_code !== undefined) {
+        progressData.errorCode = data.error_code
+      }
       if (data.error_message !== undefined) {
         progressData.errorMessage = data.error_message
       }

@@ -1,0 +1,12 @@
+Products
+	imp1-partial.csv
+	
+Completed with errors	
+9 imported / 1 skipped / 2 failed / 12 total
+	9/12/2026, 6:35:58 PM	
+File format
+CSV
+Excel
+Download rows to fix
+Re-upload corrected file
+Full report

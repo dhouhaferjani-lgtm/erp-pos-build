@@ -1,0 +1,3 @@
+name,sku,type,description,sale_price,sale_price_incl_tax,sale_price_excl_tax,purchase_price,margin,quantity,location_code,expiry_date,placement_path,barcode,category_name,brand,tax_rate,unit,is_active
+Brake Pad Set,BP-001,part,Front brake pads for sedan,29.99,,,15.00,,,,2027-09-30,,1234567890123,Brake Parts,,19,piece,true
+Oil Change Service,SVC-OIL,service,Standard oil change with filter,45.00,,,,,,,,,,Services,,19,,true

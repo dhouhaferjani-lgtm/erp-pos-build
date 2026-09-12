@@ -1,0 +1,61 @@
+{
+    "imp1-partial-async.csv-rows.csv": {
+        "bom": "efbbbf",
+        "headers": [
+            "name",
+            "sku",
+            "sale_price",
+            "unit",
+            "barcode",
+            "_status",
+            "_code",
+            "_message"
+        ],
+        "data_rows": 5,
+        "statuses": {
+            "error": 5
+        },
+        "csv_xlsx_identical_cells": true,
+        "xlsx_first_source_cell_type": "s"
+    },
+    "imp1-partial.csv-rows.csv": {
+        "bom": "efbbbf",
+        "headers": [
+            "name",
+            "sku",
+            "sale_price",
+            "unit",
+            "barcode",
+            "_status",
+            "_code",
+            "_message"
+        ],
+        "data_rows": 4,
+        "statuses": {
+            "warning": 2,
+            "error": 2
+        },
+        "csv_xlsx_identical_cells": true,
+        "xlsx_first_source_cell_type": "s"
+    },
+    "imp1-partial-async.csv-full-report.xlsx": {
+        "Imported": 95,
+        "Skipped": 0,
+        "Rejected": 5
+    },
+    "imp1-partial.csv-full-report.xlsx": {
+        "Imported": 9,
+        "Skipped": 1,
+        "Rejected": 2
+    },
+    "imp1-success.csv-full-report.xlsx": {
+        "Imported": 10,
+        "Skipped": 0,
+        "Rejected": 0
+    },
+    "imp1-suppliers-balances-200.xlsx-full-report.xlsx": {
+        "Imported": 200,
+        "Skipped": 0,
+        "Rejected": 0
+    }
+}

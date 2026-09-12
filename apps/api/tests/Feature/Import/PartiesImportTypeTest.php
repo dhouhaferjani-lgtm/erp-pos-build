@@ -11,6 +11,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Import\Application\Jobs\ProcessProductImageImport;
+use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
@@ -248,6 +249,9 @@ final class PartiesImportTypeTest extends TestCase
         $this->assertSame(ImportStatus::Failed, $job->status);
         $this->assertNull($job->started_at);
         $this->assertStringStartsWith('company_context_missing:', (string) $job->error_message);
+        // m-A: the condition is named, so it carries its own code — operators read
+        // errors.<code>, and InternalError would hide the actionable re-upload copy.
+        $this->assertSame(ImportErrorCode::CompanyContextMissing, $job->error_code);
         Storage::disk('local')->assertMissing($job->file_path);
     }
 

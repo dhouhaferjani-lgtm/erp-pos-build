@@ -1,0 +1,4 @@
+name,sku,sale_price,unit,barcode
+Invalid 0,IMP1-INVALID-0,bad,pc,
+Invalid 1,IMP1-INVALID-1,bad,pc,
+Invalid 2,IMP1-INVALID-2,bad,pc,

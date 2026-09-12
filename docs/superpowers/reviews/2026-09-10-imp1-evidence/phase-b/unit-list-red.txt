@@ -1,0 +1,21 @@
+PHPUnit 11.5.55 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.4.15
+Configuration: /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/api/phpunit.xml
+
+F                                                                   1 / 1 (100%)
+
+Time: 00:03.843, Memory: 153.00 MB
+
+There was 1 failure:
+
+1) Tests\Feature\Import\ImportRowExportTest::test_unit_error_export_includes_accepted_codes
+Failed asserting that '﻿Produit,Référence,Prix,_status,_code,_message\r\n
+Bad,001,invalid,error,unit_unknown,"Price must be numeric"\r\n
+Warn,002,12.500,warning,price_conflict,"Check price"\r\n
+' [UTF-8](length: 166) contains "Accepted unit codes: pc, kg." [ASCII](length: 28).
+
+/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/imp1-history-export/apps/api/tests/Feature/Import/ImportRowExportTest.php:224
+
+FAILURES!
+Tests: 1, Assertions: 1, Failures: 1.

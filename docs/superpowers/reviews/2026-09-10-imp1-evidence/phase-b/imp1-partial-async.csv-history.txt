@@ -1,0 +1,12 @@
+Products
+	imp1-partial-async.csv
+	
+Completed with errors	
+95 imported / 0 skipped / 5 failed / 100 total
+	9/12/2026, 6:36:07 PM	
+File format
+CSV
+Excel
+Download rows to fix
+Re-upload corrected file
+Full report

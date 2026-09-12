@@ -607,7 +607,24 @@ final class ImportService
             $job->update(['processed_rows' => $processedCount]);
         }
 
-        $this->finalizeImport($job, $this->companyContext->requireCompanyId());
+        // The sync path swallows a finalize failure so the rows that DID commit keep
+        // their truthful counters and the job lands partially_completed rather than
+        // failed. The async path deliberately does not wrap: ProcessImportJob::failed()
+        // is its equivalent, and it reaches the same terminal CAS write.
+        $finalizeError = null;
+        $finalizeErrorCode = null;
+        try {
+            $this->finalizeImport($job, $this->companyContext->requireCompanyId());
+        } catch (\Throwable $exception) {
+            // Swallowing the exception must not swallow the stack trace with it.
+            report($exception);
+            $finalizeError = $exception->getMessage();
+            // A coded domain failure keeps its own code; only the genuinely
+            // unclassified ones flatten to InternalError.
+            $finalizeErrorCode = $exception instanceof CodedImportRowException
+                ? $exception->errorCode
+                : ImportErrorCode::InternalError;
+        }
 
         // Status AND counts come from row state after finalize, because a finalize
         // phase may demote rows that staged fine yet could not be committed. GL
@@ -618,7 +635,7 @@ final class ImportService
         $status = ($counters->successfulRows + $counters->skippedRows) === 0
             ? ImportStatus::Failed
             : ImportStatus::Completed;
-        $this->importJobClaimService->finalize($job, $status, $counters, null, null);
+        $this->importJobClaimService->finalize($job, $status, $counters, $finalizeErrorCode, null, $finalizeError);
 
         return [
             'imported_count' => $counters->successfulRows,
