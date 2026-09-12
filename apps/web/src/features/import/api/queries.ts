@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { importApi } from './importApi'
 import { importsListInvalidationPredicate } from '../_invalidation'
+import { importUploadErrorMessage } from '../jobErrorMessage'
 import type { ImportJobListParams, ImportType } from '../types'
 
 // Query Keys
@@ -137,7 +138,10 @@ export function useCreateImport() {
       toast.success(t('messages.uploadSuccess'))
     },
     onError: (error: Error) => {
-      toast.error(error.message || t('messages.uploadError'))
+      // The refusal is coded, and a header refusal names the columns left to
+      // map — the very thing the wizard sends the operator back to fix. The
+      // raw axios sentence is untranslated and says none of it.
+      toast.error(importUploadErrorMessage(t, error))
     },
   })
 }

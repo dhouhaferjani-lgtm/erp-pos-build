@@ -12,7 +12,7 @@ vi.mock('react-i18next', () => ({
 
 const jobs: ImportJob[] = []
 const listParams = vi.fn()
-let meta = { current_page: 1, last_page: 1, per_page: 20, total: 0, from: null as number | null, to: null as number | null }
+let meta = { current_page: 1, last_page: 1, per_page: 25, total: 0, from: null as number | null, to: null as number | null }
 
 vi.mock('../api/queries', () => ({
   useImportJobs: (params: unknown) => {
@@ -59,15 +59,17 @@ describe('ImportHistoryPage server-side status filter and pagination', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'status.partially_completed' }))
 
+    // per_page has to be one of OffsetPagination's own options, or the control
+    // renders a page size the server is not using (gate r3 N-3).
     expect(listParams).toHaveBeenLastCalledWith(
-      expect.objectContaining({ status: 'partially_completed', page: 1 }),
+      expect.objectContaining({ status: 'partially_completed', page: 1, per_page: 25 }),
     )
   })
 
   it('renders the server pagination when there is more than one page', () => {
-    meta = { current_page: 1, last_page: 3, per_page: 20, total: 50, from: 1, to: 20 }
+    meta = { current_page: 1, last_page: 3, per_page: 25, total: 50, from: 1, to: 20 }
     renderWith(job({}))
-    meta = { current_page: 1, last_page: 1, per_page: 20, total: 0, from: null, to: null }
+    meta = { current_page: 1, last_page: 1, per_page: 25, total: 0, from: null, to: null }
 
     // The server's own meta drives the control; there is no client-side slice.
     expect(screen.getByRole('button', { name: 'pagination.next' })).toBeInTheDocument()

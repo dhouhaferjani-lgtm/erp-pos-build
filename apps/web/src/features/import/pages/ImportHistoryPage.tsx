@@ -39,7 +39,10 @@ const importStateTone: Record<ImportStatus, string> = {
 const defaultImportStateGlyph = <Clock className={`h-4 w-4 ${colorTokens.text.disabled}`} />
 const defaultImportStateTone = `${colorTokens.surface.muted} ${colorTokens.text.secondary}`
 
-const DEFAULT_PER_PAGE = 20
+// One of OffsetPagination's own options (10/25/50/100): a size it does not
+// offer leaves its Select with no matching option, so the control displays 10
+// while the server returns (and meta reports) another number entirely.
+const DEFAULT_PER_PAGE = 25
 
 export function ImportHistoryPage() {
   const { t } = useTranslation('import')

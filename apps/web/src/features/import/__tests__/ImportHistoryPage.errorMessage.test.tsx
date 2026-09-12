@@ -6,6 +6,7 @@ import { ImportHistoryPage } from '../pages/ImportHistoryPage'
 import { ValidationResults } from '../components/ValidationResults'
 import { GlobalImportProgress } from '@/components/organisms/GlobalImportProgress/GlobalImportProgress'
 import { useImportProgressStore } from '@/stores/importProgressStore'
+import { importUploadErrorMessage } from '../jobErrorMessage'
 import type { ImportErrorSummary, ImportJob } from '../types'
 
 vi.mock('react-i18next', () => ({
@@ -179,5 +180,44 @@ describe('ImportHistoryPage job-scoped copy', () => {
     )
 
     expect(screen.getByRole('alert')).toHaveTextContent('errors.job.missing_columns:name, sku')
+  })
+})
+
+describe('create-import refusal copy', () => {
+  /** Echoes the key and its interpolation, so an assertion reads the real sentence. */
+  const echo = (key: string, options: Record<string, string>) =>
+    typeof options['columns'] === 'string' ? `${key}:${options['columns']}` : key
+
+  function axiosError(status: number, data: unknown) {
+    return Object.assign(new Error(`Request failed with status code ${String(status)}`), {
+      isAxiosError: true,
+      response: { status, data },
+    })
+  }
+
+  it('names the columns the operator has to map instead of the axios sentence', () => {
+    // The 422 that sends the operator back to the mapping step carries the one
+    // actionable fact there is; `error.message` carries none of it.
+    const error = axiosError(422, {
+      error: { code: 'validation_failed', message: 'Missing required columns: name' },
+      errors: { missing_columns: ['name'], unknown_columns: [] },
+    })
+
+    expect(importUploadErrorMessage(echo, error)).toBe('errors.job.missing_columns:name')
+  })
+
+  it('translates a coded refusal that carries no column list', () => {
+    const error = axiosError(422, { error: { code: 'units_not_seeded', message: 'No units configured' } })
+
+    expect(importUploadErrorMessage(echo, error)).toBe('errors.units_not_seeded')
+  })
+
+  it('falls back to the generic upload sentence rather than raw transport text', () => {
+    const uncoded = axiosError(413, '<html>Request Entity Too Large</html>')
+    const codeless = axiosError(422, { error: { code: 'reimport_type_mismatch' } })
+
+    expect(importUploadErrorMessage(echo, uncoded)).toBe('messages.uploadError')
+    expect(importUploadErrorMessage(echo, codeless)).toBe('messages.uploadError')
+    expect(importUploadErrorMessage(echo, new Error('Network Error'))).toBe('messages.uploadError')
   })
 })

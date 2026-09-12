@@ -188,14 +188,23 @@ export interface ImportErrorSummaryResponse {
   data: ImportErrorSummary
 }
 
+/**
+ * The only value `ImportController::store()` puts on `reimport_notice`: the
+ * saved mapping could not be re-applied because its source headers are gone.
+ * A wire value the server owns, so it is named on both sides rather than
+ * spelled out at the comparison — a rename then fails typecheck here.
+ */
+export const REIMPORT_HEADERS_CHANGED = 'reimport_headers_changed'
+
+export type ReimportNotice = typeof REIMPORT_HEADERS_CHANGED
+
 export interface CreateImportResponse {
   data: ImportJob
   /**
-   * The server's verdict on a `reimport_of` upload: `'reimport_headers_changed'`
-   * when the original mapping could not be re-applied. One writer for the rule
+   * The server's verdict on a `reimport_of` upload. One writer for the rule
    * (`ImportController::store`); the wizard only renders this.
    */
-  reimport_notice?: string | null
+  reimport_notice?: ReimportNotice | null
   errors?: {
     missing_columns: string[]
     unknown_columns: string[]

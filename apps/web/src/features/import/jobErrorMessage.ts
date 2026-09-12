@@ -1,3 +1,5 @@
+import axios from 'axios'
+
 import { ERROR_TRANSLATION_KEYS } from './errorCodes'
 
 type ImportErrorCode = App.Modules.Import.Domain.Enums.ImportErrorCode
@@ -63,4 +65,53 @@ export function importJobErrorMessage(
   }
 
   return JOB_SCOPED_CODES[code] === true ? t(`errors.job.${code}`, {}) : t(`errors.${code}`, {})
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function readCode(body: unknown): string | null {
+  if (!isRecord(body)) return null
+  const envelope = body['error']
+  if (!isRecord(envelope)) return null
+  const code = envelope['code']
+
+  return typeof code === 'string' && code !== '' ? code : null
+}
+
+function readMissingColumns(body: unknown): string[] | null {
+  if (!isRecord(body)) return null
+  const errors = body['errors']
+  if (!isRecord(errors)) return null
+  const columns = errors['missing_columns']
+  if (!Array.isArray(columns)) return null
+  const named = columns.filter((column): column is string => typeof column === 'string')
+
+  return named.length > 0 ? named : null
+}
+
+/**
+ * Operator-facing text for a REFUSED upload (`POST /imports`).
+ *
+ * The mutation used to toast axios's own `error.message` — "Request failed with
+ * status code 422", untranslated (rule 11) — which also threw away the one
+ * actionable fact that refusal carries: the columns still to map, i.e. exactly
+ * what the wizard sent the operator back to the mapping step to fix. The
+ * refusal is coded like every other import failure; an absent or unrecognised
+ * code degrades to the generic upload sentence, never to raw transport text.
+ */
+export function importUploadErrorMessage(t: Translate, error: unknown): string {
+  const body: unknown = axios.isAxiosError(error) ? error.response?.data : null
+  const code = readCode(body)
+  if (code === null || !isKnownErrorCode(code)) {
+    return t('messages.uploadError', {})
+  }
+
+  const missingColumns = readMissingColumns(body)
+
+  return importJobErrorMessage(t, {
+    error_code: code,
+    ...(missingColumns !== null ? { error_detail: { missing_columns: missingColumns } } : {}),
+  }) ?? t('messages.uploadError', {})
 }

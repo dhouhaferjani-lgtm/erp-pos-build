@@ -25,7 +25,7 @@ import { toast } from 'sonner'
 import { importApi } from '../api/importApi'
 import { authenticatedDownload } from '@/lib/api'
 import { useImportProgressStore } from '../../../stores/importProgressStore'
-import { isDeprecatedImportType } from '../types'
+import { isDeprecatedImportType, REIMPORT_HEADERS_CHANGED } from '../types'
 import { DUPLICATE_BUCKETS, type DuplicatePolicy, type ImportJobOptions, type ImportResult, type ImportType, type LiveImportType, type LocationNodeType } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
@@ -699,7 +699,7 @@ export function ImportWizardPage() {
         onSuccess: (data) => {
           setJobId(data.data.id)
           // The server owns the re-import reuse rule and reports its verdict here.
-          if (data.reimport_notice === 'reimport_headers_changed') {
+          if (data.reimport_notice === REIMPORT_HEADERS_CHANGED) {
             toast.info(t('correction.headersChanged'))
           }
           // Backend returns validation status in the job, not rows directly
