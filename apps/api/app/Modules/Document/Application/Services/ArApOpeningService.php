@@ -51,6 +51,12 @@ use RuntimeException;
  */
 class ArApOpeningService
 {
+    /**
+     * Opening money is persisted in decimal columns with a fixed scale of 3.
+     * Currency display scales must never truncate that stored precision.
+     */
+    private const MONEY_STORAGE_SCALE = 3;
+
     public function __construct(
         private readonly OpeningBalanceBatchService $batchService,
         private readonly ArApOpeningLedgerService $ledgerService,
@@ -58,9 +64,12 @@ class ArApOpeningService
         private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
-    private function scale(): int
+    private function moneyScale(string $currency): int
     {
-        return $this->scaleResolver->getScale();
+        return max(
+            $this->scaleResolver->getScale($currency),
+            self::MONEY_STORAGE_SCALE,
+        );
     }
 
     /**
@@ -82,6 +91,7 @@ class ArApOpeningService
 
         $isAr = $batch->type === OpeningBatchType::ArOpenItems;
         $companyCurrency = $batch->company->currency;
+        $scale = $this->moneyScale($companyCurrency);
         // POSTED rows are excluded alongside SKIPPED — their documents already exist.
         $rows = $batch->rows()
             ->whereNotIn('status', [OpeningImportRowStatus::Skipped, OpeningImportRowStatus::Posted])
@@ -97,8 +107,8 @@ class ArApOpeningService
             $validationResults[$row->id] = $result;
 
             if ($result['valid']) {
-                $totalAmount = bcadd($totalAmount, $result['mapped_data']['total'] ?? '0.00', $this->scale());
-                $totalOpenAmount = bcadd($totalOpenAmount, $result['mapped_data']['open_amount'] ?? '0.00', $this->scale());
+                $totalAmount = bcadd($totalAmount, $result['mapped_data']['total'] ?? '0.00', $scale);
+                $totalOpenAmount = bcadd($totalOpenAmount, $result['mapped_data']['open_amount'] ?? '0.00', $scale);
             } else {
                 $errors[$row->id] = $result['errors'];
             }
@@ -144,6 +154,7 @@ class ArApOpeningService
         $rawData = $row->raw_data;
         $errors = [];
         $mappedData = [];
+        $scale = $this->moneyScale($companyCurrency);
 
         // Validate partner code
         if (! isset($rawData['partner_code']) || $rawData['partner_code'] === '') {
@@ -225,25 +236,25 @@ class ArApOpeningService
 
         // Validate total amount
         $total = $rawData['total'] ?? '0.00';
-        if (! is_numeric($total) || bccomp((string) $total, '0.00', $this->scale()) <= 0) {
+        if (! is_numeric($total) || bccomp((string) $total, '0.00', $scale) <= 0) {
             $errors['total'] = ['Total amount must be a positive number'];
         } else {
-            $mappedData['total'] = bcadd('0.00', (string) $total, $this->scale());
+            $mappedData['total'] = bcadd('0.00', (string) $total, $scale);
         }
 
         // Validate open amount
         $openAmount = $rawData['open_amount'] ?? '0.00';
-        if (! is_numeric($openAmount) || bccomp((string) $openAmount, '0.00', $this->scale()) < 0) {
+        if (! is_numeric($openAmount) || bccomp((string) $openAmount, '0.00', $scale) < 0) {
             $errors['open_amount'] = ['Open amount must be a non-negative number'];
         } else {
-            $mappedData['open_amount'] = bcadd('0.00', (string) $openAmount, $this->scale());
+            $mappedData['open_amount'] = bcadd('0.00', (string) $openAmount, $scale);
         }
 
         // Validate open_amount <= total
         if (empty($errors['total']) && empty($errors['open_amount'])) {
             $openAmountVal = $mappedData['open_amount'] ?? '0.00';
             $totalVal = $mappedData['total'] ?? '0.00';
-            if (bccomp($openAmountVal, $totalVal, $this->scale()) > 0) {
+            if (bccomp($openAmountVal, $totalVal, $scale) > 0) {
                 $errors['open_amount'] = ['Open amount cannot exceed total amount'];
             }
         }
@@ -339,6 +350,7 @@ class ArApOpeningService
             $partnerIds = [];
             $totalAmount = '0.00';
             $totalOpenAmount = '0.00';
+            $scale = $this->moneyScale($company->currency);
 
             foreach ($validRows as $row) {
                 $mappedData = $row->mapped_data;
@@ -395,8 +407,8 @@ class ArApOpeningService
                 ];
 
                 $partnerIds[] = (string) $mappedData['partner_id'];
-                $totalAmount = bcadd($totalAmount, $mappedData['total'], $this->scale());
-                $totalOpenAmount = bcadd($totalOpenAmount, $mappedData['open_amount'], $this->scale());
+                $totalAmount = bcadd($totalAmount, $mappedData['total'], $scale);
+                $totalOpenAmount = bcadd($totalOpenAmount, $mappedData['open_amount'], $scale);
                 $rowEntityMap[$row->id] = $document->id;
             }
 
@@ -433,13 +445,15 @@ class ArApOpeningService
         $this->assertValidBatchType($batch);
 
         $isAr = $batch->type === OpeningBatchType::ArOpenItems;
+        $companyCurrency = $batch->company->currency;
+        $scale = $this->moneyScale($companyCurrency);
 
         $validRows = $batch->rows()
             ->where('status', OpeningImportRowStatus::Valid)
             ->orderBy('row_number')
             ->get();
 
-        $documents = $validRows->map(function (OpeningBalanceImportRow $row): array {
+        $documents = $validRows->map(function (OpeningBalanceImportRow $row) use ($companyCurrency): array {
             $mappedData = $row->mapped_data;
             $docType = $mappedData['document_type'] ?? null;
 
@@ -451,7 +465,7 @@ class ArApOpeningService
                 'document_type' => $docType instanceof DocumentType ? $docType->value : 'invoice',
                 'document_date' => $mappedData['document_date'] ?? '',
                 'due_date' => $mappedData['due_date'] ?? '',
-                'currency' => $mappedData['currency'] ?? 'TND',
+                'currency' => $mappedData['currency'] ?? $companyCurrency,
                 'total' => $mappedData['total'] ?? '0.00',
                 'open_amount' => $mappedData['open_amount'] ?? '0.00',
             ];
@@ -459,13 +473,13 @@ class ArApOpeningService
 
         $totalAmount = $documents->reduce(
             /** @phpstan-ignore argument.type */
-            fn (string $carry, array $doc): string => bcadd($carry, (string) $doc['total'], $this->scale()),
+            fn (string $carry, array $doc): string => bcadd($carry, (string) $doc['total'], $scale),
             '0.00'
         );
 
         $totalOpenAmount = $documents->reduce(
             /** @phpstan-ignore argument.type */
-            fn (string $carry, array $doc): string => bcadd($carry, (string) $doc['open_amount'], $this->scale()),
+            fn (string $carry, array $doc): string => bcadd($carry, (string) $doc['open_amount'], $scale),
             '0.00'
         );
 
