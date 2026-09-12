@@ -7,13 +7,13 @@ namespace App\Modules\Inventory\Application\Services;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
-use App\Modules\Inventory\Domain\Enums\TransferStatus;
 use App\Modules\Inventory\Domain\Events\StockMovementRecorded;
 use App\Modules\Inventory\Domain\Events\StockMovementRecordedV2;
 use App\Modules\Inventory\Domain\Exceptions\InsufficientStockForFulfilmentException;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\Inventory\Domain\StockTransfer;
 use App\Modules\Inventory\Domain\StockTransferLine;
 use App\Modules\Product\Application\Services\MarginService;
 use App\Modules\Product\Domain\Events\ProductCostPriceUpdated;
@@ -121,8 +121,11 @@ class WeightedAverageCostService
             ->where('stock_transfer_lines.product_id', $productId)
             ->where('stock_transfers.tenant_id', $tenantId)
             ->where('stock_transfers.company_id', $companyId)
-            ->where('stock_transfers.status', TransferStatus::InTransit)
-            ->sum('stock_transfer_lines.quantity');
+            ->whereIn('stock_transfers.status', StockTransfer::CARRYING_STATUSES)
+            ->toBase()->selectRaw('COALESCE(SUM('.StockTransferLine::REMAINDER_SQL.'), 0) AS remainder')->value('remainder');
+        if (! is_numeric($inTransit)) {
+            throw new \LogicException('In-transit quantity must be a decimal.');
+        }
 
         return bcadd($onHand, $inTransit, $working);
     }

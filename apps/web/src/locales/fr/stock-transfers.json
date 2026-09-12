@@ -21,6 +21,9 @@
   "status": {
     "draft": "Brouillon",
     "in_transit": "En transit",
+    "partially_received": "Partiellement reçu",
+    "closed_with_writeoff": "Clôturé avec perte",
+    "closed_returned": "Clôturé avec retour",
     "completed": "Complété",
     "cancelled": "Annulé"
   },
@@ -145,7 +148,8 @@
     },
     "confirmComplete": {
       "title": "Confirmer la réception ?",
-      "description": "Le stock de destination sera incrémenté et le coût moyen pondéré recalculé si des frais additionnels existent."
+      "description": "{{shortLines}} lignes sur {{totalLines}} ne sont pas entièrement arrivées. Confirmer comptabilise la totalité du reliquat comme reçu à destination.",
+      "inTransitDescription": "Le stock de destination sera incrémenté et le coût moyen pondéré recalculé si des frais additionnels existent."
     },
     "confirmCancel": {
       "title": "Annuler ce transfert ?",

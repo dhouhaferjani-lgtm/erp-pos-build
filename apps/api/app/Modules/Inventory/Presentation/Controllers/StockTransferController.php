@@ -10,18 +10,29 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferBatchAllocationData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
+use App\Modules\Inventory\Application\DTOs\StockTransferReceiptData;
+use App\Modules\Inventory\Application\DTOs\TransferCloseReceiptData;
+use App\Modules\Inventory\Application\Services\StockTransferReceiptService;
 use App\Modules\Inventory\Application\Services\StockTransferService;
+use App\Modules\Inventory\Application\Services\TransferPayloadBuilder;
+use App\Modules\Inventory\Application\Services\TransferReconciliationService;
 use App\Modules\Inventory\Domain\Enums\TransferCostDistribution;
+use App\Modules\Inventory\Domain\Enums\TransferReceiptKind;
 use App\Modules\Inventory\Domain\Enums\TransferStatus;
 use App\Modules\Inventory\Domain\Exceptions\InsufficientStockException;
+use App\Modules\Inventory\Domain\Exceptions\TransferReceiptFailureException;
 use App\Modules\Inventory\Domain\Exceptions\TransferStateException;
 use App\Modules\Inventory\Domain\StockTransfer;
+use App\Modules\Inventory\Domain\StockTransferReceipt;
+use App\Modules\Inventory\Presentation\Requests\CloseStockTransferRequest;
+use App\Modules\Inventory\Presentation\Requests\ReceiveStockTransferRequest;
 use App\Modules\Inventory\Presentation\Requests\StoreStockTransferRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use Spatie\LaravelData\Data;
 
 class StockTransferController extends Controller
 {
@@ -29,6 +40,9 @@ class StockTransferController extends Controller
         private readonly StockTransferService $service,
         private readonly CompanyContext $companyContext,
         private readonly LocationContext $locationContext,
+        private readonly StockTransferReceiptService $receiptService,
+        private readonly TransferPayloadBuilder $payloadBuilder,
+        private readonly TransferReconciliationService $reconciliationService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -40,7 +54,7 @@ class StockTransferController extends Controller
         $query = StockTransfer::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
-            ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'lines.product.unitOfMeasure', 'lines.variant', 'lines.batchAllocations.batch']);
+            ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'closedBy', 'receipts.receivedBy', 'lines.product.unitOfMeasure', 'lines.variant', 'lines.batchAllocations.batch']);
 
         // Location scoping: a restricted user only sees transfers whose source
         // OR destination is in their allowed set (so incoming transfers from
@@ -80,7 +94,7 @@ class StockTransferController extends Controller
         $transfers = $query->orderByDesc('created_at')->paginate($perPage);
 
         return response()->json([
-            'data' => $transfers->getCollection()->map(fn (StockTransfer $t) => $this->formatTransfer($t))->all(),
+            'data' => $transfers->getCollection()->map(fn (StockTransfer $t) => $this->payloadBuilder->build($t))->all(),
             'meta' => [
                 'current_page' => $transfers->currentPage(),
                 'per_page' => $transfers->perPage(),
@@ -104,7 +118,7 @@ class StockTransferController extends Controller
         $model = StockTransfer::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id)
-            ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'completedBy', 'cancelledBy', 'lines.product.unitOfMeasure', 'lines.variant', 'lines.batchAllocations.batch'])
+            ->with(['sourceLocation', 'destinationLocation', 'initiatedBy', 'closedBy', 'receipts.receivedBy', 'completedBy', 'cancelledBy', 'lines.product.unitOfMeasure', 'lines.variant', 'lines.batchAllocations.batch'])
             ->findOrFail($transfer);
 
         // A transfer the user cannot see (neither endpoint in their allowed set)
@@ -114,7 +128,7 @@ class StockTransferController extends Controller
         }
 
         return response()->json([
-            'data' => $this->formatTransfer($model, includeLines: true),
+            'data' => $this->payloadBuilder->build($model, includeLines: true),
         ]);
     }
 
@@ -195,10 +209,10 @@ class StockTransferController extends Controller
             ], 422);
         }
 
-        $transfer->load(['sourceLocation', 'destinationLocation', 'initiatedBy', 'lines.product.unitOfMeasure', 'lines.variant', 'lines.batchAllocations.batch']);
+        $transfer->load(['sourceLocation', 'destinationLocation', 'initiatedBy', 'closedBy', 'receipts.receivedBy', 'lines.product.unitOfMeasure', 'lines.variant', 'lines.batchAllocations.batch']);
 
         return response()->json([
-            'data' => $this->formatTransfer($transfer, includeLines: true),
+            'data' => $this->payloadBuilder->build($transfer, includeLines: true),
         ], 201);
     }
 
@@ -218,12 +232,14 @@ class StockTransferController extends Controller
             ->findOrFail($transfer);
 
         // Completing = receiving into the DESTINATION, so require destination access.
-        if (! $this->locationContext->canAccessLocation($existing->destination_location_id, $company->id, $user)) {
-            return $this->locationAccessDeniedResponse($existing->destination_location_id, $user->id);
+        if (($denied = $this->canAccessLocationOrFail($existing->destination_location_id, $company->id, $user)) !== null) {
+            return $denied;
         }
 
         try {
-            $completed = $this->service->complete($existing->id, $user->id);
+            $completed = $this->service->complete($existing, $user->id);
+        } catch (TransferReceiptFailureException $e) {
+            return $this->receiptFailureResponse($e);
         } catch (TransferStateException $e) {
             return $this->stateExceptionResponse($e);
         }
@@ -231,7 +247,7 @@ class StockTransferController extends Controller
         $completed->load(['sourceLocation', 'destinationLocation', 'completedBy', 'lines.product.unitOfMeasure', 'lines.variant', 'lines.batchAllocations.batch']);
 
         return response()->json([
-            'data' => $this->formatTransfer($completed, includeLines: true),
+            'data' => $this->payloadBuilder->build($completed, includeLines: true),
         ]);
     }
 
@@ -261,7 +277,7 @@ class StockTransferController extends Controller
 
         try {
             $cancelled = $this->service->cancel(
-                transferId: $existing->id,
+                identity: $existing,
                 userId: $user->id,
                 reason: $validated['reason'] ?? null,
             );
@@ -272,72 +288,88 @@ class StockTransferController extends Controller
         $cancelled->load(['sourceLocation', 'destinationLocation', 'cancelledBy', 'lines.product.unitOfMeasure', 'lines.variant', 'lines.batchAllocations.batch']);
 
         return response()->json([
-            'data' => $this->formatTransfer($cancelled, includeLines: true),
+            'data' => $this->payloadBuilder->build($cancelled, includeLines: true),
         ]);
     }
 
-    /**
-     * @return array<string, mixed>
-     */
-    private function formatTransfer(StockTransfer $transfer, bool $includeLines = false): array
+    public function receive(ReceiveStockTransferRequest $request, string $transfer): JsonResponse
     {
-        $payload = [
-            'id' => $transfer->id,
-            'transfer_number' => $transfer->transfer_number,
-            'transfer_type' => $transfer->transfer_type->value,
-            'status' => $transfer->status->value,
-            'source_location_id' => $transfer->source_location_id,
-            'source_location_name' => $transfer->sourceLocation->name ?? null,
-            'destination_location_id' => $transfer->destination_location_id,
-            'destination_location_name' => $transfer->destinationLocation->name ?? null,
-            'notes' => $transfer->notes,
-            'transfer_cost' => $transfer->transfer_cost,
-            'transfer_cost_label' => $transfer->transfer_cost_label,
-            'transfer_cost_distribution' => $transfer->transfer_cost_distribution->value,
-            'initiated_by_user_id' => $transfer->initiated_by_user_id,
-            'initiated_by_name' => $transfer->initiatedBy->name ?? null,
-            'completed_by_user_id' => $transfer->completed_by_user_id,
-            'completed_by_name' => $transfer->completedBy?->name,
-            'cancelled_by_user_id' => $transfer->cancelled_by_user_id,
-            'cancelled_by_name' => $transfer->cancelledBy?->name,
-            'initiated_at' => $transfer->initiated_at?->toIso8601String(),
-            'completed_at' => $transfer->completed_at?->toIso8601String(),
-            'cancelled_at' => $transfer->cancelled_at?->toIso8601String(),
-            'cancellation_reason' => $transfer->cancellation_reason,
-            'created_at' => $transfer->created_at?->toIso8601String(),
-            'updated_at' => $transfer->updated_at?->toIso8601String(),
-        ];
-
-        if ($includeLines) {
-            $payload['lines'] = $transfer->lines->map(function ($line): array {
-                $lineProduct = $line->relationLoaded('product') ? $line->product : null;
-
-                return [
-                    'id' => $line->id,
-                    'product_id' => $line->product_id,
-                    'product_name' => $lineProduct?->name,
-                    'product_sku' => $lineProduct?->sku,
-                    'variant_id' => $line->variant_id,
-                    'variant_sku' => $line->variant->sku ?? null,
-                    'variant_name' => $line->variant->name_suffix ?? null,
-                    'quantity' => $line->quantity,
-                    'quantity_decimals' => $lineProduct?->unitOfMeasure->decimal_places ?? 4,
-                    'unit_cost_snapshot' => $line->unit_cost_snapshot,
-                    'allocated_transfer_cost' => $line->allocated_transfer_cost,
-                    'batch_allocations' => $line->batchAllocations->map(fn ($allocation) => [
-                        'id' => $allocation->id,
-                        'batch_id' => $allocation->batch_id,
-                        'batch_number' => $allocation->batch->batch_number,
-                        'expiry_date' => $allocation->batch->expiry_date?->toDateString(),
-                        'expiry_status' => $allocation->batch->expiryStatus()->value,
-                        'can_be_sold' => $allocation->batch->canBeSold(),
-                        'quantity' => $allocation->quantity,
-                    ])->all(),
-                ];
-            })->all();
+        $company = $this->companyContext->requireCompany();
+        /** @var User $user */
+        $user = $request->user();
+        if (! Str::isUuid($transfer)) {
+            abort(404);
+        }
+        $model = StockTransfer::query()->where('tenant_id', $company->tenant_id)->where('company_id', $company->id)->findOrFail($transfer);
+        if (($denied = $this->canAccessLocationOrFail($model->destination_location_id, $company->id, $user)) !== null) {
+            return $denied;
+        }
+        try {
+            $result = $this->receiptService->receive($model->id, $user->id, $request->toPayload(), $company->tenant_id, $company->id);
+        } catch (TransferReceiptFailureException $e) {
+            return $this->receiptFailureResponse($e);
+        } catch (TransferStateException $e) {
+            return $this->stateExceptionResponse($e);
         }
 
-        return $payload;
+        return response()->json(['data' => ['receipt' => $this->receiptPayload($result->receipt), 'transfer' => $this->payloadBuilder->build($result->transfer, includeLines: true)], 'meta' => ['replayed' => $result->replayed]], $result->replayed ? 200 : 201);
+    }
+
+    public function close(CloseStockTransferRequest $request, string $transfer): JsonResponse
+    {
+        $company = $this->companyContext->requireCompany();
+        /** @var User $user */
+        $user = $request->user();
+        if (! Str::isUuid($transfer)) {
+            abort(404);
+        }
+        $model = StockTransfer::query()->where('tenant_id', $company->tenant_id)->where('company_id', $company->id)->findOrFail($transfer);
+        if (($denied = $this->canAccessLocationOrFail($model->destination_location_id, $company->id, $user)) !== null) {
+            return $denied;
+        }
+        if ($request->input('disposition') === 'return_to_source' && ($denied = $this->canAccessLocationOrFail($model->source_location_id, $company->id, $user)) !== null) {
+            return $denied;
+        }
+        try {
+            $result = $this->receiptService->close($model->id, $user->id, $request->toPayload(), $company->tenant_id, $company->id);
+        } catch (TransferReceiptFailureException $e) {
+            return $this->receiptFailureResponse($e);
+        } catch (TransferStateException $e) {
+            return $this->stateExceptionResponse($e);
+        }
+
+        return response()->json(['data' => ['receipt' => $this->receiptPayload($result->receipt), 'transfer' => $this->payloadBuilder->build($result->transfer, includeLines: true)], 'meta' => ['replayed' => $result->replayed]], $result->replayed ? 200 : 201);
+    }
+
+    public function reconciliation(Request $request, string $transfer): JsonResponse
+    {
+        $company = $this->companyContext->requireCompany();
+        /** @var User $user */
+        $user = $request->user();
+        if (! Str::isUuid($transfer)) {
+            abort(404);
+        }
+        $model = StockTransfer::query()->where('tenant_id', $company->tenant_id)->where('company_id', $company->id)->findOrFail($transfer);
+        if (! $this->canSeeTransfer($model, $company->id, $user)) {
+            abort(404);
+        }
+
+        return response()->json(['data' => $this->reconciliationService->build($model)]);
+    }
+
+    private function canAccessLocationOrFail(string $locationId, string $companyId, User $user): ?JsonResponse
+    {
+        return $this->locationContext->canAccessLocation($locationId, $companyId, $user) ? null : $this->locationAccessDeniedResponse($locationId, $user->id);
+    }
+
+    private function receiptPayload(StockTransferReceipt $receipt): Data
+    {
+        return $receipt->kind === TransferReceiptKind::Close ? TransferCloseReceiptData::fromModel($receipt) : StockTransferReceiptData::fromModel($receipt);
+    }
+
+    private function receiptFailureResponse(TransferReceiptFailureException $e): JsonResponse
+    {
+        return response()->json(['error' => ['code' => $e->reason->value, 'message' => $e->getMessage(), 'details' => $e->details]], 422);
     }
 
     /**

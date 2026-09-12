@@ -17,6 +17,7 @@ use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Inventory\Domain\StockTransfer;
+use App\Modules\Inventory\Domain\StockTransferReceipt;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Support\Facades\Artisan;
@@ -75,7 +76,7 @@ final class StockTransferCompleteConcurrencyPostgresTest extends TestCase
             while (DB::transactionLevel() > 0) {
                 DB::rollBack();
             }
-            foreach (['stock_transfer_line_batch_allocations', 'stock_transfer_lines', 'stock_transfers', 'stock_movements', 'stock_levels', 'products'] as $table) {
+            foreach (['stock_transfer_receipt_line_lots', 'stock_transfer_receipt_lines', 'stock_transfer_receipts', 'stock_transfer_line_batch_allocations', 'stock_transfer_lines', 'stock_transfers', 'stock_movements', 'stock_levels', 'products'] as $table) {
                 DB::table($table)->where('tenant_id', $this->tenant->id)->delete();
             }
             DB::table('locations')->where('company_id', $this->company->id)->delete();
@@ -86,45 +87,43 @@ final class StockTransferCompleteConcurrencyPostgresTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_concurrent_complete_waits_for_row_lock_then_refuses_without_duplicate_stock(): void
+    public function test_concurrent_complete_waits_for_row_lock_then_replays_without_duplicate_stock(): void
     {
         $transfer = $this->transfer('10.000');
-        DB::beginTransaction();
-        // The winner has completed inside its still-uncommitted transaction.
-        // The other process sees InTransit and must block on the row lock.
-        app(StockTransferService::class)->complete($transfer->id, $this->user->id);
-        $tag = 't1-complete-'.$transfer->id;
-        $script = <<<'CHILD'
-require 'vendor/autoload.php';
-$app = require 'bootstrap/app.php';
-$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-Illuminate\Support\Facades\DB::select("SELECT set_config('application_name', ?, false)", [$argv[4]]);
-$app->make(App\Modules\Company\Services\CompanyContext::class)->setCompanyId($argv[3]);
-try {
-    $app->make(App\Modules\Inventory\Application\Services\StockTransferService::class)->complete($argv[1], $argv[2]);
-    echo 'UNEXPECTED_COMPLETION';
-    exit(2);
-} catch (App\Modules\Inventory\Domain\Exceptions\TransferStateException $e) {
-    echo json_encode(['status' => $e->currentStatus->value, 'action' => $e->attemptedAction], JSON_THROW_ON_ERROR);
-}
-CHILD;
-        $this->contender = new Process([PHP_BINARY, '-r', $script, $transfer->id, $this->user->id, $this->company->id, $tag], base_path(), $this->childEnvironment(), timeout: 20);
-        $this->contender->start();
-        $deadline = microtime(true) + 10;
-        $blocked = false;
-        do {
-            DB::select('SELECT pg_stat_clear_snapshot()');
-            $row = DB::selectOne('SELECT wait_event_type FROM pg_stat_activity WHERE application_name = ?', [$tag]);
-            $blocked = $row !== null && $row->wait_event_type === 'Lock';
-            if ($blocked || ! $this->contender->isRunning()) {
-                break;
-            }
-            usleep(20000);
-        } while (microtime(true) < $deadline);
-        self::assertTrue($blocked, 'Second process must actually block on PostgreSQL lock: '.$this->contender->getErrorOutput().$this->contender->getOutput());
-        DB::commit();
+        // Start the contender while the winner owns its receipt root transaction.
+        StockTransferReceipt::created(function () use ($transfer): void {
+            $tag = 't1-complete-'.$transfer->id;
+            $script = <<<'CHILD'
+    require 'vendor/autoload.php';
+    $app = require 'bootstrap/app.php';
+    $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+    Illuminate\Support\Facades\DB::select("SELECT set_config('application_name', ?, false)", [$argv[4]]);
+    $app->make(App\Modules\Company\Services\CompanyContext::class)->setCompanyId($argv[3]);
+    try {
+        $transfer = $app->make(App\Modules\Inventory\Application\Services\StockTransferService::class)->complete(App\Modules\Inventory\Domain\StockTransfer::query()->where('tenant_id', $app->make(App\Modules\Company\Services\CompanyContext::class)->requireCompany()->tenant_id)->where('company_id', $argv[3])->findOrFail($argv[1]), $argv[2]);
+        echo json_encode(['status' => $transfer->status->value, 'receipt_count' => $transfer->receipts()->count()], JSON_THROW_ON_ERROR);
+    } catch (App\Modules\Inventory\Domain\Exceptions\TransferStateException $e) {
+        echo json_encode(['status' => $e->currentStatus->value, 'action' => $e->attemptedAction], JSON_THROW_ON_ERROR);
+    }
+    CHILD;
+            $this->contender = new Process([PHP_BINARY, '-r', $script, $transfer->id, $this->user->id, $this->company->id, $tag], base_path(), $this->childEnvironment(), timeout: 20);
+            $this->contender->start();
+            $deadline = microtime(true) + 10;
+            $blocked = false;
+            do {
+                DB::select('SELECT pg_stat_clear_snapshot()');
+                $row = DB::selectOne('SELECT wait_event_type FROM pg_stat_activity WHERE application_name = ?', [$tag]);
+                $blocked = $row !== null && $row->wait_event_type === 'Lock';
+                if ($blocked || ! $this->contender->isRunning()) {
+                    break;
+                }
+                usleep(20000);
+            } while (microtime(true) < $deadline);
+            self::assertTrue($blocked, 'Second process must actually block on PostgreSQL lock: '.$this->contender->getErrorOutput().$this->contender->getOutput());
+        });
+        app(StockTransferService::class)->complete($transfer, $this->user->id);
         self::assertSame(0, $this->contender->wait(), $this->contender->getErrorOutput());
-        self::assertSame(['status' => 'completed', 'action' => 'complete'], json_decode($this->contender->getOutput(), true, flags: JSON_THROW_ON_ERROR));
+        self::assertSame(['status' => 'completed', 'receipt_count' => 1], json_decode($this->contender->getOutput(), true, flags: JSON_THROW_ON_ERROR));
         self::assertSame('4.0000', StockLevel::query()->where('product_id', $this->product->id)->where('location_id', $this->destination->id)->sole()->quantity);
         self::assertSame('6.0000', StockLevel::query()->where('product_id', $this->product->id)->where('location_id', $this->source->id)->sole()->quantity);
         self::assertSame(1, StockMovement::query()->where('reference_id', $transfer->id)->where('movement_type', MovementType::TransferIn)->count());
@@ -132,23 +131,21 @@ CHILD;
         self::assertSame(1, StockMovement::query()->where('reference_id', $transfer->id)->where('movement_type', MovementType::Adjustment)->count());
     }
 
-    public function test_freight_capitalization_uses_ten_owned_units_not_fourteen_inside_transaction(): void
+    public function test_freight_capitalization_uses_ten_owned_units_not_fourteen_at_receipt_root(): void
     {
         $transfer = $this->transfer('10.000');
         $journalsBefore = DB::table('journal_entries')->count();
         self::assertSame(0, $journalsBefore);
-        DB::transaction(function () use ($transfer, $journalsBefore): void {
-            app(StockTransferService::class)->complete($transfer->id, $this->user->id);
-            self::assertSame($journalsBefore, DB::table('journal_entries')->count());
-            self::assertGreaterThan(0, DB::transactionLevel());
-            self::assertSame(TransferStatus::Completed, $transfer->refresh()->status);
-            // 50 initial value + 10 freight / 10 owned units = 6, never 5.7142 (14 units).
-            self::assertSame('6.000000', $this->product->refresh()->cost_price);
-            $cost = StockMovement::query()->where('reference_id', $transfer->id)->where('movement_type', MovementType::Adjustment)->sole();
-            self::assertSame('10.0000', $cost->quantity_before);
-            self::assertSame('10.0000', $cost->quantity_after);
-            self::assertSame('6.000000', $cost->avg_cost_after);
-        });
+        app(StockTransferService::class)->complete($transfer, $this->user->id);
+        self::assertSame($journalsBefore, DB::table('journal_entries')->count());
+        self::assertSame(0, DB::transactionLevel());
+        self::assertSame(TransferStatus::Completed, $transfer->refresh()->status);
+        // 50 initial value + 10 freight / 10 owned units = 6, never 5.7142 (14 units).
+        self::assertSame('6.000000', $this->product->refresh()->cost_price);
+        $cost = StockMovement::query()->where('reference_id', $transfer->id)->where('movement_type', MovementType::Adjustment)->sole();
+        self::assertSame('10.0000', $cost->quantity_before);
+        self::assertSame('10.0000', $cost->quantity_after);
+        self::assertSame('6.000000', $cost->avg_cost_after);
         self::assertSame($journalsBefore, DB::table('journal_entries')->count());
         self::assertSame('6.000000', $this->product->refresh()->cost_price);
     }

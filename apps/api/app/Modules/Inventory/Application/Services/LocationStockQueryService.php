@@ -8,8 +8,9 @@ use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Inventory\Domain\Enums\TransferStatus;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockTransfer;
+use App\Modules\Inventory\Domain\StockTransferLine;
 use App\Shared\Contracts\LocationStockReader;
 use App\Shared\Domain\QuantityScale;
 use App\Shared\DTOs\LocationIncomingRowDTO;
@@ -135,13 +136,13 @@ final class LocationStockQueryService implements LocationStockReader
         }
 
         // (3) In-transit incoming per destination location (one grouped query).
-        // Attributed to the destination only, status=in_transit only.
+        // Attributed to the destination only, only while the transfer carries an open remainder.
         $transferQuery = DB::table('stock_transfer_lines')
             ->join('stock_transfers', 'stock_transfer_lines.transfer_id', '=', 'stock_transfers.id')
             ->where('stock_transfer_lines.tenant_id', $tenantId)
             ->where('stock_transfer_lines.company_id', $companyId)
             ->where('stock_transfer_lines.product_id', $productId)
-            ->where('stock_transfers.status', TransferStatus::InTransit->value);
+            ->whereIn('stock_transfers.status', StockTransfer::CARRYING_STATUSES);
         $variantId === null
             ? $transferQuery->whereNull('stock_transfer_lines.variant_id')
             : $transferQuery->where('stock_transfer_lines.variant_id', $variantId);
@@ -153,7 +154,7 @@ final class LocationStockQueryService implements LocationStockReader
             ->groupBy('stock_transfers.destination_location_id')
             ->selectRaw('
                 stock_transfers.destination_location_id as loc,
-                SUM(stock_transfer_lines.quantity) as incoming
+                SUM('.StockTransferLine::REMAINDER_SQL.') as incoming
             ')
             ->get();
         foreach ($incomingRows as $row) {
@@ -225,12 +226,12 @@ final class LocationStockQueryService implements LocationStockReader
             ->where('stock_transfer_lines.tenant_id', $tenantId)
             ->where('stock_transfer_lines.company_id', $companyId)
             ->where('stock_transfers.destination_location_id', $locationId)
-            ->where('stock_transfers.status', TransferStatus::InTransit->value)
+            ->whereIn('stock_transfers.status', StockTransfer::CARRYING_STATUSES)
             ->groupBy('stock_transfer_lines.product_id', 'stock_transfer_lines.variant_id')
             ->selectRaw('
                 stock_transfer_lines.product_id,
                 stock_transfer_lines.variant_id,
-                SUM(stock_transfer_lines.quantity) as incoming
+                SUM('.StockTransferLine::REMAINDER_SQL.') as incoming
             ')
             ->get();
 

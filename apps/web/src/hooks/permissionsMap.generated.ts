@@ -1,6 +1,6 @@
 // This file is generated. Do not edit it by hand.
 // Source: apps/api/database/seeders/RolesAndPermissionsSeeder.php
-// Source hash: sha256:a00c4e9ddf1ba329a62305e233c386bda4120d120c4b0fc9b018f9502ed53f6b
+// Source hash: sha256:8c56d87a7a3765ded57192e845e147815d13aacc540132faff35692e46fb48a8
 
 export const PERMISSIONS = {
   'accounts.manage': ['accountant', 'admin', 'manager'],
@@ -116,8 +116,10 @@ export const PERMISSIONS = {
   'inventory.receive': ['admin', 'manager'],
   'inventory.transfer': ['admin', 'manager'],
   'inventory.transfers.cancel': ['admin', 'manager'],
+  'inventory.transfers.close': ['admin', 'manager'],
   'inventory.transfers.complete': ['admin', 'manager'],
   'inventory.transfers.create': ['admin', 'manager'],
+  'inventory.transfers.reconcile': ['admin', 'manager'],
   'inventory.transfers.view': ['admin', 'manager'],
   'inventory.view': ['admin', 'cashier', 'manager', 'operator', 'technician', 'viewer'],
   'invoices.cancel': ['admin'],

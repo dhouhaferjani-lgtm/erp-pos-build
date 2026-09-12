@@ -198,6 +198,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'inventory.transfers.create',
             'inventory.transfers.complete',
             'inventory.transfers.cancel',
+            'inventory.transfers.reconcile',
+            'inventory.transfers.close',
 
             // Stock Adjustment (document-based manual correction, DPA V7 / D9).
             // The SAP step split: authoring and posting are separately
@@ -599,7 +601,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'credit-notes.view', 'credit-notes.create', 'credit-notes.post',
                 'inventory.view', 'inventory.adjust', 'inventory.transfer', 'inventory.receive',
                 'uom.view', 'uom.create', 'uom.edit', 'uom.delete', 'units.manage',
-                'inventory.transfers.view', 'inventory.transfers.create', 'inventory.transfers.complete', 'inventory.transfers.cancel',
+                'inventory.transfers.view', 'inventory.transfers.create', 'inventory.transfers.complete', 'inventory.transfers.cancel', 'inventory.transfers.reconcile', 'inventory.transfers.close',
                 'inventory.adjustments.view', 'inventory.adjustments.create', 'inventory.adjustments.post', 'inventory.adjustments.cancel',
                 'deliveries.view', 'deliveries.create', 'deliveries.edit', 'deliveries.delete', 'deliveries.confirm',
                 'expenses.view', 'expenses.create', 'expenses.update', 'expenses.post', 'expenses.pay',

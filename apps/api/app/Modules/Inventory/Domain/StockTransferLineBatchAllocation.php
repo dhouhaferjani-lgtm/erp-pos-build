@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Domain;
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\QuantityScale;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,6 +20,10 @@ use Illuminate\Support\Carbon;
  * @property string $company_id
  * @property int $batch_id
  * @property numeric-string $quantity
+ * @property numeric-string $quantity_received
+ * @property numeric-string $quantity_damaged
+ * @property numeric-string $quantity_written_off
+ * @property numeric-string $quantity_returned
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read StockTransferLine $line
@@ -38,6 +43,11 @@ class StockTransferLineBatchAllocation extends Model
         'company_id',
         'batch_id',
         'quantity',
+        'quantity_received',
+        'quantity_damaged',
+        'quantity_written_off',
+        'quantity_returned',
+
     ];
 
     /**
@@ -48,6 +58,11 @@ class StockTransferLineBatchAllocation extends Model
         return [
             'batch_id' => 'integer',
             'quantity' => 'decimal:4',
+            'quantity_received' => 'decimal:4',
+            'quantity_damaged' => 'decimal:4',
+            'quantity_written_off' => 'decimal:4',
+            'quantity_returned' => 'decimal:4',
+
         ];
     }
 
@@ -81,5 +96,16 @@ class StockTransferLineBatchAllocation extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    /** @return numeric-string */
+    public function remainingQuantity(): string
+    {
+        $remaining = $this->quantity;
+        foreach ([$this->quantity_received, $this->quantity_damaged, $this->quantity_written_off, $this->quantity_returned] as $accounted) {
+            $remaining = bcsub($remaining, $accounted, QuantityScale::SCALE);
+        }
+
+        return $remaining;
     }
 }

@@ -7,7 +7,9 @@ namespace App\Modules\Inventory\Domain;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Enums\TransferCloseDisposition;
 use App\Modules\Inventory\Domain\Enums\TransferCostDistribution;
+use App\Modules\Inventory\Domain\Enums\TransferDiscrepancyReason;
 use App\Modules\Inventory\Domain\Enums\TransferStatus;
 use App\Modules\Inventory\Domain\Enums\TransferType;
 use App\Modules\Tenant\Domain\Tenant;
@@ -21,6 +23,14 @@ use Illuminate\Support\Carbon;
 
 /**
  * @property string $id
+ * @property numeric-string $freight_uncapitalized
+ * @property string|null $closed_by_user_id
+ * @property Carbon|null $closed_at
+ * @property TransferCloseDisposition|null $close_disposition
+ * @property TransferDiscrepancyReason|null $close_reason
+ * @property string|null $close_note
+ * @property-read User|null $closedBy
+ * @property-read Collection<int, StockTransferReceipt> $receipts
  * @property string $tenant_id
  * @property string $company_id
  * @property string $transfer_number
@@ -58,6 +68,13 @@ class StockTransfer extends Model
     protected $table = 'stock_transfers';
 
     protected $fillable = [
+        'freight_uncapitalized',
+        'closed_by_user_id',
+        'closed_at',
+        'close_disposition',
+        'close_reason',
+        'close_note',
+
         'tenant_id',
         'company_id',
         'transfer_number',
@@ -85,6 +102,11 @@ class StockTransfer extends Model
     protected function casts(): array
     {
         return [
+            'freight_uncapitalized' => 'decimal:4',
+            'closed_at' => 'datetime',
+            'close_disposition' => TransferCloseDisposition::class,
+            'close_reason' => TransferDiscrepancyReason::class,
+
             'transfer_type' => TransferType::class,
             'status' => TransferStatus::class,
             'transfer_cost_distribution' => TransferCostDistribution::class,
@@ -184,5 +206,29 @@ class StockTransfer extends Model
     public function scopeWithStatus(Builder $query, TransferStatus $status): Builder
     {
         return $query->where('status', $status);
+    }
+
+    /** @var list<string> */
+    public const array CARRYING_STATUSES = [TransferStatus::InTransit->value, TransferStatus::PartiallyReceived->value];
+
+    /**
+     * @param  Builder<StockTransfer>  $query
+     * @return Builder<StockTransfer>
+     */
+    public function scopeCarryingInTransit(Builder $query): Builder
+    {
+        return $query->whereIn('stock_transfers.status', self::CARRYING_STATUSES);
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function closedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'closed_by_user_id');
+    }
+
+    /** @return HasMany<StockTransferReceipt, $this> */
+    public function receipts(): HasMany
+    {
+        return $this->hasMany(StockTransferReceipt::class, 'transfer_id')->orderBy('sequence');
     }
 }

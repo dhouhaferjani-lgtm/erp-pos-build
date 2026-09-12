@@ -15,20 +15,18 @@ use App\Modules\Inventory\Domain\Enums\TransferCostDistribution;
 use App\Modules\Inventory\Domain\Enums\TransferStatus;
 use App\Modules\Inventory\Domain\Enums\TransferType;
 use App\Modules\Inventory\Domain\Events\StockTransferCancelled;
-use App\Modules\Inventory\Domain\Events\StockTransferCompleted;
 use App\Modules\Inventory\Domain\Events\StockTransferInitiated;
 use App\Modules\Inventory\Domain\Exceptions\InsufficientStockException;
+use App\Modules\Inventory\Domain\Exceptions\TransferReceiptFailureException;
 use App\Modules\Inventory\Domain\Exceptions\TransferStateException;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
-use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Inventory\Domain\StockTransfer;
 use App\Modules\Inventory\Domain\StockTransferLine;
 use App\Modules\Inventory\Domain\StockTransferLineBatchAllocation;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\ProductVariantLookup;
-use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\QuantityScale;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -62,18 +60,12 @@ class StockTransferService
 {
     private const QTY_SCALE = 4;
 
-    /**
-     * Intermediate scale for transfer-cost allocation arithmetic. Matches the
-     * WAC service's internal COST_SCALE (6) so the freight share carried into
-     * recordCostAdjustment is at the same working precision.
-     */
-    private const ALLOCATION_SCALE = 6;
-
     public function __construct(
         private readonly StockAdjustmentService $stockAdjustmentService,
-        private readonly WeightedAverageCostService $wacService,
         private readonly ProductCostLock $costLock,
         private readonly ProductVariantLookup $variantLookup,
+        private readonly StockTransferMovementSupport $movementSupport,
+        private readonly StockTransferReceiptService $receiptService,
     ) {}
 
     /**
@@ -165,7 +157,7 @@ class StockTransferService
                 }
 
                 // Move stock into in_transit immediately.
-                return $this->moveSourceToInTransit($transfer->id, $data->initiatedByUserId);
+                return $this->moveSourceToInTransit($transfer, $data->initiatedByUserId);
             }, attempts: 3);
         } catch (UniqueConstraintViolationException $exception) {
             // ID-4: a concurrent caller committed the same logical transfer while
@@ -313,111 +305,15 @@ class StockTransferService
      * transfer_cost into company-wide WAC, mark as completed.
      *
      * @throws TransferStateException when transfer is not in_transit
+     * @throws TransferReceiptFailureException
      */
-    public function complete(string $transferId, string $userId): StockTransfer
+    public function complete(StockTransfer $identity, string $userId): StockTransfer
     {
-        return DB::transaction(function () use ($transferId, $userId): StockTransfer {
-            $transfer = $this->lockTransfer($transferId);
+        $transferId = $identity->id;
 
-            if (! $transfer->status->canBeCompleted()) {
-                throw new TransferStateException($transfer->id, $transfer->status, 'complete');
-            }
-
-            // Multi-product deadlock defense: acquire ALL line product advisory
-            // locks UP-FRONT in ONE sorted call (ProductCostLock sorts internally)
-            // before the per-line receive()/recordCostAdjustment() loop. Those
-            // nested per-line acquire([singleId]) calls just re-acquire the
-            // already-held xact advisory locks (PG advisory locks are re-entrant,
-            // auto-released at tx end). Without this, two transfers with lines
-            // [A,B] vs [B,A] acquire in opposite order and deadlock; attempts:3
-            // retries the same order and never breaks it.
-            $productIds = $this->lineProductIds($transfer);
-
-            return $this->costLock->acquire($transfer->tenant_id, $transfer->company_id, $productIds, function () use ($transfer, $userId): StockTransfer {
-                return $this->completeLocked($transfer, $userId);
-            });
-        }, attempts: 3);
-    }
-
-    /**
-     * Inner body of complete(), run with all line product advisory locks held
-     * up-front in canonical sorted order (see complete()).
-     */
-    private function completeLocked(StockTransfer $transfer, string $userId): StockTransfer
-    {
-        $reference = $transfer->transfer_number;
-        foreach ($transfer->lines as $line) {
-            // load unlocked — receive()/recordCostAdjustment() take advisory-then-product-row lock in the canonical order; pre-locking the product row here would invert the order vs recordPurchase and deadlock.
-            $product = Product::query()
-                ->where('tenant_id', $transfer->tenant_id)
-                ->where('company_id', $transfer->company_id)
-                ->findOrFail($line->product_id);
-
-            if ($line->batchAllocations->isNotEmpty()) {
-                foreach ($line->batchAllocations as $allocation) {
-                    $movement = $this->stockAdjustmentService->receive(
-                        productId: $product->id,
-                        locationId: $transfer->destination_location_id,
-                        quantity: (string) $allocation->quantity,
-                        reference: $reference,
-                        userId: $userId,
-                        batchId: $allocation->batch_id,
-                        expectedCompanyId: $transfer->company_id,
-                        variantId: $line->variant_id,
-                    );
-
-                    $this->markMovementAsTransfer($movement, MovementType::TransferIn, $transfer->id);
-                }
-            } else {
-                $movement = $this->stockAdjustmentService->receive(
-                    productId: $product->id,
-                    locationId: $transfer->destination_location_id,
-                    quantity: (string) $line->quantity,
-                    reference: $reference,
-                    userId: $userId,
-                    expectedCompanyId: $transfer->company_id,
-                    variantId: $line->variant_id,
-                );
-
-                $this->markMovementAsTransfer($movement, MovementType::TransferIn, $transfer->id);
-            }
-        }
-
-        // Persist the Completed status BEFORE capitalizing the transfer cost.
-        // recordCostAdjustment re-queries stock_transfers for in-transit
-        // quantity; if this transfer is still InTransit at that point its
-        // just-received qty is double-counted (in_transit + on_hand),
-        // inflating the denominator and under-capitalizing the freight cost.
-        $transfer->status = TransferStatus::Completed;
-        $transfer->completed_by_user_id = $userId;
-        $transfer->completed_at = now();
-        $transfer->save();
-
-        // Keep transfer_cost as a numeric-string; allocation arithmetic is
-        // done in bcmath at the working scale (see capitalizeTransferCost).
-        /** @var numeric-string $transferCost */
-        $transferCost = (string) $transfer->transfer_cost;
-        if (bccomp($transferCost, '0', self::ALLOCATION_SCALE) > 0) {
-            $this->capitalizeTransferCost($transfer, $transferCost);
-        }
-
-        $transferSnapshot = $transfer->fresh(['lines']) ?? $transfer;
-
-        DB::afterCommit(function () use ($transferSnapshot, $userId): void {
-            event(new StockTransferCompleted(
-                transferId: $transferSnapshot->id,
-                tenantId: $transferSnapshot->tenant_id,
-                companyId: $transferSnapshot->company_id,
-                transferNumber: $transferSnapshot->transfer_number,
-                sourceLocationId: $transferSnapshot->source_location_id,
-                destinationLocationId: $transferSnapshot->destination_location_id,
-                transferCost: (string) $transferSnapshot->transfer_cost,
-                completedByUserId: $userId,
-                occurredAt: now()->toIso8601String(),
-            ));
-        });
-
-        return $transferSnapshot;
+        return $this->receiptService
+            ->receiveAllRemaining($transferId, $userId, 'sys:complete:'.$transferId, $identity->tenant_id, $identity->company_id)
+            ->transfer;
     }
 
     /**
@@ -426,10 +322,10 @@ class StockTransferService
      *
      * @throws TransferStateException when transfer is already terminal
      */
-    public function cancel(string $transferId, string $userId, ?string $reason = null): StockTransfer
+    public function cancel(StockTransfer $identity, string $userId, ?string $reason = null): StockTransfer
     {
-        return DB::transaction(function () use ($transferId, $userId, $reason): StockTransfer {
-            $transfer = $this->lockTransfer($transferId);
+        return DB::transaction(function () use ($identity, $userId, $reason): StockTransfer {
+            $transfer = $this->movementSupport->lockTransfer($identity);
 
             if (! $transfer->status->canBeCancelled()) {
                 throw new TransferStateException($transfer->id, $transfer->status, 'cancel');
@@ -445,43 +341,29 @@ class StockTransferService
                 // up-front in ONE sorted call so two cancels with lines [A,B] vs
                 // [B,A] cannot AB-BA deadlock. Nested per-line acquires inside
                 // receive() are re-entrant (released at tx end).
-                $productIds = $this->lineProductIds($transfer);
+                $productIds = [];
+                foreach ($transfer->lines as $line) {
+                    $productIds[] = $line->product_id;
+                }
+                $productIds = array_values(array_unique($productIds));
 
                 $this->costLock->acquire($transfer->tenant_id, $transfer->company_id, $productIds, function () use ($transfer, $userId, $cancelReference): void {
                     foreach ($transfer->lines as $line) {
-                        if ($line->batchAllocations->isNotEmpty()) {
-                            foreach ($line->batchAllocations as $allocation) {
-                                $movement = $this->stockAdjustmentService->receive(
-                                    productId: $line->product_id,
-                                    locationId: $transfer->source_location_id,
-                                    quantity: (string) $allocation->quantity,
-                                    reference: $cancelReference,
-                                    userId: $userId,
-                                    batchId: $allocation->batch_id,
-                                    expectedCompanyId: $transfer->company_id,
-                                    variantId: $line->variant_id,
-                                );
-
-                                $this->markMovementAsTransfer($movement, MovementType::TransferIn, $transfer->id);
-                            }
-                        } else {
-                            $movement = $this->stockAdjustmentService->receive(
-                                productId: $line->product_id,
-                                locationId: $transfer->source_location_id,
-                                quantity: (string) $line->quantity,
-                                reference: $cancelReference,
-                                userId: $userId,
-                                expectedCompanyId: $transfer->company_id,
-                                variantId: $line->variant_id,
-                            );
-
-                            $this->markMovementAsTransfer($movement, MovementType::TransferIn, $transfer->id);
-                        }
+                        $this->movementSupport->restockAtSource(
+                            $transfer,
+                            $line,
+                            (string) $line->quantity,
+                            $line->batchAllocations->pluck('quantity', 'batch_id')->all(),
+                            $userId,
+                            $cancelReference,
+                        );
                     }
                 });
             }
 
             $transfer->status = TransferStatus::Cancelled;
+            // canBeCancelled() excludes partial/terminal receipts, so no freight has been allocated.
+            $transfer->freight_uncapitalized = $transfer->transfer_cost;
             $transfer->cancelled_by_user_id = $userId;
             $transfer->cancelled_at = now();
             $transfer->cancellation_reason = $reason;
@@ -511,9 +393,9 @@ class StockTransferService
      * Called from initiate() — separated so the WAC snapshot / source-lock
      * loop stays focused.
      */
-    private function moveSourceToInTransit(string $transferId, string $userId): StockTransfer
+    private function moveSourceToInTransit(StockTransfer $identity, string $userId): StockTransfer
     {
-        $transfer = $this->lockTransfer($transferId);
+        $transfer = $this->movementSupport->lockTransfer($identity);
 
         if (! $transfer->status->canBeInitiated()) {
             throw new TransferStateException($transfer->id, $transfer->status, 'initiate');
@@ -568,7 +450,7 @@ class StockTransferService
                 $this->assertBatchAllocationsCanIssue($line, $product, $transfer);
 
                 foreach ($line->batchAllocations as $allocation) {
-                    $movement = $this->stockAdjustmentService->issue(
+                    $this->stockAdjustmentService->issue(
                         productId: $product->id,
                         locationId: $transfer->source_location_id,
                         quantity: (string) $allocation->quantity,
@@ -577,12 +459,12 @@ class StockTransferService
                         batchId: $allocation->batch_id,
                         expectedCompanyId: $transfer->company_id,
                         variantId: $line->variant_id,
+                        movementType: MovementType::TransferOut,
+                        transferId: $transfer->id,
                     );
-
-                    $this->markMovementAsTransfer($movement, MovementType::TransferOut, $transfer->id);
                 }
             } else {
-                $movement = $this->stockAdjustmentService->issue(
+                $this->stockAdjustmentService->issue(
                     productId: $product->id,
                     locationId: $transfer->source_location_id,
                     quantity: (string) $line->quantity,
@@ -590,9 +472,9 @@ class StockTransferService
                     userId: $userId,
                     expectedCompanyId: $transfer->company_id,
                     variantId: $line->variant_id,
+                    movementType: MovementType::TransferOut,
+                    transferId: $transfer->id,
                 );
-
-                $this->markMovementAsTransfer($movement, MovementType::TransferOut, $transfer->id);
             }
 
             $line->unit_cost_snapshot = $costAtSend;
@@ -620,135 +502,6 @@ class StockTransferService
         });
 
         return $transferSnapshot;
-    }
-
-    /**
-     * Allocate transfer_cost across lines per the chosen distribution and
-     * capitalize each share into the company-wide WAC of the line's product.
-     *
-     * @param  numeric-string  $transferCost
-     */
-    private function capitalizeTransferCost(StockTransfer $transfer, string $transferCost): void
-    {
-        $working = self::ALLOCATION_SCALE;
-
-        $weights = $this->computeAllocationWeights($transfer);
-        /** @var numeric-string $totalWeight */
-        $totalWeight = '0';
-        foreach ($weights as $weight) {
-            $totalWeight = bcadd($totalWeight, $weight, $working);
-        }
-
-        $lineCount = max(1, $transfer->lines->count());
-
-        // First pass: compute each line's allocation, skipping genuinely-zero
-        // shares. The LAST cost-bearing line absorbs the residual
-        // (transferCost − Σ others) so the allocations sum to transferCost
-        // EXACTLY, with no millième lost or gained to independent rounding.
-        /** @var list<array{line: StockTransferLine, product: Product, allocated: numeric-string}> $allocations */
-        $allocations = [];
-        foreach ($transfer->lines as $line) {
-            $product = Product::query()
-                ->where('tenant_id', $transfer->tenant_id)
-                ->where('company_id', $transfer->company_id)
-                ->findOrFail($line->product_id);
-
-            if (bccomp($totalWeight, '0', $working) > 0) {
-                $allocated = bcmul($transferCost, bcdiv($weights[$line->id], $totalWeight, $working), $working);
-            } else {
-                $allocated = bcdiv($transferCost, (string) $lineCount, $working);
-            }
-
-            if (bccomp($allocated, '0', $working) <= 0) {
-                continue;
-            }
-
-            $allocations[] = ['line' => $line, 'product' => $product, 'allocated' => $allocated];
-        }
-
-        $lastIndex = count($allocations) - 1;
-
-        // Reconcile at the PERSISTED scale (QTY_SCALE = 4), NOT the 6-dp working
-        // scale. allocated_transfer_cost is stored at 4 dp and recordCostAdjustment
-        // capitalizes the SAME value; reconciling the residual at 6 dp and then
-        // truncating to 4 dp on persist loses a millième per line (e.g. 7 equal
-        // lines of 100 → 14.2857 × 7 = 99.9999 < 100). Every line EXCEPT the last
-        // is formatted to 4 dp; the last absorbs (transferCost − Σ others) at 4 dp
-        // so Σ persisted == transferCost EXACTLY at the stored scale.
-        /** @var numeric-string $transferCost4dp */
-        $transferCost4dp = CurrencyScale::bcformat($transferCost, self::QTY_SCALE);
-        /** @var numeric-string $runningSumOfOthers4dp */
-        $runningSumOfOthers4dp = '0';
-
-        foreach ($allocations as $index => $allocation) {
-            $line = $allocation['line'];
-            $product = $allocation['product'];
-
-            $allocated4dp = $index === $lastIndex
-                ? bcsub($transferCost4dp, $runningSumOfOthers4dp, self::QTY_SCALE)
-                : CurrencyScale::bcformat($allocation['allocated'], self::QTY_SCALE);
-
-            $runningSumOfOthers4dp = bcadd($runningSumOfOthers4dp, $allocated4dp, self::QTY_SCALE);
-
-            $line->allocated_transfer_cost = $allocated4dp;
-            $line->save();
-
-            $this->wacService->recordCostAdjustment(
-                product: $product,
-                // Pass the same 4-dp numeric-string persisted to the transfer
-                // line so stored sum and capitalized sum both equal transferCost.
-                additionalCost: $allocated4dp,
-                reason: 'stock_transfer_cost',
-                tenantId: $transfer->tenant_id,
-                companyId: $transfer->company_id,
-                reference: $transfer->transfer_number,
-                referenceType: StockTransfer::class,
-                referenceId: $transfer->id,
-            );
-        }
-    }
-
-    /**
-     * @return array<string, numeric-string>
-     */
-    private function computeAllocationWeights(StockTransfer $transfer): array
-    {
-        $working = self::ALLOCATION_SCALE;
-
-        $weights = [];
-        foreach ($transfer->lines as $line) {
-            // Read decimal-cast attributes as numeric-strings (no float cast).
-            $qty = (string) $line->quantity;
-            $cost = (string) ($line->unit_cost_snapshot ?? '0');
-
-            $weights[$line->id] = match ($transfer->transfer_cost_distribution) {
-                TransferCostDistribution::ProRataValue => bcmul($qty, $cost, $working),
-                TransferCostDistribution::ProRataQuantity => CurrencyScale::bcformat($qty, $working),
-                TransferCostDistribution::EqualPerLine => '1',
-            };
-        }
-
-        return $weights;
-    }
-
-    private function lockTransfer(string $transferId): StockTransfer
-    {
-        /** @var StockTransfer $transfer */
-        $transfer = StockTransfer::query()
-            ->with('lines.batchAllocations')
-            ->lockForUpdate()
-            ->findOrFail($transferId);
-
-        return $transfer;
-    }
-
-    private function markMovementAsTransfer(StockMovement $movement, MovementType $type, string $transferId): void
-    {
-        $movement->update([
-            'movement_type' => $type->value,
-            'reference_type' => StockTransfer::class,
-            'reference_id' => $transferId,
-        ]);
     }
 
     private function assertBatchAllocationsCanIssue(
@@ -1045,22 +798,6 @@ class StockTransferService
         }
 
         return $location;
-    }
-
-    /**
-     * Unique product ids across a transfer's lines, as a typed list of strings
-     * for the ProductCostLock sorted-acquire (deadlock defense).
-     *
-     * @return list<string>
-     */
-    private function lineProductIds(StockTransfer $transfer): array
-    {
-        $ids = [];
-        foreach ($transfer->lines as $line) {
-            $ids[(string) $line->product_id] = true;
-        }
-
-        return array_keys($ids);
     }
 
     /**

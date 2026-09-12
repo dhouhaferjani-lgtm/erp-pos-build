@@ -97,7 +97,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     // Stock Transfer documents (multi-line, lifecycle-tracked, WAC-aware).
     Route::get('/stock-transfers', [StockTransferController::class, 'index'])
-        ->middleware('can:inventory.transfers.view')
+        ->middleware('require.any.permission:inventory.transfers.view,inventory.transfers.complete,inventory.transfers.reconcile')
         ->name('stock-transfers.index');
 
     Route::post('/stock-transfers', [StockTransferController::class, 'store'])
@@ -105,12 +105,24 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->name('stock-transfers.store');
 
     Route::get('/stock-transfers/{transfer}', [StockTransferController::class, 'show'])
-        ->middleware('can:inventory.transfers.view')
+        ->middleware('require.any.permission:inventory.transfers.view,inventory.transfers.complete,inventory.transfers.reconcile')
         ->name('stock-transfers.show');
 
     Route::post('/stock-transfers/{transfer}/complete', [StockTransferController::class, 'complete'])
         ->middleware('can:inventory.transfers.complete')
         ->name('stock-transfers.complete');
+
+    Route::post('/stock-transfers/{transfer}/receive', [StockTransferController::class, 'receive'])
+        ->middleware('can:inventory.transfers.complete')
+        ->name('stock-transfers.receive');
+
+    Route::post('/stock-transfers/{transfer}/close', [StockTransferController::class, 'close'])
+        ->middleware(['can:inventory.transfers.reconcile', 'can:inventory.transfers.close'])
+        ->name('stock-transfers.close');
+
+    Route::get('/stock-transfers/{transfer}/reconciliation', [StockTransferController::class, 'reconciliation'])
+        ->middleware('can:inventory.transfers.reconcile')
+        ->name('stock-transfers.reconciliation');
 
     Route::post('/stock-transfers/{transfer}/cancel', [StockTransferController::class, 'cancel'])
         ->middleware('can:inventory.transfers.cancel')

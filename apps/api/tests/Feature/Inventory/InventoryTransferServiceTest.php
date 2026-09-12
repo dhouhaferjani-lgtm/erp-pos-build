@@ -16,8 +16,9 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferBatchAllocationData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferData;
 use App\Modules\Inventory\Application\DTOs\InitiateTransferLineData;
+use App\Modules\Inventory\Application\Services\StockTransferMovementSupport;
+use App\Modules\Inventory\Application\Services\StockTransferReceiptService;
 use App\Modules\Inventory\Application\Services\StockTransferService;
-use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Enums\TransferCostDistribution;
 use App\Modules\Inventory\Domain\Enums\TransferStatus;
@@ -40,15 +41,15 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\ProductVariantLookup;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use PDOException;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\TruncatesRootTransactionDatabase;
 use Tests\TestCase;
 
 class InventoryTransferServiceTest extends TestCase
 {
-    use RefreshDatabase;
+    use TruncatesRootTransactionDatabase;
 
     private Tenant $tenant;
 
@@ -388,7 +389,7 @@ class InventoryTransferServiceTest extends TestCase
             $this->shop->id,
             [new InitiateTransferLineData($this->productA->id, '7.0000')],
         ));
-        $received = $this->service()->complete($transfer->id, $this->user->id);
+        $received = $this->service()->complete($transfer, $this->user->id);
 
         $this->assertSame(TransferStatus::Completed, $received->status);
         $this->assertNotNull($received->completed_at);
@@ -460,7 +461,7 @@ class InventoryTransferServiceTest extends TestCase
         $this->assertEquals('6.0000', $sourceAfterInitiate->quantity);
         $this->assertTrue($destinationAfterInitiate === null || bccomp((string) $destinationAfterInitiate->quantity, '0.0000', 4) === 0);
 
-        $completed = $this->service()->complete($transfer->id, $this->user->id);
+        $completed = $this->service()->complete($transfer, $this->user->id);
         $completedLine = $completed->lines->first();
         $this->assertNotNull($completedLine);
         $this->assertCount(1, $completedLine->batchAllocations);
@@ -605,7 +606,7 @@ class InventoryTransferServiceTest extends TestCase
             ],
         ));
 
-        $this->service()->cancel($transfer->id, $this->user->id, 'shipment cancelled');
+        $this->service()->cancel($transfer, $this->user->id, 'shipment cancelled');
 
         $sourceAfterCancel = BatchStock::query()
             ->where('batch_id', $batch->id)
@@ -621,7 +622,7 @@ class InventoryTransferServiceTest extends TestCase
         $this->assertTrue($destinationAfterCancel === null || bccomp((string) $destinationAfterCancel->quantity, '0.0000', 4) === 0);
     }
 
-    public function test_cannot_complete_an_already_completed_transfer(): void
+    public function test_repeated_completion_replays_without_duplicate_stock(): void
     {
         $this->seedStock($this->productA, $this->warehouse, '50.0000');
 
@@ -630,10 +631,13 @@ class InventoryTransferServiceTest extends TestCase
             $this->shop->id,
             [new InitiateTransferLineData($this->productA->id, '5.0000')],
         ));
-        $this->service()->complete($transfer->id, $this->user->id);
+        $this->service()->complete($transfer, $this->user->id);
 
-        $this->expectException(TransferStateException::class);
-        $this->service()->complete($transfer->id, $this->user->id);
+        $movements = StockMovement::query()->where('reference_id', $transfer->id)->count();
+        $replayed = $this->service()->complete($transfer, $this->user->id);
+        self::assertSame(TransferStatus::Completed, $replayed->status);
+        self::assertSame($movements, StockMovement::query()->where('reference_id', $transfer->id)->count());
+        self::assertSame(1, $replayed->receipts()->count());
     }
 
     public function test_complete_with_transfer_cost_recomputes_company_wide_wac(): void
@@ -650,7 +654,7 @@ class InventoryTransferServiceTest extends TestCase
             transferCost: '60.0000',
         ));
 
-        $this->service()->complete($transfer->id, $this->user->id);
+        $this->service()->complete($transfer, $this->user->id);
 
         // Company on-hand still 120 after complete (90 + 30).
         // WAC delta = 60 / 120 = 0.50 → 5.50
@@ -676,7 +680,7 @@ class InventoryTransferServiceTest extends TestCase
         $this->assertNotNull($sourceAfterInit);
         $this->assertEquals('15.0000', $sourceAfterInit->quantity);
 
-        $cancelled = $this->service()->cancel($transfer->id, $this->user->id, 'shipment lost');
+        $cancelled = $this->service()->cancel($transfer, $this->user->id, 'shipment lost');
 
         $this->assertSame(TransferStatus::Cancelled, $cancelled->status);
 
@@ -699,10 +703,10 @@ class InventoryTransferServiceTest extends TestCase
             $this->shop->id,
             [new InitiateTransferLineData($this->productA->id, '5.0000')],
         ));
-        $this->service()->complete($transfer->id, $this->user->id);
+        $this->service()->complete($transfer, $this->user->id);
 
         $this->expectException(TransferStateException::class);
-        $this->service()->cancel($transfer->id, $this->user->id, 'too late');
+        $this->service()->cancel($transfer, $this->user->id, 'too late');
     }
 
     public function test_transfer_cost_allocation_conserves_total_across_uneven_lines(): void
@@ -741,7 +745,7 @@ class InventoryTransferServiceTest extends TestCase
             transferCostDistribution: TransferCostDistribution::EqualPerLine,
         ));
 
-        $completed = $this->service()->complete($transfer->id, $this->user->id);
+        $completed = $this->service()->complete($transfer, $this->user->id);
 
         $sumAllocated = '0';
         foreach ($completed->lines as $line) {
@@ -797,7 +801,7 @@ class InventoryTransferServiceTest extends TestCase
             transferCostDistribution: TransferCostDistribution::EqualPerLine,
         ));
 
-        $completed = $this->service()->complete($transfer->id, $this->user->id);
+        $completed = $this->service()->complete($transfer, $this->user->id);
 
         $sumAllocated = '0';
         foreach ($completed->lines as $line) {
@@ -826,10 +830,11 @@ class InventoryTransferServiceTest extends TestCase
     ): ThrowingStockTransferService {
         return new ThrowingStockTransferService(
             app(StockAdjustmentService::class),
-            app(WeightedAverageCostService::class),
             app(ProductCostLock::class),
             app(ProductVariantLookup::class),
             $collision,
+            $this->app->make(StockTransferMovementSupport::class),
+            $this->app->make(StockTransferReceiptService::class),
         );
     }
 
@@ -870,12 +875,13 @@ final class ThrowingStockTransferService extends StockTransferService
 {
     public function __construct(
         StockAdjustmentService $stockAdjustmentService,
-        WeightedAverageCostService $wacService,
         ProductCostLock $costLock,
         ProductVariantLookup $variantLookup,
         private readonly UniqueConstraintViolationException $collision,
+        StockTransferMovementSupport $movementSupport,
+        StockTransferReceiptService $receiptService,
     ) {
-        parent::__construct($stockAdjustmentService, $wacService, $costLock, $variantLookup);
+        parent::__construct($stockAdjustmentService, $costLock, $variantLookup, $movementSupport, $receiptService);
     }
 
     protected function findExistingTransfer(InitiateTransferData $data): ?StockTransfer

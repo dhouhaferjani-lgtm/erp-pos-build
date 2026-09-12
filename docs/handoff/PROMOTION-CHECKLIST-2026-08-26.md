@@ -4,6 +4,7 @@ Scope: 876 local commits on top of `origin/dev` (`git rev-list --count origin/de
 Owner owns the promotion. Promoting to `origin/dev` = staging auto-deploy incl. `tenants:migrate` — everything below is ordered for that.
 
 ## 0. Preconditions (tick before promoting)
+- Lane-scoped successor for the 2026-09-09 T-2/T-3 promotion: `docs/handoff/PROMOTION-CHECKLIST-2026-09-09-t2t3.md`.
 - [x] Every Session A lane merged (2026-08-25 end): N-1, N-2, N-3/4/7, N-5, N-6 Ph1 (+DPA rollback), W2-3, W2-6, W2-7+W4-5, W4-9, W4-6, W4-2 (+fixture), W4-3, D-1, P-1, W2-1, W4R-2, CI-hygiene, test-infra r1+r2. Hold-list (NOT blocking promotion): W4R2-2 dashboard tile, N-12, W4R-1, W4R-3 (Menu tenants). W4-1 moved off the hold-list — FIXED-MERGED `98a449d14` (Session D; see below).
 - [x] **All ten Session D lanes merged: B2-6, C-F0w, W4R2-2, N-12, B-19, B-13, O-30, W4-1, T9** — merge SHAs `9d0d08ae5` (B2-6), `8664d180c` (C-F0w), `4ae7c68a8` (W4R2-2), `4807f0045` (N-12), `c94d23043` (B-19), `e56321a76` (B-13), `8c8316ab7` (O-30), `98a449d14` (W4-1), `16088fdb7` (T9). LEDGER rows filed: D-N12-1, D-W4R2-1 (closes C-45(i)), D-B26-1 (closes C-14(ii)/(iii)/(iv)), D-CF0W-1, D-B13-1..4, D-B19-1..4 (already filed by the B-19 lane itself), D-O30-1..5 (O-30(a) delivered; O-30(b)/(c) + C-17(ii)/(viii) status updated), D-W41-1..4 + D-MANIFEST-1 (W4-1), D-T9-1..9 + N-9/N-14 (T9 — closes C-45(iv), C-23(iii) import-path-only, C-13(i); N-9 FIXED-MERGED, N-14 PARTIAL/R-2 open).
 - [ ] Session B / C lanes: per their session logs — each with a register row in OWNER-SHEET §E.

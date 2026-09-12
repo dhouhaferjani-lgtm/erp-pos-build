@@ -8,7 +8,7 @@ import { EntityLink } from '@/components/molecules/EntityLink'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { textColors, borderColors, tokens , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { formatDate } from '@/lib/format'
-import { formatQuantity } from '@/lib/decimal'
+import { bccomp, formatQuantity } from '@/lib/decimal'
 import { getQuantityDecimals } from '@/lib/quantityScale'
 import {
   useCancelStockTransfer,
@@ -35,7 +35,7 @@ export function StockTransferDetailPage() {
     return <div className={`p-10 text-center ${textColors.tertiary}`}>...</div>
   }
 
-  const canComplete = transfer.status === 'in_transit'
+  const canComplete = transfer.status === 'in_transit' || transfer.status === 'partially_received'
   const canCancel = transfer.status === 'draft' || transfer.status === 'in_transit'
 
   const completeTransfer = async (): Promise<void> => {
@@ -245,7 +245,7 @@ export function StockTransferDetailPage() {
                                 className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 text-sm"
                               >
                                 <span className={`font-medium ${textColors.primary}`}>
-                                  {allocation.batch_number ?? '—'}
+                                  {allocation.batch_number}
                                 </span>
                                 {allocation.expiry_date !== null && (
                                   <span className={textColors.tertiary}>
@@ -274,7 +274,12 @@ export function StockTransferDetailPage() {
       <ConfirmDialog
         isOpen={confirmComplete}
         title={t('detail.confirmComplete.title')}
-        message={t('detail.confirmComplete.description')}
+        message={transfer.status === 'partially_received'
+          ? t('detail.confirmComplete.description', {
+            shortLines: (transfer.lines ?? []).filter(line => bccomp(line.quantity_remaining, '0') !== 0).length,
+            totalLines: (transfer.lines ?? []).length,
+          })
+          : t('detail.confirmComplete.inTransitDescription')}
         onConfirm={handleComplete}
         onClose={() => {
           setConfirmComplete(false)

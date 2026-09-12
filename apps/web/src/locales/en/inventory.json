@@ -404,6 +404,7 @@
       "goods_receipt": "Goods receipt",
       "delivery_note": "Delivery note",
       "stock_transfer": "Stock transfer",
+      "stock_transfer_receipt": "Transfer receipt",
       "adjustment_batch": "Adjustment",
       "inventory_counting": "Inventory count",
       "pos_receipt_return_scrap": "POS return scrap",

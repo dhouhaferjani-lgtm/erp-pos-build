@@ -8,6 +8,7 @@ use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\QuantityScale;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -23,6 +24,10 @@ use Illuminate\Support\Carbon;
  * @property string $product_id
  * @property string|null $variant_id
  * @property numeric-string $quantity
+ * @property numeric-string $quantity_received
+ * @property numeric-string $quantity_damaged
+ * @property numeric-string $quantity_written_off
+ * @property numeric-string $quantity_returned
  * @property numeric-string|null $unit_cost_snapshot
  * @property numeric-string $allocated_transfer_cost
  * @property Carbon|null $created_at
@@ -46,6 +51,11 @@ class StockTransferLine extends Model
         'product_id',
         'variant_id',
         'quantity',
+        'quantity_received',
+        'quantity_damaged',
+        'quantity_written_off',
+        'quantity_returned',
+
         'unit_cost_snapshot',
         'allocated_transfer_cost',
     ];
@@ -57,6 +67,11 @@ class StockTransferLine extends Model
     {
         return [
             'quantity' => 'decimal:4',
+            'quantity_received' => 'decimal:4',
+            'quantity_damaged' => 'decimal:4',
+            'quantity_written_off' => 'decimal:4',
+            'quantity_returned' => 'decimal:4',
+
             'unit_cost_snapshot' => 'decimal:4',
             'allocated_transfer_cost' => 'decimal:4',
         ];
@@ -113,4 +128,17 @@ class StockTransferLine extends Model
     {
         return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
+
+    /** @return numeric-string */
+    public function remainingQuantity(): string
+    {
+        $remaining = $this->quantity;
+        foreach ([$this->quantity_received, $this->quantity_damaged, $this->quantity_written_off, $this->quantity_returned] as $accounted) {
+            $remaining = bcsub($remaining, $accounted, QuantityScale::SCALE);
+        }
+
+        return $remaining;
+    }
+
+    public const string REMAINDER_SQL = '(stock_transfer_lines.quantity - stock_transfer_lines.quantity_received - stock_transfer_lines.quantity_damaged - stock_transfer_lines.quantity_written_off - stock_transfer_lines.quantity_returned)';
 }

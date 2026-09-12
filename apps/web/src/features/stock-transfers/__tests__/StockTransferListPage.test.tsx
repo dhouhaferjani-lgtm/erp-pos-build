@@ -58,8 +58,17 @@ const transferFixture: StockTransfer = {
   completed_at: null,
   cancelled_at: null,
   cancellation_reason: null,
+  closed_by_user_id: null,
+  closed_by_name: null,
+  closed_at: null,
+  close_disposition: null,
+  close_reason: null,
+  close_note: null,
+  freight_uncapitalized: '0.0000',
+  receipts: [],
   created_at: '2026-05-28T09:00:00Z',
   updated_at: '2026-05-28T10:00:00Z',
+  lines: null,
 }
 
 describe('StockTransferListPage', () => {

@@ -21,6 +21,9 @@
   "status": {
     "draft": "Draft",
     "in_transit": "In Transit",
+    "partially_received": "Partially received",
+    "closed_with_writeoff": "Closed with write-off",
+    "closed_returned": "Closed with return",
     "completed": "Completed",
     "cancelled": "Cancelled"
   },
@@ -145,7 +148,8 @@
     },
     "confirmComplete": {
       "title": "Confirm receipt at destination?",
-      "description": "Destination stock will be incremented and the company-wide weighted average cost will be recomputed if the transfer has additional costs."
+      "description": "{{shortLines}} of {{totalLines}} lines have not fully arrived. Confirming books the entire outstanding quantity as received at the destination.",
+      "inTransitDescription": "Destination stock will be incremented and the company-wide weighted average cost will be recomputed if the transfer has additional costs."
     },
     "confirmCancel": {
       "title": "Cancel this transfer?",
