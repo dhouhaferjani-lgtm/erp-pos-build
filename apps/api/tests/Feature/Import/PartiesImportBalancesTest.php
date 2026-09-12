@@ -6,8 +6,11 @@ namespace Tests\Feature\Import;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Application\Services\OpeningBalanceBatchService;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchStatus;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
+use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
@@ -17,6 +20,8 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Application\Jobs\ProcessImportJob;
+use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Services\ImportService;
@@ -24,6 +29,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Uom\Application\Services\UnitsProvisioningService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
@@ -99,7 +105,7 @@ final class PartiesImportBalancesTest extends TestCase
         $job = $this->makeValidatedJob([
             1 => ['name' => 'Acme Corp', 'type' => 'customer', 'opening_balance' => '100', 'reference' => 'LEG-AR-1'],
             2 => ['name' => 'Credit Customer', 'type' => 'customer', 'code' => 'CUST-NEG', 'opening_balance' => '-50'],
-            3 => ['name' => 'Parts Supplier', 'type' => 'supplier', 'code' => 'SUP-POS', 'opening_balance' => '80'],
+            3 => ['name' => 'Parts Supplier', 'type' => 'supplier', 'code' => 'SUP-POS', 'opening_balance' => '80.125'],
             4 => ['name' => 'Partner Only', 'type' => 'customer', 'code' => 'NO-BAL'],
         ]);
 
@@ -135,7 +141,7 @@ final class PartiesImportBalancesTest extends TestCase
         $supplierInvoice = Document::where('partner_id', Partner::where('code', 'SUP-POS')->value('id'))->firstOrFail();
         $this->assertSame(DocumentType::SupplierInvoice, $supplierInvoice->type);
         $this->assertStringStartsWith('HIST-SINV-', (string) $supplierInvoice->document_number);
-        $this->assertSame('80.000', $supplierInvoice->total);
+        $this->assertSame('80.125', $supplierInvoice->total);
 
         $arBatch = OpeningBalanceBatch::where('type', OpeningBatchType::ArOpenItems)->firstOrFail();
         $apBatch = OpeningBalanceBatch::where('type', OpeningBatchType::ApOpenItems)->firstOrFail();
@@ -200,6 +206,95 @@ final class PartiesImportBalancesTest extends TestCase
         $this->assertSame(1, Document::where('company_id', $this->company->id)->where('is_historical', true)->count());
     }
 
+    public function test_queued_tnd_supplier_balance_uses_target_company_currency_without_company_context(): void
+    {
+        $eurCompany = $this->company;
+        $tndCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'TND Import Company',
+            'legal_name' => 'TND Import Company LLC',
+            'tax_id' => 'TAX-TND-IMPORT',
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+            'fiscal_year_start_month' => 1,
+            'status' => CompanyStatus::Active,
+        ]);
+        app(ChartOfAccountsService::class)->seedForCompany($tndCompany);
+        UserCompanyMembership::create([
+            'user_id' => $this->user->id,
+            'company_id' => $tndCompany->id,
+            'role' => 'admin',
+        ]);
+
+        // The request context belongs to company A while the durable job is pinned
+        // to company B. The queue worker then runs with no ambient company context.
+        app(CompanyContext::class)->setCompanyId($eurCompany->id);
+        $job = $this->makeValidatedJob([
+            1 => [
+                'name' => 'Precise Supplier',
+                'type' => 'supplier',
+                'code' => 'SUP-TND-3DP',
+                'opening_balance' => '80.125',
+            ],
+        ], $tndCompany);
+        app(CompanyContext::class)->clear();
+
+        (new ProcessImportJob($job->id, $tndCompany->id, $this->tenant->id))
+            ->handle(
+                app(ImportService::class),
+                app(UnitsProvisioningService::class),
+            );
+
+        $this->assertSame(ImportStatus::Completed, $job->refresh()->status);
+        $supplier = Partner::query()
+            ->where('company_id', $tndCompany->id)
+            ->where('code', 'SUP-TND-3DP')
+            ->firstOrFail();
+        $this->assertSame('80.125', $supplier->payable_balance);
+
+        $document = Document::query()
+            ->where('company_id', $tndCompany->id)
+            ->where('partner_id', $supplier->id)
+            ->where('is_historical', true)
+            ->firstOrFail();
+        $this->assertSame(DocumentType::SupplierInvoice, $document->type);
+        $this->assertSame('TND', $document->currency);
+        $this->assertSame('80.125', $document->total);
+        $this->assertSame('80.125', $document->balance_due);
+
+        $batch = OpeningBalanceBatch::query()
+            ->where('company_id', $tndCompany->id)
+            ->where('type', OpeningBatchType::ApOpenItems)
+            ->firstOrFail();
+        $this->assertSame(OpeningBatchStatus::Validated, $batch->status);
+
+        $entry = JournalEntry::query()
+            ->where('company_id', $tndCompany->id)
+            ->where('source_type', 'supplier_invoice')
+            ->where('source_id', $document->id)
+            ->firstOrFail();
+        $this->assertSame(JournalEntryStatus::Posted, $entry->status);
+        $this->assertSame(1, JournalEntry::query()->where('company_id', $tndCompany->id)->count());
+        $this->assertSame(2, $entry->lines()->count());
+        $this->assertSame(0, bccomp((string) $entry->lines()->sum('debit'), '80.125', 3));
+        $this->assertSame(0, bccomp((string) $entry->lines()->sum('credit'), '80.125', 3));
+
+        $this->assertSame(0, Partner::query()->where('company_id', $eurCompany->id)->count());
+        $this->assertSame(0, Document::query()->where('company_id', $eurCompany->id)->count());
+        $this->assertSame(0, OpeningBalanceBatch::query()->where('company_id', $eurCompany->id)->count());
+
+        // Finalization is explicitly resumable. Re-entry must observe the sealed
+        // import batch and leave every target artifact at cardinality one.
+        $this->importService->finalizeImport($job->refresh(), $tndCompany->id);
+        $this->assertSame(1, Partner::query()->where('company_id', $tndCompany->id)->count());
+        $this->assertSame(1, Document::query()->where('company_id', $tndCompany->id)->where('is_historical', true)->count());
+        $this->assertSame(1, OpeningBalanceBatch::query()->where('company_id', $tndCompany->id)->count());
+        $this->assertSame(1, JournalEntry::query()->where('company_id', $tndCompany->id)->count());
+        $this->assertSame(2, JournalLine::query()->where('journal_entry_id', $entry->id)->count());
+    }
+
     public function test_locked_opening_balances_make_balance_rows_invalid_at_validation(): void
     {
         OpeningBalanceBatch::create([
@@ -232,11 +327,13 @@ final class PartiesImportBalancesTest extends TestCase
     /**
      * @param  array<int, array<string, mixed>>  $rows
      */
-    private function makeValidatedJob(array $rows): ImportJob
+    private function makeValidatedJob(array $rows, ?Company $company = null): ImportJob
     {
+        $company ??= $this->company;
+
         $job = $this->importService->createJob(
             tenantId: $this->tenant->id,
-            companyId: $this->company->id,
+            companyId: $company->id,
             userId: $this->user->id,
             type: ImportType::Parties,
             filename: 'parties.csv',
