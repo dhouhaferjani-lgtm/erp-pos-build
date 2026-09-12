@@ -1,9 +1,9 @@
 Products
 	imp1-partial.csv
-
-Completed with errors
+	
+Completed with errors	
 9 imported / 1 skipped / 2 failed / 12 total
-	9/11/2026, 6:27:05 AM
+	9/12/2026, 5:33:55 PM	
 File format
 CSV
 Excel

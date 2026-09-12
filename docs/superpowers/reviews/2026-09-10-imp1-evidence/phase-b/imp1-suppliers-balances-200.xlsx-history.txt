@@ -1,13 +1,9 @@
 Business partners
 	imp1-suppliers-balances-200.xlsx
-
-Completed with errors
-
-Job failed: CurrencyScaleResolver::getScale() called with no currency code and no CompanyContext bound. Ensure CompanyContextMiddleware is applied or pass an explicit $currencyCode. For callers that intentionally run outside request context (queued jobs, console commands), use getScaleSafe($currencyCode, $fallback) instead. See audit finding F-RES-1.
-
-
+	
+Completed	
 200 imported / 0 skipped / 0 failed / 200 total
-	9/11/2026, 6:28:33 AM
+	9/12/2026, 5:34:04 PM	
 File format
 CSV
 Excel
