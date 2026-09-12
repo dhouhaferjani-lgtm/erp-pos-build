@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, FileText, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, FileText, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react'
 import { useImportJobs } from '../api/queries'
 import { cn } from '@/lib/utils'
 import type { ImportJob, ImportStatus } from '../types'
@@ -20,7 +20,9 @@ const importStateGlyphs: Record<ImportStatus, ReactNode> = {
   validated: <Clock className={`h-4 w-4 ${colorTokens.text.disabled}`} />,
   importing: <Loader2 className={`h-4 w-4 animate-spin ${colorTokens.intent.primary.text}`} />,
   completed: <CheckCircle className={`h-4 w-4 ${colorTokens.intent.success.text}`} />,
-  partially_completed: <XCircle className={`h-4 w-4 ${colorTokens.intent.warning.text}`} />,
+  // Partial SUCCESS: the failure mark would read as a failed import, and the
+  // sibling pills all use *.textStrong rather than the neighbouring shade.
+  partially_completed: <AlertTriangle className={`h-4 w-4 ${colorTokens.intent.warning.textStrong}`} />,
   failed: <XCircle className={`h-4 w-4 ${colorTokens.intent.danger.text}`} />,
 }
 
@@ -30,7 +32,7 @@ const importStateTone: Record<ImportStatus, string> = {
   validated: `${colorTokens.intent.verified.bgSoft} ${colorTokens.intent.verified.textStrong}`,
   importing: `${colorTokens.intent.primary.bgSoft} ${colorTokens.intent.primary.textStrong}`,
   completed: `${colorTokens.intent.success.bgSoft} ${colorTokens.intent.success.textStrong}`,
-  partially_completed: `${colorTokens.intent.warning.bgSoft} ${colorTokens.intent.warning.text}`,
+  partially_completed: `${colorTokens.intent.warning.bgSoft} ${colorTokens.intent.warning.textStrong}`,
   failed: `${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.textStrong}`,
 }
 
@@ -41,9 +43,16 @@ const DEFAULT_PER_PAGE = 20
 
 export function ImportHistoryPage() {
   const { t } = useTranslation('import')
-  const [statusFilter, setStatusFilter] = useState<ImportStatus | 'all'>('all')
+  const [statusFilter, setStatusFilterState] = useState<ImportStatus | 'all'>('all')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(DEFAULT_PER_PAGE)
+
+  // Changing the filter changes the result set, so the page window has to reset
+  // with it — page 3 of "all" is rarely page 3 of "Completed with errors".
+  const setStatusFilter = (next: ImportStatus | 'all') => {
+    setStatusFilterState(next)
+    setPage(1)
+  }
 
   // The status filter is applied by the server (ImportController::index()),
   // which classifies legacy completed/failed rows through
@@ -105,7 +114,7 @@ export function ImportHistoryPage() {
             <button
               key={status}
               type="button"
-              onClick={() => { setStatusFilter(status); setPage(1) }}
+              onClick={() => { setStatusFilter(status); }}
               className={cn(
                 'rounded-full px-3 py-1 text-sm font-medium transition-colors',
                 statusFilter === status

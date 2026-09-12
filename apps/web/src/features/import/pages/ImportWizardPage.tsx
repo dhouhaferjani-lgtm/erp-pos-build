@@ -931,7 +931,7 @@ export function ImportWizardPage() {
                   } else handleUploadComplete()
                 }}
                 disabled={!selectedFile || sourceColumns.length === 0}
-                className={`inline-flex items-center gap-2 rounded-lg ${colorTokens.intent.primary.bgStrong} px-4 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover} disabled:cursor-not-allowed ${colorTokens.surface.disabledWhenDisabled}`}
+                className="gap-2"
               >
                 {t('common:actions.next')}
                 <ArrowRight className="h-4 w-4" />

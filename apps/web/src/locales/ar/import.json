@@ -196,6 +196,12 @@
     "failedDescription": "راجع الأخطاء أدناه قبل إعادة محاولة الاستيراد."
   },
   "status": {
+    "pending": "قيد الانتظار",
+    "validating": "جارٍ التحقق",
+    "validated": "تم التحقق",
+    "importing": "جارٍ الاستيراد",
+    "completed": "اكتمل",
+    "failed": "فشل",
     "partially_completed": "اكتمل مع أخطاء"
   }
 }

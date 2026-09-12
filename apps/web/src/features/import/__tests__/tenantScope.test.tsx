@@ -361,7 +361,7 @@ describe('cross-tenant isolation', () => {
     const { result } = renderHook(() => useImportJobs(), { wrapper: makeWrapper(client) })
     await waitFor(() => { expect(result.current.isSuccess).toBe(true) })
 
-    const tenantAKey = ['imports', 'list', 'tenant-A', 'company-1']
+    const tenantAKey = ['imports', 'list', 'all', 1, 20, 'tenant-A', 'company-1']
     const tA = client.getQueryCache().find({ queryKey: tenantAKey, exact: true })
     expect(tA?.state.data).toEqual({ data: [] })
     const tAData = (tA?.state.data as { data: Array<{ id: string }> }).data
