@@ -1058,6 +1058,10 @@ class ImportController extends Controller
                 'barcode_identity_conflict_rows',
             ),
             'progress_percentage' => $job->getProgressPercentage(),
+            // error_code is the operator-facing failure channel: the screens translate it.
+            // error_message stays for support/diagnosis only — it carries exception class
+            // names, file paths and full SQLSTATE text and is never rendered.
+            'error_code' => $job->error_code?->value,
             'error_message' => $job->error_message,
             'started_at' => $job->started_at?->toIso8601String(),
             'completed_at' => $job->completed_at?->toIso8601String(),

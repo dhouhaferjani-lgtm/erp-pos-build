@@ -34,6 +34,7 @@ import { Select } from '@/components/atoms/Select/Select'
 import { useScopedLocations } from '@/features/locations/hooks/useScopedLocations'
 import type { ScopedLocation } from '@/features/locations/api/scopedLocations'
 import { KNOWN_WARNING_CODES } from '../warningCodes'
+import { importJobErrorMessage } from '../jobErrorMessage'
 import { useCompanyConfigOptional } from '@/contexts/CompanyConfigContext'
 
 type WizardStep = 'upload' | 'mapping' | 'options' | 'validation' | 'execute' | 'complete'
@@ -387,6 +388,8 @@ export function ImportWizardPage() {
   const completedSkippedCount = importResults?.skipped_count ?? jobData?.skipped_rows ?? 0
   const completedFailedCount = jobData?.failed_rows ?? importResults?.execution_error_count ?? 0
   const completedEnrichedCount = jobData?.warning_summary?.['enriched'] ?? 0
+  // Operators read the coded reason, never the raw server text behind `error_message`.
+  const jobDataErrorMessage = jobData === undefined ? null : importJobErrorMessage(t, jobData)
   const isSkipOnlyCompletion = completedImportedCount === 0
     && completedSkippedCount > 0
     && completedFailedCount === 0
@@ -1364,9 +1367,9 @@ export function ImportWizardPage() {
                         <XCircle className={`h-5 w-5 ${colorTokens.intent.danger.text}`} />
                         <span className={`font-medium ${colorTokens.intent.danger.textStrongest}`}>{t('wizard.execute.failed')}</span>
                       </div>
-                      {jobData.error_message && (
+                      {jobDataErrorMessage !== null && (
                         <p className={`mt-2 text-sm ${colorTokens.intent.danger.textStrong} ${colorTokens.intent.danger.bgSoft} rounded-md px-3 py-2`}>
-                          {jobData.error_message}
+                          {jobDataErrorMessage}
                         </p>
                       )}
                     </div>
@@ -1455,7 +1458,7 @@ export function ImportWizardPage() {
               </p>
             </div>
 
-            {jobData?.error_message && <p role="alert" className={`rounded p-3 ${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.text}`}>{jobData.error_message}</p>}
+            {jobDataErrorMessage !== null && <p role="alert" className={`rounded p-3 ${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.text}`}>{jobDataErrorMessage}</p>}
 
             {/* Results summary */}
             {(jobData || importResults) && (

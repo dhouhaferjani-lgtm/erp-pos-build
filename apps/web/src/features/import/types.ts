@@ -67,6 +67,12 @@ export interface ImportJob extends Partial<App.Modules.Import.Domain.Data.Import
   error_summary: UnitErrorSummary
   progress_percentage: number
   options?: ImportJobOptions | null
+  /**
+   * Durable coded reason for a terminal failure. This — not `error_message` — is
+   * what operator surfaces render, through `importJobErrorMessage()`.
+   */
+  error_code: App.Modules.Import.Domain.Enums.ImportErrorCode | null
+  /** Raw server text (class names, file paths, SQLSTATE). Diagnosis only — never rendered. */
   error_message: string | null
   started_at: string | null
   completed_at: string | null

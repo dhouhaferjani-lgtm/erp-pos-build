@@ -208,10 +208,17 @@ final class ImportRowExportTest extends TestCase
     public function test_historical_job_with_committed_rows_and_finalize_error_reads_as_partial(): void
     {
         $job = $this->exportJob();
-        $job->update(['status' => ImportStatus::Failed, 'successful_rows' => 2, 'failed_rows' => 1, 'error_message' => 'Finalize failed']);
+        $job->update([
+            'status' => ImportStatus::Failed, 'successful_rows' => 2, 'failed_rows' => 1,
+            'error_code' => ImportErrorCode::InternalError, 'error_message' => 'Finalize failed',
+        ]);
+        // error_code is the operator-facing channel: the screens translate it and never
+        // render error_message, which carries raw class names and SQLSTATE text.
         $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/imports/'.$job->id)
             ->assertOk()->assertJsonPath('data.status', 'partially_completed')
+            ->assertJsonPath('data.error_code', 'internal_error')
             ->assertJsonPath('data.error_message', 'Finalize failed');
+        $this->getJson('/api/v1/imports')->assertOk()->assertJsonPath('data.0.error_code', 'internal_error');
         $this->getJson('/api/v1/imports?status=partially_completed')->assertOk()->assertJsonPath('data.0.id', $job->id);
         $this->getJson('/api/v1/imports?status=failed')->assertOk()->assertJsonCount(0, 'data');
     }

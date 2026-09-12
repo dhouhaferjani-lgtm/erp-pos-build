@@ -8,6 +8,7 @@ import type { ImportJob, ImportStatus } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { importJobErrorMessage } from '../jobErrorMessage'
 import { ImportCorrectionActions } from '../components/ImportCorrectionActions'
 import { UnknownUnitSummary } from '../components/UnknownUnitSummary'
 import { KNOWN_WARNING_CODES } from '../warningCodes'
@@ -156,7 +157,11 @@ export function ImportHistoryPage() {
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
                     {renderImportStatePill(job.status)}
-                    {job.error_message && <p className={`mt-2 max-w-sm whitespace-normal text-xs ${colorTokens.intent.danger.text}`} role="alert">{job.error_message}</p>}
+                    {(() => {
+                      const message = importJobErrorMessage(t, job)
+
+                      return message === null ? null : <p className={`mt-2 max-w-sm whitespace-normal text-xs ${colorTokens.intent.danger.text}`} role="alert">{message}</p>
+                    })()}
                   </td>
                   <td className="px-6 py-4">
                     {job.status === 'completed' || job.status === 'partially_completed' || job.status === 'failed' ? (

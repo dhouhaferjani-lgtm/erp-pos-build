@@ -264,6 +264,7 @@ describe('ImportWizardPage duplicate policy', () => {
       warning_summary: null,
       error_summary: { unknown_units: [] },
       progress_percentage: 100,
+      error_code: null,
       error_message: null,
       started_at: '2026-08-31T00:00:00Z',
       completed_at: '2026-08-31T00:00:01Z',
