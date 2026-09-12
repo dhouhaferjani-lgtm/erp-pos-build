@@ -8,6 +8,7 @@ import type { ImportJob, ImportStatus } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { importJobErrorMessage } from '../jobErrorMessage'
 import { ImportCorrectionActions } from '../components/ImportCorrectionActions'
 import { UnknownUnitSummary } from '../components/UnknownUnitSummary'
@@ -36,16 +37,26 @@ const importStateTone: Record<ImportStatus, string> = {
 const defaultImportStateGlyph = <Clock className={`h-4 w-4 ${colorTokens.text.disabled}`} />
 const defaultImportStateTone = `${colorTokens.surface.muted} ${colorTokens.text.secondary}`
 
+const DEFAULT_PER_PAGE = 20
+
 export function ImportHistoryPage() {
   const { t } = useTranslation('import')
   const [statusFilter, setStatusFilter] = useState<ImportStatus | 'all'>('all')
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(DEFAULT_PER_PAGE)
 
-  const { data: jobs, isLoading } = useImportJobs()
-
-  const filteredJobs = jobs?.data?.filter((job) => {
-    if (statusFilter === 'all') return true
-    return job.status === statusFilter
+  // The status filter is applied by the server (ImportController::index()),
+  // which classifies legacy completed/failed rows through
+  // ImportJobOutcome::effectiveStatusExpression. Filtering the fetched page
+  // client-side made the filter lie about anything past the first page.
+  const { data: jobs, isLoading } = useImportJobs({
+    ...(statusFilter === 'all' ? {} : { status: statusFilter }),
+    page,
+    per_page: perPage,
   })
+
+  const filteredJobs = jobs?.data
+  const meta = jobs?.meta
 
   const renderImportStatePill = (value: ImportStatus | string) => {
     const status = value as ImportStatus
@@ -94,7 +105,7 @@ export function ImportHistoryPage() {
             <button
               key={status}
               type="button"
-              onClick={() => { setStatusFilter(status); }}
+              onClick={() => { setStatusFilter(status); setPage(1) }}
               className={cn(
                 'rounded-full px-3 py-1 text-sm font-medium transition-colors',
                 statusFilter === status
@@ -114,6 +125,8 @@ export function ImportHistoryPage() {
           <Loader2 className={`h-8 w-8 animate-spin ${colorTokens.intent.primary.text}`} />
         </div>
       ) : filteredJobs && filteredJobs.length > 0 ? (
+        <div className="space-y-3">
+          <p className={`text-xs ${colorTokens.text.subtle}`}>{t('correction.caveat')}</p>
         <div className={`overflow-hidden rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base}`}>
           <DataTable className={`min-w-full divide-y ${colorTokens.border.divider}`}>
             <thead className={colorTokens.surface.page}>
@@ -234,6 +247,19 @@ export function ImportHistoryPage() {
               ))}
             </tbody>
           </DataTable>
+        </div>
+          {meta !== undefined && meta.last_page > 1 && (
+            <OffsetPagination
+              currentPage={meta.current_page}
+              lastPage={meta.last_page}
+              total={meta.total}
+              perPage={meta.per_page}
+              from={meta.from}
+              to={meta.to}
+              onPageChange={(next) => { setPage(next) }}
+              onPerPageChange={(next) => { setPerPage(next); setPage(1) }}
+            />
+          )}
         </div>
       ) : (
         <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-12 text-center`}>

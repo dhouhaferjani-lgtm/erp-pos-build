@@ -144,14 +144,27 @@ describe('importsListInvalidationPredicate', () => {
 // ─── useQuery shape probes ───────────────────────────────────────────────────
 
 describe('import hook queryKey shapes', () => {
-  it('useImportJobs queryKey is [imports, list, t, c] (.286)', async () => {
+  it('useImportJobs queryKey is [imports, list, status, page, perPage, t, c] (.286)', async () => {
     setTenant('tenant-A', 'company-1')
     const client = createTestQueryClient()
     const { result } = renderHook(() => useImportJobs(), { wrapper: makeWrapper(client) })
     await waitFor(() => { expect(result.current.isSuccess).toBe(true) })
     const keys = client.getQueryCache().getAll().map((q) => q.queryKey as unknown[])
     const list = keys.find((k) => Array.isArray(k) && k[0] === 'imports' && k[1] === 'list')
-    expect(list).toEqual(['imports', 'list', 'tenant-A', 'company-1'])
+    // The filter and the page window are server-side, so they are cache
+    // identity; tenant/company stay the suffix the invalidation predicate reads.
+    expect(list).toEqual(['imports', 'list', 'all', 1, 20, 'tenant-A', 'company-1'])
+  })
+
+  it('a different status filter is a different cache entry, still tenant-suffixed (.286b)', async () => {
+    setTenant('tenant-A', 'company-1')
+    const client = createTestQueryClient()
+    const { result } = renderHook(() => useImportJobs({ status: 'partially_completed', page: 2 }), { wrapper: makeWrapper(client) })
+    await waitFor(() => { expect(result.current.isSuccess).toBe(true) })
+    const keys = client.getQueryCache().getAll().map((q) => q.queryKey as unknown[])
+    const list = keys.find((k) => Array.isArray(k) && k[0] === 'imports' && k[1] === 'list')
+    expect(list).toEqual(['imports', 'list', 'partially_completed', 2, 20, 'tenant-A', 'company-1'])
+    expect(importsListInvalidationPredicate('tenant-A', 'company-1')({ queryKey: list as readonly unknown[] })).toBe(true)
   })
 
   it('useImportJob(id) queryKey is [imports, detail, id, t, c] (.287)', async () => {

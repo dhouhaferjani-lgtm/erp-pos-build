@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -10,9 +11,15 @@ vi.mock('react-i18next', () => ({
 }))
 
 const jobs: ImportJob[] = []
+const listParams = vi.fn()
+let meta = { current_page: 1, last_page: 1, per_page: 20, total: 0, from: null as number | null, to: null as number | null }
 
 vi.mock('../api/queries', () => ({
-  useImportJobs: () => ({ isLoading: false, data: { data: jobs, meta: { current_page: 1, last_page: 1, per_page: 20, total: jobs.length } } }),
+  useImportJobs: (params: unknown) => {
+    listParams(params)
+
+    return { isLoading: false, data: { data: jobs, meta: { ...meta, total: jobs.length } } }
+  },
 }))
 
 function job(overrides: Partial<ImportJob>): ImportJob {
@@ -44,6 +51,29 @@ function renderWith(...rows: ImportJob[]) {
 
   return render(<MemoryRouter><ImportHistoryPage /></MemoryRouter>)
 }
+
+describe('ImportHistoryPage server-side status filter and pagination', () => {
+  it('asks the server for the selected status instead of filtering the first page', async () => {
+    listParams.mockClear()
+    renderWith(job({}))
+
+    await userEvent.click(screen.getByRole('button', { name: 'status.partially_completed' }))
+
+    expect(listParams).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'partially_completed', page: 1 }),
+    )
+  })
+
+  it('renders the server pagination when there is more than one page', () => {
+    meta = { current_page: 1, last_page: 3, per_page: 20, total: 50, from: 1, to: 20 }
+    renderWith(job({}))
+    meta = { current_page: 1, last_page: 1, per_page: 20, total: 0, from: null, to: null }
+
+    // The server's own meta drives the control; there is no client-side slice.
+    expect(screen.getByRole('button', { name: 'pagination.next' })).toBeInTheDocument()
+    expect(screen.getByText('pagination.page 1 pagination.of 3')).toBeInTheDocument()
+  })
+})
 
 describe('ImportHistoryPage rows-to-fix gating', () => {
   it('renders no rows-to-fix control for a clean import, but keeps the full report', () => {

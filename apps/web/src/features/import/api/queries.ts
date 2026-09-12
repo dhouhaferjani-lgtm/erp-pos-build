@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { importApi } from './importApi'
 import { importsListInvalidationPredicate } from '../_invalidation'
-import type { ImportType } from '../types'
+import type { ImportJobListParams, ImportType } from '../types'
 
 // Query Keys
 export const importKeys = {
@@ -25,12 +25,19 @@ export const importKeys = {
 }
 
 // Queries
-export function useImportJobs() {
+export function useImportJobs(params: ImportJobListParams = {}) {
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   return useQuery({
-    queryKey: tenantScopedKey([...importKeys.lists()]),
-    queryFn: () => importApi.list(),
+    // The filter and the page window are server-side, so they are part of the
+    // cache identity — tenant/company stay the suffix (tenantScopedKey).
+    queryKey: tenantScopedKey([
+      ...importKeys.lists(),
+      params.status ?? 'all',
+      params.page ?? 1,
+      params.per_page ?? 20,
+    ]),
+    queryFn: () => importApi.list(params),
     enabled: !!tenantId && !!companyId,
   })
 }

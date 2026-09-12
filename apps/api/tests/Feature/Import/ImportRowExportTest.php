@@ -219,7 +219,14 @@ final class ImportRowExportTest extends TestCase
             ->assertOk()->assertJsonPath('data.status', 'partially_completed')
             ->assertJsonPath('data.error_code', 'internal_error')
             ->assertJsonPath('data.error_message', 'Finalize failed');
-        $this->getJson('/api/v1/imports')->assertOk()->assertJsonPath('data.0.error_code', 'internal_error');
+        $this->getJson('/api/v1/imports')->assertOk()
+            ->assertJsonPath('data.0.error_code', 'internal_error')
+            // The history paginates server-side, so the window the shared
+            // OffsetPagination control renders has to be on the wire.
+            ->assertJsonPath('meta.from', 1)
+            ->assertJsonPath('meta.to', 1)
+            ->assertJsonPath('meta.per_page', 20);
+        $this->getJson('/api/v1/imports?per_page=1&page=1')->assertOk()->assertJsonPath('meta.per_page', 1);
         $this->getJson('/api/v1/imports?status=partially_completed')->assertOk()->assertJsonPath('data.0.id', $job->id);
         $this->getJson('/api/v1/imports?status=failed')->assertOk()->assertJsonCount(0, 'data');
     }

@@ -119,6 +119,10 @@ class ImportController extends Controller
                 'last_page' => $jobs->lastPage(),
                 'per_page' => $jobs->perPage(),
                 'total' => $jobs->total(),
+                // The history renders the shared OffsetPagination control, whose
+                // "showing x–y of n" line needs the window, not just the totals.
+                'from' => $jobs->firstItem(),
+                'to' => $jobs->lastItem(),
             ],
         ]);
     }

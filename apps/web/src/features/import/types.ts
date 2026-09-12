@@ -146,6 +146,13 @@ export interface ImportJobResponse {
   data: ImportJob
 }
 
+/** Server-side history filter + page window (see `ImportController::index()`). */
+export interface ImportJobListParams {
+  status?: ImportStatus
+  page?: number
+  per_page?: number
+}
+
 export interface ImportJobListResponse {
   data: ImportJob[]
   meta: OffsetPaginationMeta
@@ -154,6 +161,8 @@ export interface ImportJobListResponse {
 export interface ImportErrorsResponse {
   data: ImportRow[]
   meta?: Partial<OffsetPaginationMeta> & {
+    job_error_code: App.Modules.Import.Domain.Enums.ImportErrorCode | null
+    job_error_detail?: App.Modules.Import.Domain.Data.ImportErrorDetailData | null
     job_error_message: string | null
     error_summary: UnitErrorSummary
     validation_errors: number
