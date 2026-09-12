@@ -10,6 +10,7 @@ use App\Modules\Import\Domain\Data\ImportErrorDetailData;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\ImportJob;
+use App\Modules\Import\Domain\ImportJobOutcome;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
@@ -164,9 +165,12 @@ final class ImportJobClaimService
             ]);
         }
 
-        if ($counters->successfulRows > 0 && ($counters->failedRows > 0 || $message !== null)) {
-            $terminal = ImportStatus::PartiallyCompleted;
-        }
+        $terminal = ImportJobOutcome::effectiveStatus(
+            $terminal,
+            $counters->successfulRows,
+            $counters->failedRows,
+            $message,
+        );
 
         return ImportJob::query()
             ->where('tenant_id', $job->tenant_id)

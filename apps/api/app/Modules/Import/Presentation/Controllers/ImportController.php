@@ -18,6 +18,7 @@ use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
+use App\Modules\Import\Domain\ImportJobOutcome;
 use App\Modules\Import\Services\ImportJobClaimService;
 use App\Modules\Import\Services\ImportRowExportService;
 use App\Modules\Import\Services\ImportService;
@@ -87,9 +88,11 @@ class ImportController extends Controller
 
         $jobs = ImportJob::where('tenant_id', $tenantId)
             ->where(fn ($query) => $query->where('company_id', $companyId)->orWhereNull('company_id'))
+            // Jobs stored before ImportStatus::PartiallyCompleted existed still carry
+            // completed/failed, so the filter classifies in SQL — from the same rule
+            // the writer and the read model use.
             ->when(isset($filters['status']), fn ($query) => $query->whereRaw(
-                'CASE WHEN status IN (?, ?, ?) AND successful_rows > 0 AND (failed_rows > 0 OR error_message IS NOT NULL) THEN ? ELSE status END = ?',
-                [ImportStatus::Completed->value, ImportStatus::Failed->value, ImportStatus::PartiallyCompleted->value, ImportStatus::PartiallyCompleted->value, $filters['status']],
+                ...ImportJobOutcome::effectiveStatusExpression(ImportStatus::from($filters['status'])),
             ))
             ->when(isset($filters['type']), fn ($query) => $query->where('type', $filters['type']))
             ->when(isset($filters['q']), fn ($query) => $query->where('original_filename', 'like', '%'.$filters['q'].'%'))
@@ -1029,11 +1032,12 @@ class ImportController extends Controller
     private function formatJob(ImportJob $job, bool $withWarningSummary): array
     {
         $counters = ImportCountersData::fromJob($job);
-        $status = $job->status;
-        if ($status->isTerminal() && $counters->successfulRows > 0
-            && ($counters->failedRows > 0 || $job->error_message !== null)) {
-            $status = ImportStatus::PartiallyCompleted;
-        }
+        $status = ImportJobOutcome::effectiveStatus(
+            $job->status,
+            $counters->successfulRows,
+            $counters->failedRows,
+            $job->error_message,
+        );
 
         return [
             'id' => $job->id,
