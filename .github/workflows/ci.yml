@@ -234,6 +234,27 @@ jobs:
         # and the sqlite connection, so no extra env prep is needed here.
         run: ./vendor/bin/phpunit tests/Architecture/OrphanedEventRatchetTest.php tests/Architecture/ProjectorEmissionRatchetTest.php
 
+      - name: RBAC route-coverage ratchet + self-service + tombstones (wave 0a)
+        # docs/conventions/08-DETECTOR-LIVENESS.md: the detector and its liveness
+        # proof run in the SAME lane. Named files, not the tests/Architecture
+        # directory, for the reason stated at :223-227. All six are static or
+        # router-only: no database, no migrations, ~2 s total.
+        #
+        # The anti-growth env line (ROUTE_COVERAGE_BASELINE_PROTECTED_BLOB) is NOT
+        # here — it is wave 0b item 0b-11, which appends it to THIS step.
+        run: |
+          set -o pipefail
+          ./vendor/bin/phpunit \
+            tests/Architecture/EntrypointPermissionCacheResetShapeTest.php \
+            tests/Architecture/SelfServiceRouteAllowListTest.php \
+            tests/Architecture/SelfServiceRouteShapeTest.php \
+            tests/Architecture/TombstoneRouteBehaviourTest.php \
+            tests/Architecture/RoutePermissionCoverageRatchetTest.php \
+            tests/Architecture/RoutePermissionCoverageRatchetLivenessTest.php | tee rbac-ratchet.out
+          grep -qE 'OK|Tests: [1-9]' rbac-ratchet.out || {
+            echo "::error::the RBAC ratchet selected zero tests — phpunit exits 0 on an empty selection (phpunit.xml sets no failOnEmptyTestSuite), so this is asserted explicitly";
+            exit 1; }
+
       - name: Run Deptrac architecture ratchet
         # Static-analysis-only gate (~3-4 s). Hard-fails on hexagonal domain
         # leakage above baseline or any brand-new violation category; every
