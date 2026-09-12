@@ -148,7 +148,7 @@
     },
     "confirmComplete": {
       "title": "Confirmer la réception ?",
-      "description": "{{shortLines}} lignes sur {{totalLines}} ne sont pas entièrement arrivées. Confirmer comptabilise la totalité du reliquat comme reçu à destination ; utilisez Clôturer pour perte ou retour.",
+      "description": "{{shortLines}} lignes sur {{totalLines}} ne sont pas entièrement arrivées. Confirmer comptabilise la totalité du reliquat comme reçu à destination.",
       "inTransitDescription": "Le stock de destination sera incrémenté et le coût moyen pondéré recalculé si des frais additionnels existent."
     },
     "confirmCancel": {

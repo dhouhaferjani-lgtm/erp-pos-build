@@ -94,7 +94,7 @@ describe('StockTransferDetailPage', () => {
     }
     renderWithProviders(<StockTransferDetailPage />, { route: '/inventory/stock-transfers/transfer-1' })
     fireEvent.click(screen.getByRole('button', { name: /confirm receipt/i }))
-    expect(screen.getByText('1 of 2 lines have not fully arrived. Confirming books the entire outstanding quantity as received at the destination; use Close to write off or return a short shipment.')).toBeInTheDocument()
+    expect(screen.getByText('1 of 2 lines have not fully arrived. Confirming books the entire outstanding quantity as received at the destination.')).toBeInTheDocument()
   })
 
   it('keeps the existing completion explanation for an in-transit transfer', () => {

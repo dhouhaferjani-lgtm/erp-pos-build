@@ -8,7 +8,7 @@ import { EntityLink } from '@/components/molecules/EntityLink'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { textColors, borderColors, tokens , semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { formatDate } from '@/lib/format'
-import { formatQuantity } from '@/lib/decimal'
+import { bccomp, formatQuantity } from '@/lib/decimal'
 import { getQuantityDecimals } from '@/lib/quantityScale'
 import {
   useCancelStockTransfer,
@@ -276,7 +276,7 @@ export function StockTransferDetailPage() {
         title={t('detail.confirmComplete.title')}
         message={transfer.status === 'partially_received'
           ? t('detail.confirmComplete.description', {
-            shortLines: (transfer.lines ?? []).filter(line => line.quantity_remaining !== '0.0000').length,
+            shortLines: (transfer.lines ?? []).filter(line => bccomp(line.quantity_remaining, '0') !== 0).length,
             totalLines: (transfer.lines ?? []).length,
           })
           : t('detail.confirmComplete.inTransitDescription')}
