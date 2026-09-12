@@ -18,7 +18,13 @@
     "validation_failed": "The row did not pass validation.",
     "internal_error": "The row could not be imported because of an internal error.",
     "worker_lost": "The import worker stopped before the job finished.",
-    "unknown": "This historical import error has no current code."
+    "company_context_missing": "Re-upload this import so it can be processed for a company.",
+    "unknown": "The import failed. Contact support with the import reference.",
+    "job": {
+      "validation_failed": "The file did not pass validation. Fix it and import again.",
+      "internal_error": "The import could not be completed because of an internal error.",
+      "missing_columns": "The file is missing required columns: {{columns}}."
+    }
   },
   "upload": {
     "dragDrop": "Drag and drop your file here",

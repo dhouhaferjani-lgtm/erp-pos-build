@@ -27,6 +27,7 @@ final class ImportErrorDetailData extends Data
      * @param  list<string>|Optional|null  $candidate_skus
      * @param  list<int>|Optional|null  $row_numbers
      * @param  list<string>|Optional|null  $differing_fields
+     * @param  list<string>|Optional|null  $missing_columns
      */
     public function __construct(
         public readonly string|Optional|null $supplied,
@@ -50,5 +51,11 @@ final class ImportErrorDetailData extends Data
         public readonly array|Optional|null $row_numbers,
         #[TypeScriptType('string[]|null')]
         public readonly array|Optional|null $differing_fields,
+        // Job-level header validation: the columns the uploaded file is missing.
+        // The operator surfaces interpolate this into errors.job.missing_columns,
+        // which is the one actionable, non-sensitive part of a parse/validate
+        // failure — error_message may never be rendered.
+        #[TypeScriptType('string[]|null')]
+        public readonly array|Optional|null $missing_columns,
     ) {}
 }

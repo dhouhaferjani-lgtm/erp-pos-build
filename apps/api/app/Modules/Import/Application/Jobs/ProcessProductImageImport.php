@@ -105,8 +105,11 @@ final class ProcessProductImageImport implements ShouldQueue
                     ->update([
                         'status' => ImportStatus::Failed->value,
                         // Every terminal failure carries a code, because operator
-                        // surfaces render the code and never the raw message.
-                        'error_code' => ImportErrorCode::InternalError->value,
+                        // surfaces render the code and never the raw message. The
+                        // condition is named, so it carries its own case rather
+                        // than the InternalError fallback (rule 9): the operator
+                        // needs the re-upload remedy, not "unexpected error".
+                        'error_code' => ImportErrorCode::CompanyContextMissing->value,
                         'error_message' => $message,
                         'completed_at' => now(),
                     ]);

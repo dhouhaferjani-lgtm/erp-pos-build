@@ -13,6 +13,7 @@ use App\Modules\Import\Application\Services\ImportEnrichmentDispatcher;
 use App\Modules\Import\Application\Services\ModuleEntitlementCheck;
 use App\Modules\Import\Domain\Data\ImportCorrectionData;
 use App\Modules\Import\Domain\Data\ImportCountersData;
+use App\Modules\Import\Domain\Data\ImportErrorDetailData;
 use App\Modules\Import\Domain\Enums\BarcodeGroupClassification;
 use App\Modules\Import\Domain\Enums\ImportErrorCode;
 use App\Modules\Import\Domain\Enums\ImportStatus;
@@ -302,6 +303,12 @@ class ImportController extends Controller
                     'status' => ImportStatus::Failed,
                     'error_code' => ImportErrorCode::ValidationFailed,
                     'error_message' => 'Missing required columns: '.implode(', ', $headerValidation['missing']),
+                    // The column list is the actionable, non-sensitive half of this
+                    // failure. error_message is never rendered, so it travels in the
+                    // coded channel's detail instead (errors.job.missing_columns).
+                    'error_detail' => ImportErrorDetailData::from([
+                        'missing_columns' => array_values($headerValidation['missing']),
+                    ]),
                 ]);
 
                 return response()->json([
@@ -522,6 +529,8 @@ class ImportController extends Controller
                 'per_page' => $errorRows->perPage(),
                 'total' => $errorRows->total(),
                 'job_error_message' => $job->error_message,
+                'job_error_code' => $job->error_code?->value,
+                'job_error_detail' => $job->error_detail?->toArray(),
                 'error_summary' => $this->unitErrorSummary->summarize($job),
                 'validation_errors' => $validationErrorCount,
                 'execution_errors' => $executionErrorCount,
@@ -629,6 +638,8 @@ class ImportController extends Controller
                 'execution_errors' => $executionErrorCount,
                 'has_errors' => $totalErrorCount > 0,
                 'job_error_message' => $job->error_message,
+                'job_error_code' => $job->error_code?->value,
+                'job_error_detail' => $job->error_detail?->toArray(),
                 'error_summary' => $this->unitErrorSummary->summarize($job),
             ],
         ]);
@@ -1071,6 +1082,7 @@ class ImportController extends Controller
             // error_message stays for support/diagnosis only — it carries exception class
             // names, file paths and full SQLSTATE text and is never rendered.
             'error_code' => $job->error_code?->value,
+            'error_detail' => $job->error_detail?->toArray(),
             'error_message' => $job->error_message,
             'started_at' => $job->started_at?->toIso8601String(),
             'completed_at' => $job->completed_at?->toIso8601String(),

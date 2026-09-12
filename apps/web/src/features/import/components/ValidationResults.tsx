@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, CheckCircle, Download, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { importJobErrorMessage } from '../jobErrorMessage'
 import type { ImportErrorSummary } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
@@ -19,6 +20,11 @@ export function ValidationResults({
 
   const validRows = totalRows - summary.total_errors
   const hasErrors = summary.has_errors
+  const jobErrorMessage = importJobErrorMessage(t, {
+    error_code: summary.job_error_code,
+    error_message: summary.job_error_message,
+    error_detail: summary.job_error_detail,
+  })
 
   return (
     <div className="space-y-4">
@@ -63,13 +69,14 @@ export function ValidationResults({
                   : t('validation.allValidDescription')}
               </p>
 
-              {/* Job-level Error Message */}
-              {summary.job_error_message && (
-                <div className={`mt-3 rounded-md ${colorTokens.intent.danger.bgSubtle} border ${colorTokens.intent.danger.borderSubtle} p-3`}>
+              {/* Job-level failure — the coded channel, never `job_error_message`
+                  (raw class names, file paths and SQLSTATE text). */}
+              {jobErrorMessage !== null && (
+                <div role="alert" className={`mt-3 rounded-md ${colorTokens.intent.danger.bgSubtle} border ${colorTokens.intent.danger.borderSubtle} p-3`}>
                   <div className="flex items-start gap-2">
                     <XCircle className={`h-4 w-4 ${colorTokens.intent.danger.text} flex-shrink-0 mt-0.5`} />
                     <p className={`text-sm ${colorTokens.intent.danger.textStronger}`}>
-                      {summary.job_error_message}
+                      {jobErrorMessage}
                     </p>
                   </div>
                 </div>

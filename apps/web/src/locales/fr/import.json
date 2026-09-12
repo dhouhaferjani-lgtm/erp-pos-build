@@ -18,7 +18,13 @@
     "validation_failed": "La ligne n'a pas passé la validation.",
     "internal_error": "La ligne n'a pas pu être importée à cause d'une erreur interne.",
     "worker_lost": "Le processus d'import s'est arrêté avant la fin de la tâche.",
-    "unknown": "Cette ancienne erreur d'import n'a pas de code actuel."
+    "company_context_missing": "Réimportez ce fichier afin qu'il soit traité pour une société.",
+    "unknown": "L'import a échoué. Contactez le support en indiquant la référence de l'import.",
+    "job": {
+      "validation_failed": "Le fichier n'a pas passé la validation. Corrigez-le puis relancez l'import.",
+      "internal_error": "L'import n'a pas pu être terminé à cause d'une erreur interne.",
+      "missing_columns": "Colonnes obligatoires manquantes dans le fichier : {{columns}}."
+    }
   },
   "upload": {
     "dragDrop": "Glissez-déposez votre fichier ici",

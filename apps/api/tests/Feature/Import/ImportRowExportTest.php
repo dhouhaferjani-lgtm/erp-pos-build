@@ -223,6 +223,30 @@ final class ImportRowExportTest extends TestCase
         $this->getJson('/api/v1/imports?status=failed')->assertOk()->assertJsonCount(0, 'data');
     }
 
+    public function test_job_level_failure_publishes_its_code_and_detail_on_every_payload(): void
+    {
+        // M1/M10: the operator surfaces translate error_code and interpolate the
+        // missing-column list from error_detail. error_message stays a raw support
+        // channel, so every payload that feeds a screen must carry both.
+        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/imports', [
+            'type' => 'products',
+            'file' => UploadedFile::fake()->createWithContent('missing.csv', "sku,sale_price\n001,1.00\n"),
+        ])->assertStatus(422);
+        $job = ImportJob::findOrFail($response->json('data.id'));
+        $this->assertSame(ImportErrorCode::ValidationFailed, $job->error_code);
+        $this->assertSame(['name'], $job->error_detail?->missing_columns);
+
+        $this->getJson('/api/v1/imports/'.$job->id)->assertOk()
+            ->assertJsonPath('data.error_code', 'validation_failed')
+            ->assertJsonPath('data.error_detail.missing_columns', ['name']);
+        $this->getJson('/api/v1/imports/'.$job->id.'/errors')->assertOk()
+            ->assertJsonPath('meta.job_error_code', 'validation_failed')
+            ->assertJsonPath('meta.job_error_detail.missing_columns', ['name']);
+        $this->getJson('/api/v1/imports/'.$job->id.'/error-summary')->assertOk()
+            ->assertJsonPath('data.job_error_code', 'validation_failed')
+            ->assertJsonPath('data.job_error_detail.missing_columns', ['name']);
+    }
+
     public function test_unit_error_export_includes_accepted_codes(): void
     {
         $job = $this->exportJob();

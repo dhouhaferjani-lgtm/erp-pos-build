@@ -490,7 +490,9 @@ export function ImportWizardPage() {
       completed_at: apiJobData.completed_at ?? new Date().toISOString(),
       is_success: apiJobData.status === 'completed' && apiJobData.failed_rows === 0 && !apiJobData.error_message,
       is_partial_success: apiJobData.status === 'partially_completed' || (apiJobData.status === 'completed' && apiJobData.successful_rows > 0 && apiJobData.failed_rows > 0),
-      ...(apiJobData.error_message ? { error_message: apiJobData.error_message } : {}),
+      // The coded channel only: the widget translates error_code, and forwarding
+      // the raw error_message would put SQLSTATE text one render away (M2b).
+      ...(apiJobData.error_code ? { error_code: apiJobData.error_code } : {}),
     })
   }, [apiJobData, completeImport, executeImport.isSuccess, jobId, updateProgress])
 

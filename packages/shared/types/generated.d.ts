@@ -1047,6 +1047,7 @@ held_at?: string | null;
 barcode?: string | null;
 row_numbers?: Array<any> | null;
 differing_fields?: Array<string> | null;
+missing_columns?: Array<string> | null;
 };
 export type UnitCandidateData = {
 id: string;
@@ -1060,7 +1061,7 @@ declare namespace App.Modules.Import.Domain.Enums {
 export type BarcodeGroupClassification = 'multi_location' | 'barcode_identity_conflict';
 export type DuplicateBucket = 'new' | 'existing_sku' | 'existing_barcode' | 'existing_name' | 'in_file' | 'refused';
 export type DuplicatePolicy = 'override' | 'skip';
-export type ImportErrorCode = 'units_not_seeded' | 'unit_unknown' | 'unit_ambiguous' | 'unit_default_missing' | 'barcode_ambiguous' | 'barcode_identity_conflict' | 'product_not_found' | 'partner_not_found' | 'sku_held_by_deleted_product' | 'vat_held_by_deleted_partner' | 'duplicate_sku_in_company' | 'invalid_number' | 'validation_failed' | 'internal_error' | 'worker_lost';
+export type ImportErrorCode = 'units_not_seeded' | 'unit_unknown' | 'unit_ambiguous' | 'unit_default_missing' | 'barcode_ambiguous' | 'barcode_identity_conflict' | 'product_not_found' | 'partner_not_found' | 'sku_held_by_deleted_product' | 'vat_held_by_deleted_partner' | 'duplicate_sku_in_company' | 'invalid_number' | 'validation_failed' | 'internal_error' | 'worker_lost' | 'company_context_missing';
 export type ImportRowOutcome = 'pending' | 'imported' | 'merged_line' | 'duplicate_skipped' | 'duplicate_loser' | 'failed' | 'opening_locked';
 export type ImportStatus = 'pending' | 'validating' | 'validated' | 'importing' | 'completed' | 'partially_completed' | 'failed';
 export type ImportType = 'parties' | 'partners' | 'products' | 'stock_levels' | 'opening_balances' | 'product_images' | 'composite_items';

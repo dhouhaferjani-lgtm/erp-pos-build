@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { importJobErrorMessage } from '@/features/import/jobErrorMessage'
 import {
   useImportProgressStore,
   type ImportProgress,
@@ -17,6 +18,13 @@ function ImportProgressCard({ progress }: { progress: ImportProgress }) {
   const isPartial = progress.status === 'partially_completed' || progress.isPartialSuccess
   const isSuccess = progress.isSuccess && !isPartial
   const isFailed = progress.status === 'failed' || (isCompleted && !isSuccess && !isPartial)
+  // The broadcast carries raw server text (class names, paths, SQLSTATE). This
+  // card is a transient toast with no diagnostic role, so it renders the coded
+  // sentence and degrades to one generic sentence — never the raw string.
+  const errorMessage = importJobErrorMessage(t, {
+    error_code: progress.errorCode,
+    error_message: progress.errorMessage,
+  })
 
   const getStatusIcon = () => {
     if (isFailed) {
@@ -99,10 +107,10 @@ function ImportProgressCard({ progress }: { progress: ImportProgress }) {
         )}
       </div>
 
-      {/* Error message */}
-      {progress.errorMessage && (
+      {/* Failure reason — coded, never the raw broadcast text */}
+      {errorMessage !== null && (
         <p className={`mt-2 text-xs ${colorTokens.intent.danger.text} line-clamp-2`}>
-          {progress.errorMessage}
+          {errorMessage}
         </p>
       )}
     </div>

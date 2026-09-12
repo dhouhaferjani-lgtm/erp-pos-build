@@ -16,4 +16,5 @@ export const ERROR_TRANSLATION_KEYS = {
   validation_failed: true,
   internal_error: true,
   worker_lost: true,
+  company_context_missing: true,
 } as const satisfies Record<ImportErrorCode, true>

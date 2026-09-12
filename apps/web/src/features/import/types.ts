@@ -72,6 +72,8 @@ export interface ImportJob extends Partial<App.Modules.Import.Domain.Data.Import
    * what operator surfaces render, through `importJobErrorMessage()`.
    */
   error_code: App.Modules.Import.Domain.Enums.ImportErrorCode | null
+  /** Structured detail behind the code (e.g. the missing header list). Rendered through `importJobErrorMessage`. */
+  error_detail?: App.Modules.Import.Domain.Data.ImportErrorDetailData | null
   /** Raw server text (class names, file paths, SQLSTATE). Diagnosis only — never rendered. */
   error_message: string | null
   started_at: string | null
@@ -164,6 +166,11 @@ export interface ImportErrorSummary {
   validation_errors: number
   execution_errors: number
   has_errors: boolean
+  /** Coded failure channel — this is what the screen renders (see `importJobErrorMessage`). */
+  job_error_code: App.Modules.Import.Domain.Enums.ImportErrorCode | null
+  /** Structured detail behind the code (e.g. the missing header list). */
+  job_error_detail?: App.Modules.Import.Domain.Data.ImportErrorDetailData | null
+  /** Raw server text. Diagnosis only — never rendered. */
   job_error_message: string | null
   error_summary: UnitErrorSummary
 }

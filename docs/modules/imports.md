@@ -867,13 +867,30 @@ Counters on a terminal job are recomputed from row state, never from the loop's 
 
 `import_jobs.error_code` (`ImportErrorCode`) is the **operator** channel; `import_jobs.error_message` is the
 **support** channel and holds raw server text (exception class names, file paths, full SQLSTATE strings
-including key values). The web never renders `error_message` — both surfaces go through
-`apps/web/src/features/import/jobErrorMessage.ts`, which translates `errors.<code>` (en/fr/ar) and degrades
-an absent or unrecognised code to one generic sentence.
+including key values). It is still *disclosed* to the client (`formatJob()` publishes it, and so do the
+`errors` / `error-summary` payloads) for support and diagnosis, but **no surface renders it**. Every surface
+that shows a job failure goes through `apps/web/src/features/import/jobErrorMessage.ts`, which reads
+`error_code` only, translates it (en/fr/ar) and degrades an absent or unrecognised code to one generic
+sentence. The four surfaces, exhaustively:
 
-Consequence for any new terminal-failure path: **stamp a code**. `ImportErrorCode::InternalError` is the
-honest fallback; a `CodedImportRowException` keeps its own code through the sync finalize catch. A path that
-writes `error_message` without `error_code` silently turns its message into "no current code" on screen.
+| Surface | Fed by |
+|---|---|
+| history row alert (`ImportHistoryPage.tsx`) | `GET /imports` → `formatJob()` `error_code` / `error_detail` |
+| wizard execute + completion alerts (`ImportWizardPage.tsx`) | `GET /imports/{id}` → `formatJob()` |
+| validation step job banner (`ValidationResults.tsx`, via `ErrorViewer`) | `GET /imports/{id}/error-summary` → `job_error_code` / `job_error_detail` |
+| global progress toast (`GlobalImportProgress.tsx`) | the progress store — `error_code` from the wizard's API feeder; the WebSocket `ImportCompleted` broadcast carries no code yet, so that feeder resolves to the generic sentence |
+
+Scope matters: the shared catalogue `errors.<code>` is written for a ROW. A job-level failure with the same
+code reads `errors.job.<code>` instead (`validation_failed`, `internal_error`), and a header failure
+interpolates `error_detail.missing_columns` into `errors.job.missing_columns` — the one actionable,
+non-sensitive part of a parse/validate failure.
+
+Consequence for any new terminal-failure path: **stamp a code**, and stamp the *named* one — a condition the
+code can name (`company_context_missing`) gets its own `ImportErrorCode` case (rule 9), because
+`InternalError` erases the remedy. `ImportErrorCode::InternalError` is the honest fallback only for genuinely
+unexpected failures; a `CodedImportRowException` keeps its own code through the sync finalize catch. A path
+that writes `error_message` without `error_code` silently turns its message into the generic sentence on
+screen.
 
 ### Rows to fix — the correction export
 

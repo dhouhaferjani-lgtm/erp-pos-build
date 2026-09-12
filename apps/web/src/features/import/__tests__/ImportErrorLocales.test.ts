@@ -22,7 +22,7 @@ describe('import error locale parity', () => {
     for (const [code, copy] of Object.entries(messages.errors)) {
       if (known.has(code)) {
         expect(copy).toEqual(expect.any(String))
-        expect(copy.trim()).not.toBe('')
+        expect(String(copy).trim()).not.toBe('')
       }
     }
   })
