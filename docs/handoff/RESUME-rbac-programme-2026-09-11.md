@@ -6,6 +6,8 @@
 
 > **2026-09-12 gate r1 on wave 0a (tip `b3e35990d`):** `tenancy-authz-reviewer` = **MERGE-WITH-FIXES 0B/2M/5m** (`docs/superpowers/reviews/2026-09-12-rbac-w0a-impl-gate-r1-tenancy.md`). Both majors are records; addendum committed on the lane as `Phase 0.1.8`. **Owner-owed before the origin/dev push that carries wave 0a (M-1):** existing tenants may lack the nine keys the 17 gates use — run `php artisan tenants:seed --force --class='Database\Seeders\RolesAndPermissionsSeeder'` or set `SYNC_PERMISSIONS_ON_BOOT=true` for that deploy, then `permission:cache-reset` per tenant, and spot-check `manager` on every staging tenant. The seeder's `syncPermissions` overwrites tenant-edited roles, so pick the form deliberately. UI follow-up ticket: `docs/superpowers/tickets/2026-09-12-rbac-w0a-unguarded-row-actions-menus-promotions-coupons.md` (0b-15 / 2a).
 
+> **2026-09-12 evening:** wave 0a MERGED (`f90ece298`), T2 S1 MERGED (`474e38e2a`), W-LOT-A-1a MERGED (`c8ad8fd40`), this docs branch MERGED (`a041c2315`) — all on LOCAL `dev`, nothing pushed. **Wave 0b entry condition is MET.** Dispatch = the 2026-09-11 brief + `docs/handoff/CODEX-DISPATCH-RBAC-W0b-addendum-2026-09-12.md` (seeder shape, ratchet, ci.yml/manifest values, PG port, trailer). IMP-1 is landing separately (imports only; no 0b overlap).
+
 ## Where things stand
 
 | Item | State | Location |
