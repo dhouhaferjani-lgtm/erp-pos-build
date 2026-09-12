@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Tests\Architecture;
 
+use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Route as RouteFacade;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Architecture\Support\RouteCoverage;
 use Tests\Architecture\Support\RouteCoverageClassifier;
 use Tests\Architecture\Support\RouteCoverageRatchetChecker;
 use Tests\Architecture\Support\RouteCoverageReport;
 use Tests\Architecture\Support\RoutePermissionCoverageScanner;
+use Tests\Architecture\Support\SelfServiceRouteRegistry;
 use Tests\TestCase;
 
 /**
@@ -66,7 +69,7 @@ final class RoutePermissionCoverageRatchetTest extends TestCase
      * The two ceilings are SEPARATE so closing reads can never buy headroom for
      * writes — owner ruling D3, "writes first".
      */
-    public const UNCOVERED_WRITE_CEILING = 167;
+    public const UNCOVERED_WRITE_CEILING = 152;
 
     /**
      * Shrink-only. Generated at 148 (149 uncovered reads minus GET /auth/me,
@@ -78,7 +81,95 @@ final class RoutePermissionCoverageRatchetTest extends TestCase
      * closures this wave does not make would hand 0b four units of unearned
      * headroom — the failure the shrink-only rule exists to deny.
      */
-    public const UNCOVERED_READ_CEILING = 148;
+    public const UNCOVERED_READ_CEILING = 146;
+
+    /**
+     * 0a-5, spec 4.4.4. Fifteen live writes whose permission ALREADY EXISTS in
+     * the seeded catalogue, so nothing here depends on wave 1.
+     *
+     * ELEVEN of them are checked at NO layer today. The other four already check
+     * in the controller (UomController.php:52,170,207,261) and are gated here
+     * because a controller check is invisible to a mechanical sweep and is
+     * therefore not coverage under E-2 — not because they were unprotected.
+     *
+     * NOT here, each for a stated reason:
+     *   - DELETE batches/{uuid} and POST batches/{uuid}/recall -> 0b-5
+     *     (lane/w-lot-a-1a rewrites that routes file);
+     *   - POST inventory/countings/{counting}/items/{item}/count -> 0b-13
+     *     (lane/t2-receipt-spine edits that routes file);
+     *   - POST coupons/validate -> wave 3. It is a write verb on the POS path;
+     *     gating a till's coupon check on a back-office read permission is a
+     *     functional change, not a hardening.
+     *
+     * @var array<string, string>
+     */
+    public const WAVE_0A_WRITE_CLOSURES = [
+        'DELETE api/v1/promotions/{id}' => 'can:promotions.manage',
+        'POST api/v1/promotions/{id}/activate' => 'can:promotions.manage',
+        'POST api/v1/promotions/{id}/pause' => 'can:promotions.manage',
+        'POST api/v1/promotions/{id}/archive' => 'can:promotions.manage',
+        'POST api/v1/uom/units' => 'can:uom.create',
+        'PUT api/v1/uom/units/{id}' => 'can:uom.edit',
+        'DELETE api/v1/uom/units/{id}' => 'can:uom.delete',
+        'POST api/v1/uom/unit-text-mappings' => 'can:units.manage',
+        'POST api/v1/uom/convert' => 'can:uom.view',
+        'DELETE api/v1/menus/{id}' => 'can:menus.manage',
+        'DELETE api/v1/menu-categories/{id}' => 'can:menus.manage',
+        'DELETE api/v1/menu-categories/{categoryId}/items/{itemId}' => 'can:menus.manage',
+        'DELETE api/v1/coupons/{id}' => 'can:coupons.manage',
+        'POST api/v1/coupons/{id}/revoke' => 'can:coupons.manage',
+        'POST api/v1/coupons/{id}/reactivate' => 'can:coupons.manage',
+    ];
+
+    /**
+     * 0a-5's read half, spec 4.9.3: the only API surface behind the /coupons
+     * page the frontend already gates on coupons.view.
+     *
+     * @var array<string, string>
+     */
+    public const COUPON_READ_CLOSURES = [
+        'GET api/v1/coupons' => 'can:coupons.view',
+        'GET api/v1/coupons/{id}' => 'can:coupons.view',
+    ];
+
+    #[Test]
+    public function the_wave_0a_closures_carry_their_declared_gate(): void
+    {
+        $classifier = new RouteCoverageClassifier;
+        $closures = array_merge(self::WAVE_0A_WRITE_CLOSURES, self::COUPON_READ_CLOSURES);
+
+        foreach ($closures as $key => $expected) {
+            $route = $this->findRoute($key);
+
+            self::assertSame(
+                RouteCoverage::Gated,
+                $classifier->classify($route),
+                $key.' is not gated. Spec 4.4.4 requires '.$expected.'.',
+            );
+            self::assertContains(
+                $expected,
+                array_values(array_filter(
+                    $route->gatherMiddleware(),
+                    static fn (string|object $middleware): bool => is_string($middleware),
+                )),
+                $key.' is gated, but not with the declared expression '.$expected.'.',
+            );
+        }
+    }
+
+    #[Test]
+    public function the_pos_coupon_validation_write_is_deliberately_still_uncovered(): void
+    {
+        self::assertSame(
+            RouteCoverage::Uncovered,
+            (new RouteCoverageClassifier)->classify($this->findRoute('POST api/v1/coupons/validate')),
+            'POST coupons/validate was gated in wave 0a. It is a write verb on the POS path and gating '
+            .'it on a back-office read permission is a functional change; it closes with the rest of the '
+            .'POS surface in wave 3. If this is a deliberate wave-3 change, delete this assertion in the '
+            .'same commit.',
+        );
+        self::assertContains('POST api/v1/coupons/validate', $this->baselineKeys());
+    }
 
     #[Test]
     public function uncovered_routes_match_the_baseline_exactly(): void
@@ -247,5 +338,16 @@ final class RoutePermissionCoverageRatchetTest extends TestCase
         sort($keys);
 
         return $keys;
+    }
+
+    private function findRoute(string $key): Route
+    {
+        foreach (RouteFacade::getRoutes()->getRoutes() as $route) {
+            if (SelfServiceRouteRegistry::routeKey($route) === $key) {
+                return $route;
+            }
+        }
+
+        self::fail('Route not registered: '.$key);
     }
 }
