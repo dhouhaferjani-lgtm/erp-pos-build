@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\BatchExpiry;
 
+use App\Console\Commands\ApplyLotActionPermissionDelta;
 use App\Modules\BatchExpiry\Domain\Repositories\BatchRepositoryInterface;
 use App\Modules\BatchExpiry\Infrastructure\Commands\BatchExpiryDailyCheckCommand;
 use App\Modules\BatchExpiry\Infrastructure\Persistence\BatchRepository;
@@ -31,6 +32,7 @@ class BatchExpiryServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 BatchExpiryDailyCheckCommand::class,
+                ApplyLotActionPermissionDelta::class,
             ]);
         }
     }

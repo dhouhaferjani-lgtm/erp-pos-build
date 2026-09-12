@@ -16,6 +16,8 @@ use App\Modules\POS\Application\Services\PosPartnerReferenceSource;
 use App\Modules\POS\Application\Services\TerminalSyncHealthSourceService;
 use App\Modules\POS\Commands\CloseOrphanedShiftCommand;
 use App\Modules\POS\Commands\VerifyPosChainCommand;
+use App\Modules\POS\Infrastructure\BatchTraceability\PosBatchTraceReaderAdapter;
+use App\Shared\Contracts\BatchTraceability\PosBatchTraceReader;
 use App\Shared\Contracts\Compliance\Nf525DataProviderContract;
 use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use App\Shared\Contracts\POS\TerminalSyncHealthSource;
@@ -37,6 +39,7 @@ final class POSServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(PosBatchTraceReader::class, PosBatchTraceReaderAdapter::class);
         // Partner delete guard (lane R2-S): this module answers for its own
         // partner-referencing tables. Consumed by
         // `PartnerReferenceCounter` via

@@ -1005,6 +1005,16 @@ token: string;
 tokenType: string;
 deviceId: string | null;
 };
+export type RoleData = {
+id: number;
+name: string;
+guard_name: string;
+permissions: Array<string>;
+users_count: number;
+created_at: string | null;
+updated_at: string | null;
+is_provisioned_read_only: boolean;
+};
 export type UserData = {
 id: string;
 name: string;
@@ -1024,6 +1034,9 @@ maxDiscountPercent: string | null;
 };
 }
 declare namespace App.Modules.Identity.Domain.Enums {
+export type LotActionPermissionDeltaOutcome = 'APPLIED' | 'ALREADY_APPLIED' | 'SKIPPED' | 'FAILED';
+export type RoleProvisioningSource = 'w-lot-a-1a';
+export type SystemRoleName = 'general_manager';
 export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending_verification';
 }
 declare namespace App.Modules.Import.Domain.Data {

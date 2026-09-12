@@ -921,3 +921,31 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
     })
   })
 })
+
+describe('W-LOT-A-1a batch navigation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useRealModuleAccess = true
+    localStorage.setItem('autoerp-sidebar-expanded', JSON.stringify(['inventory', 'parapharmacy']))
+  })
+  afterEach(() => { useRealModuleAccess = false; resetAuth() })
+  function batchSidebar(permissions: string[], enabled = true) {
+    seedAuth({ roles: [], permissions: ['inventory.view', ...permissions] })
+    return renderWithProviders(<Sidebar isOpen={true} />, {
+      productConfig: { product: 'otospex' },
+      companyConfig: { ...defaultCompanyConfig, all_enabled_modules: [...defaultCompanyConfig.all_enabled_modules, ...(enabled ? ['BatchExpiry'] : [])] },
+    })
+  }
+  it('hides batch navigation without batches.view', () => {
+    batchSidebar([])
+    expect(screen.queryByRole('link', { name: /navigation\.batches/i })).not.toBeInTheDocument()
+  })
+  it('shows batch navigation with batches.view and BatchExpiry enabled', async () => {
+    batchSidebar(['batches.view'])
+    expect(await screen.findByRole('link', { name: /navigation\.batches/i })).toBeInTheDocument()
+  })
+  it('hides batch navigation when BatchExpiry is disabled', () => {
+    batchSidebar(['batches.view'], false)
+    expect(screen.queryByRole('link', { name: /navigation\.batches/i })).not.toBeInTheDocument()
+  })
+})

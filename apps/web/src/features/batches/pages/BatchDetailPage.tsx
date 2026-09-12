@@ -5,6 +5,7 @@ import { ArrowLeft, Edit, Package, Calendar, AlertTriangle, Trash2 } from 'lucid
 import { useBatch, useBatchStock, useDeleteBatch, useRecallBatch } from '../hooks/useBatches'
 import { BatchStatusBadge } from '../components/BatchStatusBadge'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useCurrency } from '@/hooks/useCurrency'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
@@ -18,6 +19,7 @@ export function BatchDetailPage() {
   const navigate = useNavigate()
 
   const { decimals } = useCurrency()
+  const { hasPermission } = usePermissions()
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
   const [recallReason, setRecallReason] = useState('')
 
@@ -72,9 +74,9 @@ export function BatchDetailPage() {
     )
   }
 
-  const canEdit = batch.is_active && !batch.is_recalled
-  const canRecall = batch.is_active && !batch.is_recalled && !batch.is_expired
-  const canDelete = batch.is_active
+  const canEdit = hasPermission('batches.update') && batch.is_active && !batch.is_recalled
+  const canRecall = hasPermission('batches.recall') && batch.is_active && !batch.is_recalled && !batch.is_expired
+  const canDelete = hasPermission('batches.delete') && batch.is_active
 
   return (
     <div className="space-y-6">

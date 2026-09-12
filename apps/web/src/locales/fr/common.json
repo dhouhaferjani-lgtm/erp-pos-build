@@ -1110,6 +1110,7 @@
     "selectPermissions": "Sélectionnez les permissions pour ce rôle",
     "usersAssigned": "{{count}} utilisateur(s) assigné(s)",
     "noUsers": "Aucun utilisateur assigné",
+    "provisionedReadOnly": "Provisionné · lecture seule",
     "systemRole": "Rôle système",
     "systemRoleHint": "Les rôles système ne peuvent pas être renommés ou supprimés",
     "clickToEdit": "Cliquer pour modifier",

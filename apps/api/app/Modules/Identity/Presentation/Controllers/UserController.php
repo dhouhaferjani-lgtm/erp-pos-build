@@ -16,6 +16,7 @@ use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Application\DTOs\UserData;
 use App\Modules\Identity\Application\Notifications\ResetPasswordNotification;
 use App\Modules\Identity\Application\Notifications\UserInvitation;
+use App\Modules\Identity\Application\Services\GeneralManagerAssignmentGuard;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Identity\Presentation\Requests\CreateUserRequest;
@@ -30,6 +31,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -57,6 +60,8 @@ class UserController extends Controller
         private readonly LocationContext $locationContext,
         private readonly IdentityIndexService $identityIndexService,
         private readonly TenantLinkSigner $tenantLinkSigner,
+        private readonly GeneralManagerAssignmentGuard $generalManagerAssignmentGuard,
+        private readonly PermissionRegistrar $permissionRegistrar,
     ) {}
 
     /**
@@ -214,69 +219,79 @@ class UserController extends Controller
         /** @var Tenant $tenant */
         $tenant = Tenant::findOrFail($currentUser->tenant_id);
 
-        $user = DB::transaction(function () use ($validated, $currentUser, $companyId, $hasLocationGrant, $requestedLocations) {
-            // Generate a random password (user will set it via invitation email)
-            $tempPassword = Str::random(32);
+        $previousTeam = $this->permissionRegistrar->getPermissionsTeamId();
+        $this->permissionRegistrar->setPermissionsTeamId($currentUser->tenant_id);
+        try {
+            $user = DB::transaction(function () use ($validated, $currentUser, $companyId, $hasLocationGrant, $requestedLocations) {
+                // Generate a random password (user will set it via invitation email)
+                $tempPassword = Str::random(32);
 
-            $user = User::create([
-                'tenant_id' => $currentUser->tenant_id,
-                'name' => $validated['name'],
-                'email' => $validated['email'] ?? null,
-                'phone' => $validated['phone'] ?? null,
-                'password' => Hash::make($tempPassword),
-                'status' => UserStatus::PendingVerification,
-                'locale' => $validated['locale'] ?? null,
-                'timezone' => $validated['timezone'] ?? null,
-            ]);
+                $user = User::create([
+                    'tenant_id' => $currentUser->tenant_id,
+                    'name' => $validated['name'],
+                    'email' => $validated['email'] ?? null,
+                    'phone' => $validated['phone'] ?? null,
+                    'password' => Hash::make($tempPassword),
+                    'status' => UserStatus::PendingVerification,
+                    'locale' => $validated['locale'] ?? null,
+                    'timezone' => $validated['timezone'] ?? null,
+                ]);
 
-            // Set permissions team context and assign role
-            setPermissionsTeamId($currentUser->tenant_id);
-            $user->assignRole($validated['role']);
+                // Cashiers without email are immediately active (PIN-only users)
+                if ($user->email === null) {
+                    $user->update(['status' => UserStatus::Active]);
+                }
 
-            // Cashiers without email are immediately active (PIN-only users)
-            if ($user->email === null) {
-                $user->update(['status' => UserStatus::Active]);
-            }
+                UserCompanyMembership::create([
+                    'user_id' => $user->id,
+                    'company_id' => $companyId,
+                    // Spatie role names are tenant-authored labels; never let a
+                    // role named "owner" mint ownership in the company scope.
+                    'role' => MembershipRole::Viewer,
+                    'allowed_location_ids' => null,
+                    'is_primary' => UserCompanyMembership::where('user_id', $user->id)->count() === 0,
+                    'status' => MembershipStatus::Active,
+                ]);
 
-            UserCompanyMembership::create([
-                'user_id' => $user->id,
-                'company_id' => $companyId,
-                // Spatie role names are tenant-authored labels; never let a
-                // role named "owner" mint ownership in the company scope.
-                'role' => MembershipRole::Viewer,
-                'allowed_location_ids' => null,
-                'is_primary' => UserCompanyMembership::where('user_id', $user->id)->count() === 0,
-                'status' => MembershipStatus::Active,
-            ]);
+                if ($hasLocationGrant) {
+                    $this->writeLocationGrant(
+                        $user->id,
+                        $requestedLocations,
+                        $companyId,
+                    );
+                }
 
-            if ($hasLocationGrant) {
-                $this->writeLocationGrant(
-                    $user->id,
-                    $requestedLocations,
-                    $companyId,
+                User::query()->where('id', $user->id)->lockForUpdate()->firstOrFail();
+                UserCompanyMembership::query()->where('user_id', $user->id)->where('status', MembershipStatus::Active)->orderBy('company_id')->lockForUpdate()->get();
+                Role::query()->where(config('permission.column_names.team_foreign_key'), $currentUser->tenant_id)->where('name', $validated['role'])->where('guard_name', 'sanctum')->lockForUpdate()->first();
+                $this->generalManagerAssignmentGuard->assertAssignable($currentUser, $user->id, $companyId, [$validated['role']], $requestedLocations);
+                $user->assignRole($validated['role']);
+                $this->generalManagerAssignmentGuard->assertAssignable($currentUser, $user->id, $companyId, array_values($user->getRoleNames()->map(static fn ($name): string => (string) $name)->all()), $requestedLocations);
+
+                // Maintain the central identity index (topology §9.1) so invited
+                // users can do email-first login / org recovery. No-op for PIN-only
+                // cashiers (null email).
+                $this->identityIndexService->record($user->email, $currentUser->tenant_id, $user->id);
+
+                // Log audit event
+                $this->logAuditEvent(
+                    eventType: 'user.created',
+                    aggregateId: $user->id,
+                    userId: $currentUser->id,
+                    companyId: $this->companyContext->requireCompanyId(),
+                    payload: [
+                        'name' => $user->name,
+                        'email' => $user->email,
+                        'role' => $validated['role'],
+                    ]
                 );
-            }
 
-            // Maintain the central identity index (topology §9.1) so invited
-            // users can do email-first login / org recovery. No-op for PIN-only
-            // cashiers (null email).
-            $this->identityIndexService->record($user->email, $currentUser->tenant_id, $user->id);
+                return $user;
+            });
 
-            // Log audit event
-            $this->logAuditEvent(
-                eventType: 'user.created',
-                aggregateId: $user->id,
-                userId: $currentUser->id,
-                companyId: $this->companyContext->requireCompanyId(),
-                payload: [
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'role' => $validated['role'],
-                ]
-            );
-
-            return $user;
-        });
+        } finally {
+            $this->permissionRegistrar->setPermissionsTeamId($previousTeam);
+        }
 
         // Send invitation AFTER transaction commits — email failure is non-fatal
         if ($user->email !== null) {
@@ -354,74 +369,90 @@ class UserController extends Controller
             );
         }
 
-        return DB::transaction(function () use (
-            $user,
-            $validated,
-            $currentUser,
-            $request,
-            $hasLocationGrant,
-            $requestedLocations,
-        ) {
-            $changes = [];
-            $previousEmail = $user->email;
+        $previousTeam = $this->permissionRegistrar->getPermissionsTeamId();
+        $this->permissionRegistrar->setPermissionsTeamId($currentUser->tenant_id);
+        try {
+            return DB::transaction(function () use (
+                $user,
+                $validated,
+                $currentUser,
+                $request,
+                $hasLocationGrant,
+                $requestedLocations,
+            ) {
+                $user = User::query()->where('tenant_id', $currentUser->tenant_id)->where('id', $user->id)->lockForUpdate()->firstOrFail();
+                $companyId = $this->companyContext->requireCompanyId();
+                $memberships = UserCompanyMembership::query()->where('user_id', $user->id)->where('status', MembershipStatus::Active)->orderBy('company_id')->lockForUpdate()->get();
+                $membership = $memberships->firstWhere('company_id', $companyId);
+                $roles = array_key_exists('role', $validated) ? [(string) $validated['role']] : array_values($user->getRoleNames()->map(static fn ($name): string => (string) $name)->all());
+                Role::query()->where(config('permission.column_names.team_foreign_key'), $currentUser->tenant_id)->whereIn('name', $roles)->orderBy('name')->orderBy('id')->lockForUpdate()->get();
+                $effectiveLocations = $hasLocationGrant ? $requestedLocations : $membership?->allowed_location_ids;
+                $this->generalManagerAssignmentGuard->assertLocationChangeAllowed($currentUser, $user->id, $companyId, $roles, $effectiveLocations);
+                $changes = [];
+                $previousEmail = $user->email;
 
-            // Update basic fields
-            $fieldsToUpdate = ['name', 'email', 'phone', 'locale', 'timezone', 'can_discount', 'max_discount_percent'];
-            foreach ($fieldsToUpdate as $field) {
-                if (array_key_exists($field, $validated)) {
-                    $changes[$field] = [
-                        'old' => $user->{$field},
-                        'new' => $validated[$field],
-                    ];
-                    $user->{$field} = $validated[$field];
+                // Update basic fields
+                $fieldsToUpdate = ['name', 'email', 'phone', 'locale', 'timezone', 'can_discount', 'max_discount_percent'];
+                foreach ($fieldsToUpdate as $field) {
+                    if (array_key_exists($field, $validated)) {
+                        $changes[$field] = [
+                            'old' => $user->{$field},
+                            'new' => $validated[$field],
+                        ];
+                        $user->{$field} = $validated[$field];
+                    }
                 }
-            }
 
-            // Handle role change
-            if (array_key_exists('role', $validated)) {
-                $oldRoles = $user->getRoleNames()->values()->all();
-                setPermissionsTeamId($currentUser->tenant_id);
-                $user->syncRoles([$validated['role']]);
-                $changes['role'] = [
-                    'old' => $oldRoles,
-                    'new' => [$validated['role']],
-                ];
-            }
+                // Handle role change
+                if (array_key_exists('role', $validated)) {
+                    $oldRoles = $user->getRoleNames()->values()->all();
+                    $user->syncRoles([$validated['role']]);
+                    $changes['role'] = [
+                        'old' => $oldRoles,
+                        'new' => [$validated['role']],
+                    ];
+                }
 
-            $user->save();
+                $user->save();
 
-            if ($hasLocationGrant) {
-                $this->writeLocationGrant(
+                if ($hasLocationGrant) {
+                    $this->writeLocationGrant(
+                        $user->id,
+                        $requestedLocations,
+                        $this->companyContext->requireCompanyId(),
+                    );
+                }
+
+                $persistedMembership = UserCompanyMembership::query()->where('user_id', $user->id)->where('company_id', $companyId)->where('status', MembershipStatus::Active)->first();
+                $this->generalManagerAssignmentGuard->assertLocationChangeAllowed($currentUser, $user->id, $companyId, array_values($user->getRoleNames()->map(static fn ($name): string => (string) $name)->all()), $persistedMembership?->allowed_location_ids);
+
+                // Keep the central identity index in sync on email change
+                // (topology §9.1). syncEmail() is a no-op when the email is
+                // unchanged and idempotent otherwise.
+                $this->identityIndexService->syncEmail(
+                    $previousEmail,
+                    $user->email,
+                    $currentUser->tenant_id,
                     $user->id,
-                    $requestedLocations,
-                    $this->companyContext->requireCompanyId(),
                 );
-            }
 
-            // Keep the central identity index in sync on email change
-            // (topology §9.1). syncEmail() is a no-op when the email is
-            // unchanged and idempotent otherwise.
-            $this->identityIndexService->syncEmail(
-                $previousEmail,
-                $user->email,
-                $currentUser->tenant_id,
-                $user->id,
-            );
+                // Log audit event
+                $this->logAuditEvent(
+                    eventType: 'user.updated',
+                    aggregateId: $user->id,
+                    userId: $currentUser->id,
+                    companyId: $this->companyContext->requireCompanyId(),
+                    payload: ['changes' => $changes]
+                );
 
-            // Log audit event
-            $this->logAuditEvent(
-                eventType: 'user.updated',
-                aggregateId: $user->id,
-                userId: $currentUser->id,
-                companyId: $this->companyContext->requireCompanyId(),
-                payload: ['changes' => $changes]
-            );
-
-            return response()->json([
-                'data' => UserData::fromUser($user->refresh()),
-                'meta' => $this->getMeta($request),
-            ]);
-        });
+                return response()->json([
+                    'data' => UserData::fromUser($user->refresh()),
+                    'meta' => $this->getMeta($request),
+                ]);
+            });
+        } finally {
+            $this->permissionRegistrar->setPermissionsTeamId($previousTeam);
+        }
     }
 
     /**

@@ -294,19 +294,19 @@ routes:
   - path: /inventory/batches
     component: BatchListPage
     module_gate: BatchExpiry
-    permission: null
+    permission: batches.view
   - path: /inventory/batches/:uuid
     component: BatchDetailPage
     module_gate: BatchExpiry
-    permission: null
+    permission: batches.view
   - path: /inventory/batches/:uuid/edit
     component: EditBatchPage
     module_gate: BatchExpiry
-    permission: null
+    permission: batches.update
   - path: /inventory/batches/new
     component: CreateBatchPage
     module_gate: BatchExpiry
-    permission: null
+    permission: batches.create
   - path: /inventory/categories
     component: CategoriesPage
     module_gate: inventory

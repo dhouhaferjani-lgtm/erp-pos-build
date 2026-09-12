@@ -6,6 +6,7 @@ namespace App\Modules\BatchExpiry\Infrastructure\Persistence;
 
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Repositories\BatchRepositoryInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
@@ -19,6 +20,32 @@ class BatchRepository implements BatchRepositoryInterface
     public function findByUuid(string $uuid): ?Batch
     {
         return Batch::where('uuid', $uuid)->first();
+    }
+
+    /**
+     * @param  list<string>|null  $locationIds
+     * @param  list<int>  $historicallyVisibleBatchIds
+     */
+    public function findVisibleByUuid(string $uuid, string $companyId, ?array $locationIds, array $historicallyVisibleBatchIds = []): ?Batch
+    {
+        $query = Batch::query()->where('uuid', $uuid)->where('company_id', $companyId);
+        $this->scopeVisible($query, $locationIds, $historicallyVisibleBatchIds);
+
+        return $query->with(['product.unitOfMeasure', 'batchStock' => fn ($stock) => $locationIds === null ? $stock : $stock->whereIn('location_id', $locationIds)])->first();
+    }
+
+    /**
+     * @param  Builder<Batch>  $query
+     * @param  list<string>|null  $locationIds
+     * @param  list<int>  $history
+     */
+    private function scopeVisible(Builder $query, ?array $locationIds, array $history = []): void
+    {
+        if ($locationIds !== null) {
+            $query->where(fn (Builder $visible) => $visible
+                ->whereHas('batchStock', fn (Builder $stock) => $stock->whereIn('location_id', $locationIds)->whereRaw('quantity > ?', ['0']))
+                ->orWhereIn('id', $history));
+        }
     }
 
     public function findByBatchNumber(string $companyId, string $productId, string $batchNumber): ?Batch
@@ -48,8 +75,11 @@ class BatchRepository implements BatchRepositoryInterface
         return $query->first();
     }
 
-    /** @return Collection<int, Batch> */
-    public function getByProduct(string $tenantId, string $companyId, string $productId, bool $activeOnly = true): Collection
+    /**
+     * @param  list<string>|null  $locationIds
+     * @return Collection<int, Batch>
+     */
+    public function getByProduct(string $tenantId, string $companyId, string $productId, bool $activeOnly = true, ?array $locationIds = null): Collection
     {
         // api.inventory round-2 (Codex Finding 1): lead with tenant+company
         // predicates so a route-supplied productId cannot leak foreign batches.
@@ -76,7 +106,10 @@ class BatchRepository implements BatchRepositoryInterface
         // "Batch allocations must follow FEFO" and the operator cannot satisfy it.
         // Equal DATES were already reachable; undated ties are new, and on the
         // launch tenant they are the common shape.
-        return $query->with(['batchStock'])
+        // Restricted stock pickers require positive stock; historical visibility belongs to list/detail only.
+        $this->scopeVisible($query, $locationIds);
+
+        return $query->with(['batchStock' => fn ($stock) => $locationIds === null ? $stock : $stock->whereIn('location_id', $locationIds)])
             ->orderByRaw('(expiry_date IS NULL) ASC, expiry_date ASC')
             ->orderBy('id')
             ->get();
@@ -84,9 +117,11 @@ class BatchRepository implements BatchRepositoryInterface
 
     /**
      * @param  array<string, mixed>  $filters
+     * @param  list<string>|null  $locationIds
+     * @param  list<int>  $historicallyVisibleBatchIds
      * @return Collection<int, Batch>
      */
-    public function getByCompany(string $companyId, array $filters = []): Collection
+    public function getByCompany(string $companyId, array $filters = [], ?array $locationIds = null, array $historicallyVisibleBatchIds = []): Collection
     {
         $query = Batch::where('company_id', $companyId);
 
@@ -113,7 +148,9 @@ class BatchRepository implements BatchRepositoryInterface
             ]);
         }
 
-        return $query->with(['product', 'batchStock'])
+        $this->scopeVisible($query, $locationIds, $historicallyVisibleBatchIds);
+
+        return $query->with(['product.unitOfMeasure', 'batchStock' => fn ($stock) => $locationIds === null ? $stock : $stock->whereIn('location_id', $locationIds)])
             ->orderByRaw('(expiry_date IS NULL) ASC, expiry_date ASC')
             ->orderBy('id')
             ->get();

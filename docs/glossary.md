@@ -18,6 +18,7 @@ Columns: **Term** — definition · **Table / module** · **Canonical surface** 
 | **Company** | A legal entity inside a tenant with its own country, currency, chart, sequences, catalogue scope and books; a tenant has ≥ 1. Catalogue keys are meant to be unique **per company** (convention 09; several are still tenant-wide today — see the tenant-only-unique ratchet baseline). | `companies` / `Company` | **Create:** the company switcher → `/company-onboarding` (`CompanySelector.tsx` → `POST /api/v1/companies`); **edit:** Settings → Companies (current company only — it cannot create). `AddCompanyModal.tsx` is an orphaned duplicate create surface rendered by nothing (owner ruling owed: delete or wire). | société, entity |
 | **Location** | A physical site of a company (shop, warehouse, branch); stock, drawers and POS terminals bind to a location. Exactly one is the company default; `pos_enabled` marks a till site. | `locations` / `Location` | Settings → Locations | site, branch, warehouse, point de vente |
 | **Membership** | A user's access to a company (roles are Spatie team-scoped by tenant). | `user_company_memberships` / `Identity` | Settings → Users | — |
+| **General manager** | A seeded tenant role containing the revised manager grants plus company-wide lot recall and all-location Treasury authority; every active company membership held by the assignee must be unrestricted. | Existing Spatie `roles`, marked by `roles.provisioning_source` / Identity | Settings → Users (assignment) | central manager |
 
 ## Parties (Session H owns these rows)
 
@@ -100,3 +101,5 @@ Columns: **Term** — definition · **Table / module** · **Canonical surface** 
 | **Day-one census** | The list of invariants a freshly registered tenant/company must satisfy (`tenant:census-day-one`, `FreshTenantCensusInvariantsTest`). |
 | **Onboarding campaign** | The scripted fresh-tenant journey (`scripts/campaign-onboarding.sh`) that is a promotion precondition (`docs/qa/ONBOARDING-CAMPAIGN.md`). |
 | **Manual testing loop** | `docs/qa/MANUAL-TESTING-LOOP.md` — cadence, fresh-tenant rule, bug-report shape, triage into F-style sessions. |
+
+`LotActionPermissionDelta` is the sole general-manager role-definition writer. Settings → Roles offers read-only inspection of the marked role; Settings → Users is its sole assignment surface.

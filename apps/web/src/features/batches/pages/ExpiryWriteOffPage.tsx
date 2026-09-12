@@ -48,7 +48,7 @@ function reservedQuantity(batch: ExpiredBatch): string {
  *
  * Quantities are carried as canonical decimal STRINGS end-to-end (never coerced
  * via parseFloat/Number) so precision is preserved into the payload. The
- * batch-level `available_quantity`/`total_quantity` numbers are display-only.
+ * batch-level `available_quantity`/`total_quantity` fields are 4-dp strings.
  */
 export function ExpiryWriteOffPage() {
   const { t } = useTranslation(['batches', 'common'])

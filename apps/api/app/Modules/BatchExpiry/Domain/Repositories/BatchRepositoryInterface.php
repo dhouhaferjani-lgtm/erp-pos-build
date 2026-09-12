@@ -11,6 +11,12 @@ interface BatchRepositoryInterface
 {
     public function findById(string $id): ?Batch;
 
+    /**
+     * @param  list<string>|null  $locationIds
+     * @param  list<int>  $historicallyVisibleBatchIds
+     */
+    public function findVisibleByUuid(string $uuid, string $companyId, ?array $locationIds, array $historicallyVisibleBatchIds = []): ?Batch;
+
     public function findByUuid(string $uuid): ?Batch;
 
     public function findByBatchNumber(string $companyId, string $productId, string $batchNumber): ?Batch;
@@ -30,14 +36,19 @@ interface BatchRepositoryInterface
         ?string $variantId,
     ): ?Batch;
 
-    /** @return Collection<int, Batch> */
-    public function getByProduct(string $tenantId, string $companyId, string $productId, bool $activeOnly = true): Collection;
+    /**
+     * @param  list<string>|null  $locationIds
+     * @return Collection<int, Batch>
+     */
+    public function getByProduct(string $tenantId, string $companyId, string $productId, bool $activeOnly = true, ?array $locationIds = null): Collection;
 
     /**
      * @param  array<string, mixed>  $filters
+     * @param  list<string>|null  $locationIds
+     * @param  list<int>  $historicallyVisibleBatchIds
      * @return Collection<int, Batch>
      */
-    public function getByCompany(string $companyId, array $filters = []): Collection;
+    public function getByCompany(string $companyId, array $filters = [], ?array $locationIds = null, array $historicallyVisibleBatchIds = []): Collection;
 
     /** @param  array<string, mixed>  $data */
     public function create(array $data): Batch;

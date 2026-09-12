@@ -1076,6 +1076,7 @@
     "selectPermissions": "اختر الصلاحيات لهذا الدور",
     "usersAssigned": "{{count}} مستخدم مُعيَّن",
     "noUsers": "لا يوجد مستخدمون معيَّنون",
+    "provisionedReadOnly": "مُهيّأ · للقراءة فقط",
     "systemRole": "دور نظام",
     "systemRoleHint": "لا يمكن إعادة تسمية أو حذف أدوار النظام",
     "clickToEdit": "انقر للتعديل",

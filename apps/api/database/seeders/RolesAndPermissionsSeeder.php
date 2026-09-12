@@ -4,36 +4,116 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Modules\BatchExpiry\Application\Services\LotActionPermissionActivation;
+use App\Modules\Identity\Application\DTOs\LotActionPermissionDeltaResult;
+use App\Modules\Identity\Application\Services\LotActionPermissionDelta;
+use App\Modules\Identity\Domain\Enums\LotActionPermissionDeltaOutcome;
+use App\Modules\Identity\Domain\Enums\RoleProvisioningSource;
+use App\Modules\Identity\Domain\Enums\SystemRoleName;
+use Illuminate\Console\Command;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
 class RolesAndPermissionsSeeder extends Seeder
 {
-    public function __construct(private readonly PermissionRegistrar $permissionRegistrar) {}
+    public function __construct(
+        private readonly PermissionRegistrar $permissionRegistrar,
+        private readonly LotActionPermissionActivation $activation,
+        private readonly LotActionPermissionDelta $lotActionPermissionDelta,
+    ) {}
 
     /**
      * Run the database seeds.
      */
     public function run(): void
     {
-        // Reset cached roles and permissions
+        $tenantId = $this->currentTenantId();
         $this->permissionRegistrar->forgetCachedPermissions();
+        if ($tenantId === null) {
+            Log::info('Role seeding uses legacy catalogue', ['reason' => 'missing_tenant_context']);
+            $this->createPermissionsFrom(self::legacyPermissionNames());
+            $this->createLegacyRoles();
 
-        // Create permissions per module
-        $this->createPermissions();
+            return;
+        }
+        if ($this->activation->enforced()) {
+            $result = $this->lotActionPermissionDelta->apply($tenantId, self::permissionNames(), self::rolePermissionGrants());
+            if (! in_array($result->outcome, [LotActionPermissionDeltaOutcome::Applied, LotActionPermissionDeltaOutcome::AlreadyApplied], true)) {
+                throw new \RuntimeException($result->reason);
+            }
+            $this->emitWlota1aReseedMarker($tenantId, 'ACTIVATED', $result);
 
-        // Create roles and assign permissions
-        $this->createRoles();
+            return;
+        }
+        if ($this->markedTenantCarriesWlota1aDelta($tenantId)) {
+            $this->emitWlota1aReseedMarker($tenantId, 'LEGACY', new LotActionPermissionDeltaResult(LotActionPermissionDeltaOutcome::AlreadyApplied, 'marked_tenant_delta_preserved'));
+
+            return;
+        } else {
+            $this->createPermissionsFrom(self::legacyPermissionNames());
+            $this->createLegacyRoles();
+        }
+    }
+
+    private function currentTenantId(): ?string
+    {
+        $id = tenant('id') ?? $this->permissionRegistrar->getPermissionsTeamId();
+        if (! is_string($id) || $id === '') {
+            return null;
+        }
+
+        return $id;
+    }
+
+    private function markedTenantCarriesWlota1aDelta(string $tenantId): bool
+    {
+        return Schema::hasColumn('roles', 'provisioning_source') && Role::query()
+            ->where(config('permission.column_names.team_foreign_key'), $tenantId)
+            ->where('name', SystemRoleName::GeneralManager->value)->where('guard_name', 'sanctum')
+            ->whereRaw('provisioning_source = ?', [RoleProvisioningSource::Wlota1a->value])->exists();
+    }
+
+    private function emitWlota1aReseedMarker(string $tenantId, string $mode, LotActionPermissionDeltaResult $result): void
+    {
+        $marker = "WLOTA1A-RESEED tenant={$tenantId} mode={$mode} outcome={$result->outcome->value} reason={$result->reason}";
+        // Laravel's Seeder PHPDoc says Command, but direct invocations leave it null.
+        /** @var Command|null $command */
+        $command = $this->command;
+        $command?->info($marker);
+        Log::channel('stderr')->info($marker);
+    }
+
+    /** @return list<string> */
+    public static function permissionNames(): array
+    {
+        return array_values(array_unique([...self::legacyPermissionNames(), 'batches.recall.request', 'treasury.manage_all_locations']));
+    }
+
+    /** @return array<string, list<string>> */
+    public static function rolePermissionGrants(): array
+    {
+        $grants = self::legacyRolePermissionGrants();
+        $grants['admin'] = self::permissionNames();
+        $grants['manager'] = array_values(array_unique([...array_diff($grants['manager'], ['batches.recall']), 'batches.recall.request']));
+        $grants[SystemRoleName::GeneralManager->value] = array_values(array_unique([...$grants['manager'], 'batches.recall', 'treasury.manage_all_locations']));
+        // Owner ruling (W-LOT-A-1a rev 10): technician receives no batches.view grant.
+        foreach (['cashier', 'viewer', 'operator'] as $role) {
+            $grants[$role] = array_values(array_unique([...$grants[$role], 'batches.view']));
+        }
+
+        return $grants;
     }
 
     /**
      * Create all permissions organized by module.
      */
-    private function createPermissions(): void
+    /** @param list<string> $permissions */
+    private function createPermissionsFrom(array $permissions): void
     {
-        $permissions = self::permissionNames();
 
         foreach ($permissions as $permission) {
             Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'sanctum']);
@@ -45,7 +125,7 @@ class RolesAndPermissionsSeeder extends Seeder
     /**
      * @return list<string>
      */
-    public static function permissionNames(): array
+    private static function legacyPermissionNames(): array
     {
         return [
             // Partner/Customer Management
@@ -563,9 +643,9 @@ class RolesAndPermissionsSeeder extends Seeder
     /**
      * Create roles and assign permissions.
      */
-    private function createRoles(): void
+    private function createLegacyRoles(): void
     {
-        foreach (self::rolePermissionGrants() as $roleName => $permissions) {
+        foreach (self::legacyRolePermissionGrants() as $roleName => $permissions) {
             $role = Role::firstOrCreate(['name' => $roleName, 'guard_name' => 'sanctum']);
             $role->syncPermissions($roleName === 'admin' ? Permission::all() : $permissions);
             $this->command->info(
@@ -577,11 +657,11 @@ class RolesAndPermissionsSeeder extends Seeder
     /**
      * @return array<string, list<string>>
      */
-    public static function rolePermissionGrants(): array
+    private static function legacyRolePermissionGrants(): array
     {
         return [
             // Admin - Full access (includes all POS permissions)
-            'admin' => self::permissionNames(),
+            'admin' => self::legacyPermissionNames(),
 
             // Manager - Operations management
             'manager' => [
