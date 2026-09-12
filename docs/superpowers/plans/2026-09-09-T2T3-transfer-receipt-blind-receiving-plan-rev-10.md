@@ -2761,6 +2761,8 @@ Rejected alternatives, recorded and not open: (a) "expense with shrinkage" — n
 
 **S1 fix round 1, I-2:** Receipt/close line DTO quantities remain scale-4 strings. S4 joins each receipt line on `transfer_line_id` to the full transfer line's `quantity_decimals` when displaying unit quantities; it must not infer display precision from storage scale. Reconciliation exposes `unit_decimal_places` separately.
 
+**S1 fix round 2, I-12 (orchestrator transcription of the handback decision):** `TransferReconciliationSummaryData` carries NO quantity totals — only `lines`, `lines_with_discrepancy` and `freight_uncapitalized`. Quantity values live only on unit-bearing lines/lots; mixed-unit quantities are never summed anywhere in the lane (S2–S4 inherit this rule).
+
 `TransferStatus` gains three cases and three methods; `isTerminal()`, `canBeCompleted()` and `label()` are extended; `canBeCancelled()` and `canBeInitiated()` are **unchanged**, so `partially_received` is not cancellable. Gate r1 M4 asked for the complete modified enum rather than a fragment, because this file is the source of the generated `TransferStatus` TypeScript union (`packages/shared/types/generated.d.ts:1240`, four members today, seven after S1) and the only exhaustiveness site in PHP. **The whole file after S1, replacing `apps/api/app/Modules/Inventory/Domain/Enums/TransferStatus.php` in place:**
 
 ```php

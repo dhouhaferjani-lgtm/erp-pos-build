@@ -21,10 +21,9 @@ echo ""
 # modes.
 #
 #   PREFLIGHT_SCOPE=paths  (DEFAULT — laptop-safe)
-#       Runs ONLY the tests listed in PREFLIGHT_TEST_PATHS (space-separated),
-#       or SKIPS PHPUnit with a loud warning when PREFLIGHT_TEST_PATHS is empty.
+#       Runs ONLY the tests listed in PREFLIGHT_TEST_PATHS (space-separated).
+#       An empty selection is an incomplete run and exits 2 before any checks.
 #       Examples:
-#         ./scripts/preflight.sh
 #         PREFLIGHT_TEST_PATHS='tests/Feature/Partner tests/Unit/Fiscal' ./scripts/preflight.sh
 #
 #   PREFLIGHT_SCOPE=full   (VPS / CI ONLY — CRASHES the laptop)
@@ -38,11 +37,29 @@ echo ""
 #   PREFLIGHT_VITEST_PATHS='src/features/foo src/components/Foo.test.tsx'
 # -----------------------------------------------------------------------------
 PREFLIGHT_SCOPE="${PREFLIGHT_SCOPE:-paths}"
-PHPUNIT_SKIPPED=0
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 ROOT_DIR="$( cd "$SCRIPT_DIR/.." && pwd )"
+
+# Validate the requested scope before touching dependencies. Exit 2 distinguishes
+# an incomplete/misconfigured invocation from a check that ran and failed.
+case "$PREFLIGHT_SCOPE" in
+    full)
+        ;;
+    paths)
+        if [ -z "${PREFLIGHT_TEST_PATHS//[[:space:]]/}" ]; then
+            echo -e "${RED}✗ PREFLIGHT_TEST_PATHS is required when PREFLIGHT_SCOPE=paths.${NC}" >&2
+            echo -e "${RED}  This preflight is incomplete; no checks were run.${NC}" >&2
+            echo -e "${YELLOW}  Example: PREFLIGHT_TEST_PATHS='tests/Feature/Foo tests/Unit/Bar' ./scripts/preflight.sh${NC}" >&2
+            exit 2
+        fi
+        ;;
+    *)
+        echo -e "${RED}✗ Unknown PREFLIGHT_SCOPE='${PREFLIGHT_SCOPE}' (expected 'paths' or 'full')${NC}" >&2
+        exit 2
+        ;;
+esac
 
 # Backend checks
 echo -e "${YELLOW}📦 Backend Checks${NC}"
@@ -76,28 +93,10 @@ case "$PREFLIGHT_SCOPE" in
         echo -e "${GREEN}✓ PHPUnit passed (full suite)${NC}"
         ;;
     paths)
-        if [ -n "${PREFLIGHT_TEST_PATHS:-}" ]; then
-            echo -e "${YELLOW}  Scope=paths — running only: ${PREFLIGHT_TEST_PATHS}${NC}"
-            # shellcheck disable=SC2086
-            php artisan test ${PREFLIGHT_TEST_PATHS}
-            echo -e "${GREEN}✓ PHPUnit passed (scoped paths)${NC}"
-        else
-            PHPUNIT_SKIPPED=1
-            echo -e "${RED}⚠️  ============================================================${NC}"
-            echo -e "${RED}⚠️  SKIPPING PHPUnit: PREFLIGHT_SCOPE=paths (default) and no${NC}"
-            echo -e "${RED}⚠️  PREFLIGHT_TEST_PATHS were provided.${NC}"
-            echo -e "${RED}⚠️  Backend tests were NOT run — this preflight is INCOMPLETE.${NC}"
-            echo -e "${RED}⚠️${NC}"
-            echo -e "${RED}⚠️  Run the tests that cover your change (laptop-safe):${NC}"
-            echo -e "${RED}⚠️    PREFLIGHT_TEST_PATHS='tests/Feature/Foo tests/Unit/Bar' ./scripts/preflight.sh${NC}"
-            echo -e "${RED}⚠️  Or run the FULL suite on the VPS/CI (NEVER on the laptop):${NC}"
-            echo -e "${RED}⚠️    PREFLIGHT_SCOPE=full ./scripts/preflight.sh${NC}"
-            echo -e "${RED}⚠️  ============================================================${NC}"
-        fi
-        ;;
-    *)
-        echo -e "${RED}✗ Unknown PREFLIGHT_SCOPE='${PREFLIGHT_SCOPE}' (expected 'paths' or 'full')${NC}"
-        exit 1
+        echo -e "${YELLOW}  Scope=paths — running only: ${PREFLIGHT_TEST_PATHS}${NC}"
+        # shellcheck disable=SC2086
+        php artisan test ${PREFLIGHT_TEST_PATHS}
+        echo -e "${GREEN}✓ PHPUnit passed (scoped paths)${NC}"
         ;;
 esac
 
@@ -170,6 +169,10 @@ echo -e "\n${YELLOW}Running TypeScript check...${NC}"
 pnpm typecheck
 echo -e "${GREEN}✓ TypeScript passed${NC}"
 
+echo -e "\n${YELLOW}Running POS TypeScript check...${NC}"
+pnpm --dir "$ROOT_DIR/apps/pos" typecheck
+echo -e "${GREEN}✓ POS TypeScript passed${NC}"
+
 echo -e "\n${YELLOW}Running ESLint...${NC}"
 pnpm lint:eslint
 echo -e "${GREEN}✓ ESLint passed${NC}"
@@ -194,6 +197,10 @@ echo -e "\n${YELLOW}Running tests/Feature CI-lane manifest check...${NC}"
 ( cd "$ROOT_DIR/apps/api" && ./vendor/bin/phpunit tests/Architecture/FeatureLaneManifestCheckerTest.php )
 ( cd "$ROOT_DIR/apps/api" && ./vendor/bin/phpunit tests/Architecture/FeatureLaneLocalHarnessTest.php )
 echo -e "${GREEN}✓ Feature-lane manifest + checker liveness + local-harness guards passed${NC}"
+
+echo -e "\n${YELLOW}Running preflight status liveness tests...${NC}"
+bash "$ROOT_DIR/scripts/tests/preflight-status-test.sh"
+echo -e "${GREEN}✓ Preflight status liveness tests passed${NC}"
 
 echo -e "\n${YELLOW}Running i18n completeness gate...${NC}"
 # Mirrors the discrete `frontend-lint` CI step. Locally the owner-set repository
@@ -263,11 +270,5 @@ echo -e "${GREEN}✓ §14.3 chokepoint gate OK${NC}"
 # Summary
 echo ""
 echo "=================================="
-if [ "$PHPUNIT_SKIPPED" -eq 1 ]; then
-    echo -e "${YELLOW}⚠️  Preflight finished — but PHPUnit was SKIPPED (no PREFLIGHT_TEST_PATHS).${NC}"
-    echo -e "${YELLOW}⚠️  This run is NOT a full green. Backend tests were not exercised.${NC}"
-    echo -e "${YELLOW}⚠️  Run the covering tests, or PREFLIGHT_SCOPE=full on the VPS/CI.${NC}"
-else
-    echo -e "${GREEN}✅ All preflight checks passed!${NC}"
-fi
+echo -e "${GREEN}✅ All preflight checks passed!${NC}"
 echo "=================================="

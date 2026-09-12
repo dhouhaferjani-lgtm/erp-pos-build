@@ -357,11 +357,11 @@ describe('ReviewIngestionPage', () => {
       type: 'supplier',
       email: null,
       phone: null,
-      address: null,
+      street_address: null,
       city: null,
       postal_code: null,
-      country: null,
-      tax_id: null,
+      country_code: null,
+      vat_number: null,
       notes: null,
     })
 
@@ -388,11 +388,11 @@ describe('ReviewIngestionPage', () => {
       type: 'supplier',
       email: null,
       phone: null,
-      address: null,
+      street_address: null,
       city: null,
       postal_code: null,
-      country: null,
-      tax_id: null,
+      country_code: null,
+      vat_number: null,
       notes: null,
     })
 
@@ -405,7 +405,7 @@ describe('ReviewIngestionPage', () => {
     await waitFor(() => expect(mockApiPost).toHaveBeenCalledWith('/partners', expect.any(Object)))
     const payload = mockApiPost.mock.calls[0]?.[1] as Record<string, unknown>
     expect(Object.keys(payload).sort()).toEqual(
-      ['address', 'city', 'country', 'email', 'name', 'notes', 'phone', 'postal_code', 'tax_id', 'type'].sort(),
+      ['city', 'country_code', 'email', 'name', 'notes', 'phone', 'postal_code', 'street_address', 'type', 'vat_number'].sort(),
     )
   })
 

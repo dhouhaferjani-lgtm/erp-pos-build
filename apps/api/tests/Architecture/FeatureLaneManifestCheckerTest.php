@@ -269,6 +269,24 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         self::assertStringContainsString('not an allowed skip', $skipOut);
     }
 
+    public function test_the_aggregate_fails_when_each_mandated_guard_fails(): void
+    {
+        foreach (['chokepoint-gate', 't6-phase0b-pgsql'] as $job) {
+            [$exit, $out] = $this->runAggregate($this->needsContext([$job => 'failure']));
+
+            self::assertSame(1, $exit, $out);
+            self::assertStringContainsString("FAILED    {$job} — result=failure", $out);
+        }
+    }
+
+    public function test_the_aggregate_fails_on_a_cancelled_dependency(): void
+    {
+        [$exit, $out] = $this->runAggregate($this->needsContext(['chokepoint-gate' => 'cancelled']));
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('result=cancelled', $out);
+    }
+
     /**
      * EXPECTED_JOBS is what proves the parsed context is complete, so it must not be
      * allowed to drift from the `needs:` list it mirrors.
@@ -286,6 +304,79 @@ final class FeatureLaneManifestCheckerTest extends TestCase
 
         self::assertSame(1, $exit, $out);
         self::assertStringContainsString('EXPECTED_JOBS MISMATCH', $out);
+    }
+
+    public function test_it_fires_when_a_mandated_guard_is_deleted_from_both_aggregate_lists(): void
+    {
+        $originalWorkflow = $this->workflow();
+        foreach (['chokepoint-gate', 't6-phase0b-pgsql'] as $job) {
+            $workflow = preg_replace(
+                '/([,\[])[ \t]*'.preg_quote($job, '/').'[ \t]*,?/',
+                '$1',
+                $originalWorkflow,
+            );
+            self::assertIsString($workflow);
+            $mutated = Yaml::parse($workflow);
+            self::assertArrayHasKey($job, $mutated['jobs'], 'the mutation must retain the real job');
+            self::assertNotContains(
+                $job,
+                $mutated['jobs']['all-checks-pass']['needs'],
+                'the mutation must remove the job from all-checks-pass.needs',
+            );
+            $mutatedExpected = null;
+            foreach ($mutated['jobs']['all-checks-pass']['steps'] as $step) {
+                if (isset($step['env']['EXPECTED_JOBS'])) {
+                    $mutatedExpected = array_map('trim', explode(',', (string) $step['env']['EXPECTED_JOBS']));
+                }
+            }
+            self::assertIsArray($mutatedExpected);
+            self::assertNotContains(
+                $job,
+                $mutatedExpected,
+                'the mutation must remove the job from EXPECTED_JOBS',
+            );
+            $this->writeWorkflow($workflow);
+
+            [$exit, $out] = $this->runChecker();
+
+            self::assertSame(1, $exit, $out);
+            self::assertStringContainsString('MANDATED AGGREGATE JOB', $out);
+            self::assertStringContainsString($job, $out);
+        }
+    }
+
+    public function test_it_fires_when_a_mandated_guard_stops_covering_aggregate_events(): void
+    {
+        $this->writeWorkflow(str_replace(
+            "  chokepoint-gate:\n    name: §14.3 Chokepoint Completeness Gate\n    runs-on: ubuntu-latest\n",
+            "  chokepoint-gate:\n    name: §14.3 Chokepoint Completeness Gate\n    runs-on: ubuntu-latest\n"
+            ."    if: github.base_ref == 'dev'\n",
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('aggregate-event coverage', $out);
+        self::assertStringContainsString('chokepoint-gate', $out);
+    }
+
+    public function test_pos_typecheck_is_wired_in_the_existing_pos_job_on_all_its_triggers(): void
+    {
+        $workflow = Yaml::parse($this->workflow());
+        $posJob = $workflow['jobs']['pos-test'];
+
+        self::assertSame(
+            "github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')",
+            $posJob['if'],
+        );
+        $typecheckSteps = array_values(array_filter(
+            $posJob['steps'],
+            static fn (array $step): bool => ($step['run'] ?? null) === 'pnpm typecheck',
+        ));
+        self::assertCount(1, $typecheckSteps);
+        self::assertArrayNotHasKey('if', $typecheckSteps[0]);
+        self::assertArrayNotHasKey('continue-on-error', $typecheckSteps[0]);
     }
 
     public function test_it_passes_on_the_real_tree(): void
