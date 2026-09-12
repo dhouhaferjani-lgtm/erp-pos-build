@@ -355,3 +355,77 @@ no `error_code` (so the WebSocket feeder resolves to the generic sentence), and 
 `404 correction_export_unavailable` guard having **no automated test** — `ImportRowExportService` is `final`
 with no interface, so nothing can make `generate()` return a path that is then removed; the guard is code-only
 until a seam exists.
+
+## Fix round 3
+
+**Base:** `e162182ed` (already committed at session start). **Registers answered:** imports gate r3
+`docs/superpowers/reviews/2026-09-12-imp1-impl-gate-r3-imports.md` (N-1, N-2, N-3) and frontend gate r2
+`docs/superpowers/reviews/2026-09-12-imp1-impl-gate-r2-frontend.md` (M-NEW-1, m-NEW-2, m-NEW-4).
+
+### Commits
+
+| SHA | Subject | Closes |
+|---|---|---|
+| `e162182ed` | Phase 9.1.21: Let a submitted mapping win over the re-imported original | M-NEW-1, N-1, N-2 |
+| `62d983d41` | Phase 9.1.22: Route the upload refusal through the coded channel and pin the wire literals | m-NEW-2, m-NEW-4, N-3 |
+
+This record lands as Phase 9.1.23.
+
+### What each finding did
+
+- **M-NEW-1 (frontend gate r2 major).** `ImportController::store()` (`apps/api/app/Modules/Import/Presentation/Controllers/ImportController.php:269-284`) re-applied the original job's `column_mapping` on a `reimport_of` upload whenever the original source headers survived — including over a mapping the operator had just submitted on this very upload. The wizard's m7 pre-check routes the operator to the mapping step precisely when the saved mapping misses a required target, so mapping the missing column, posting it, and having the server discard it in favour of the same incomplete mapping produced the identical 422 `validation_failed` / `missing_columns` refusal forever, with no way out. The rule now: reuse of the original mapping happens **only when the request carries no `column_mapping`** (`$originalHeadersSurvive && ($columnMapping === null || $columnMapping === [])`, line 281); a mapping present on the request is never overwritten. The `reimport_notice` header-change rule is unchanged — it still fires independently of what was submitted, off `$originalHeadersSurvive` alone (lines 271-274). `ImportRowExportTest::test_a_corrected_mapping_submitted_on_a_reimport_wins_over_the_original` is the new feature test: it posts an original upload that 422s on a missing target, then posts a corrected mapping on `reimport_of` with the same surviving headers and asserts 201 with the *submitted* mapping persisted (`ImportJob::column_mapping`), then separately asserts that an upload with no mapping still reuses the original and still gets the header refusal.
+- **N-1 (imports gate r3).** The missing-artefact 404 guard (`downloadFailedRows` refusing a vanished or zero-byte artefact with `correction_export_unavailable` instead of streaming an empty 200) had no automated test — `ImportRowExportService` is `final` with no interface, so neither Mockery nor a subclass could make `generate()` return a path that is then removed. The seam used instead: a partial mock of the `local` disk adapter itself (`Mockery::mock($real)->makePartial()` with `exists()` stubbed false, swapped in via `Storage::set('local', $spy)`), so `generate()` still writes for real and only the existence check the controller relies on is faked. Pinned by `test_a_vanished_artefact_is_refused_with_a_code_not_an_empty_body`.
+- **N-2 (imports gate r3).** The cross-tenant `import_not_found` refusal on the re-import lookup and the rows download was unpinned — the one place a slip would be a cross-tenant read of another operator's raw rows. `test_another_tenants_job_is_refused_as_not_found_on_reimport_and_download` creates a second tenant and company, creates a job under that foreign tenant via `ImportService::createJob`, and asserts the acting user's request against that job's id gets 404 `import_not_found` on the download endpoint (and, in the full test body, on the `reimport_of` path too).
+- **m-NEW-2 (frontend gate r2 minor).** `useCreateImport().onError` (`apps/web/src/features/import/api/queries.ts:144`) toasted axios's own `error.message` — "Request failed with status code 422", untranslated (rule 11) — and threw away the one actionable fact a mapping refusal carries: the columns still to map, which is exactly what the wizard sends the operator back to the mapping step to fix. `importUploadErrorMessage()` (`apps/web/src/features/import/jobErrorMessage.ts`) reads `error.response.data.error.code` and `errors.missing_columns` off the axios error, renders `errors.job.missing_columns` / `errors.<code>` through the existing `importJobErrorMessage()`, and degrades to `messages.uploadError` for an axios error with no body, no code, or an unrecognised code — raw transport text never reaches the toast. Three new Vitest cases under `describe('create-import refusal copy')` in `ImportHistoryPage.errorMessage.test.tsx` cover: a coded 422 with `missing_columns` renders the column list; a coded refusal with no column list still translates; an uncoded 413, a coded-but-unknown code, and a plain `Error` (no axios shape at all) all fall back to the generic sentence.
+- **m-NEW-4 (frontend gate r2 minor).** `CreateImportResponse.reimport_notice` was typed `string | null` and compared against the bare literal `'reimport_headers_changed'` in `ImportWizardPage.tsx`. `REIMPORT_HEADERS_CHANGED` (`apps/web/src/features/import/types.ts`) names the server's one wire value once on the client, and `ReimportNotice` narrows the response field to it, so a rename on either side now fails typecheck instead of silently going quiet. `ImportWizardPage.tsx:702` compares against the constant.
+- **N-3 (imports gate r3).** `DEFAULT_PER_PAGE = 20` (`apps/web/src/features/import/pages/ImportHistoryPage.tsx`) was not one of `OffsetPagination`'s own options (10/25/50/100), so the page-size `Select` displayed 10 (its nearest/first option) while the server was actually returning, and `meta` reporting, 20 rows per page. Now 25. `ImportHistoryPage.actions.test.tsx` asserts `per_page: 25` both in the params the list is called with after a filter change and in the `meta` fixtures driving the pagination control.
+
+### Verification
+
+All from inside the worktree; PG on the native server, not a container.
+
+```
+Vitest (3 files, targeted):
+ ✓ src/features/import/__tests__/ImportHistoryPage.actions.test.tsx (6 tests)
+ ✓ src/features/import/__tests__/ImportHistoryPage.errorMessage.test.tsx
+ ✓ src/features/import/__tests__/ImportWizardPage.options.test.tsx (22 tests)
+ Test Files  3 passed (3)
+      Tests  39 passed (39)
+
+pnpm typecheck (tsc --noEmit)                                    exit 0, no output after the pnpm banner
+
+pnpm lint                                                        ✖ 6416 problems (0 errors, 6416 warnings)
+                                                                  — identical to the round-2 baseline (0 errors /
+                                                                  6416 warnings); no new warnings this round.
+
+PHPUnit (PG native 127.0.0.1:5432, autoerp_test_y, phpunit-pgsql.xml):
+ --filter ImportRowExportTest
+ ...................                                             19 / 19 (100%)
+ Time: 00:34.101, Memory: 438.00 MB
+ OK, but there were issues!
+ Tests: 19, Assertions: 114, PHPUnit Deprecations: 538.
+ (the deprecation count is the standing repo-wide baseline, not a new failure — 0 test failures/errors)
+
+phpstan analyse app/Modules/Import --level=8                     [OK] No errors
+
+pint --test ImportController.php ImportRowExportTest.php         {"result":"pass"}
+```
+
+### Playwright
+
+Not re-run in this round. The round-3 server change is confined to the `reimport_of` write path inside
+`store()` and is pinned by `test_a_corrected_mapping_submitted_on_a_reimport_wins_over_the_original`; the
+six-scenario browser tail from round 2
+(`docs/superpowers/reviews/2026-09-10-imp1-evidence/phase-b/browser-green-fixround2.txt`) remains the standing
+browser evidence. The integration owner decides whether to re-run before merge.
+
+### Not done — see the ticket
+
+- **m-NEW-3** — the history row still carries four controls per terminal job, and the correction caveat renders
+  even when nothing on the visible page needs fixing. See
+  `docs/superpowers/tickets/2026-09-11-imp1-followups.md` §"Opened / closed by fix round 3".
+- **N-4** — `deleteArtifacts()` still scans the whole flat `imports/rows` directory once per job on every nightly
+  purge run rather than deleting a per-job subdirectory. Same ticket section.
+- **N-5** — the downloaded correction file has two filename writers (server `Content-Disposition`, client
+  `authenticatedDownload` argument), and the client's always wins, so the operator gets a UUID-named file. Same
+  ticket section.
