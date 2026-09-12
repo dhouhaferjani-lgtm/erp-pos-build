@@ -406,6 +406,7 @@
     "reupload": "Re-upload corrected file",
     "fullReport": "Full report",
     "headersChanged": "The source columns changed. Review the mapping before importing.",
+    "originalUnavailable": "The original import is no longer available, so its column mapping could not be reused. Map the columns again.",
     "noRows": "There are no rows to fix for this import.",
     "importNotFound": "This import is no longer available. It may have been discarded, or it belongs to another company.",
     "downloadError": "The download failed. Please try again.",

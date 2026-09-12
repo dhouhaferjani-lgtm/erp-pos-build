@@ -190,6 +190,12 @@ export interface ImportErrorSummaryResponse {
 
 export interface CreateImportResponse {
   data: ImportJob
+  /**
+   * The server's verdict on a `reimport_of` upload: `'reimport_headers_changed'`
+   * when the original mapping could not be re-applied. One writer for the rule
+   * (`ImportController::store`); the wizard only renders this.
+   */
+  reimport_notice?: string | null
   errors?: {
     missing_columns: string[]
     unknown_columns: string[]

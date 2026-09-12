@@ -407,6 +407,7 @@
     "reupload": "Réimporter le fichier corrigé",
     "fullReport": "Rapport complet",
     "headersChanged": "Les colonnes source ont changé. Vérifiez les correspondances avant l’import.",
+    "originalUnavailable": "L'import d'origine n'est plus disponible : sa correspondance de colonnes n'a pas pu être réutilisée. Refaites la correspondance.",
     "noRows": "Cet import ne contient aucune ligne à corriger.",
     "importNotFound": "Cet import n'est plus disponible. Il a peut-être été supprimé, ou il appartient à une autre société.",
     "downloadError": "Le téléchargement a échoué. Veuillez réessayer.",

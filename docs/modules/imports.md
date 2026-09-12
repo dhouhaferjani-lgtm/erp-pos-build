@@ -951,7 +951,15 @@ referenced job's type. If the new file's headers still contain every source of t
 mapping is pre-applied and the operator skips straight to preview; otherwise the upload still succeeds and
 carries a non-blocking `reimport_notice = 'reimport_headers_changed'`, and the operator maps again. A column
 mapping that is not injective (two sources onto one destination) is refused 422 `mapping_not_injective` on
-both upload and options update.
+both upload and options update. Re-applying a mapping does **not** exempt the upload from header validation:
+a saved mapping that no longer covers the type's required targets is refused 422 `validation_failed` with
+`errors.missing_columns`.
+
+**One writer.** `ImportController::store()` decides reuse-or-not and reports its verdict as
+`reimport_notice`; the wizard renders that verdict and never re-derives it. The wizard's own `getJob()`
+pre-check answers only a presentation question — "can the operator skip the mapping step?" — and its failure
+(a purged or foreign original) is its own `correction.originalUnavailable` message, never the
+parse-headers "invalid file" path, which clears the operator's file selection (BUG-004 class).
 
 ---
 

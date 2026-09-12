@@ -26,6 +26,7 @@ const mockPreviewRequest = vi.hoisted(() => vi.fn<(jobId: string) => Promise<Imp
 const mockRefetchJob = vi.hoisted(() => vi.fn())
 const mockApiGet = vi.hoisted(() => vi.fn())
 const mockToastError = vi.hoisted(() => vi.fn())
+const mockToastInfo = vi.hoisted(() => vi.fn())
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -36,6 +37,7 @@ vi.mock('react-i18next', () => ({
 vi.mock('sonner', () => ({
   toast: {
     error: mockToastError,
+    info: mockToastInfo,
     success: vi.fn(),
   },
 }))
@@ -162,6 +164,54 @@ describe('ImportWizardPage product options step', () => {
     expect(screen.getByRole('button', { name: 'common:actions.next' })).toBeEnabled()
     await userEvent.click(screen.getByRole('button', { name: 'common:actions.next' }))
     expect(screen.queryByRole('button', { name: 'apply-mapping' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the operator\'s file when the original import cannot be read (BUG-004 class)', async () => {
+    // A purged or foreign original 404s. That is not "your file is invalid":
+    // it used to fall into the parse-headers catch, which reported
+    // wizard.upload.serverError and cleared the selection, leaving no way forward.
+    mockGetJob.mockRejectedValueOnce(Object.assign(new Error('not found'), { isAxiosError: true, response: { status: 404 } }))
+    renderWizard('/settings/import/products?reimport_of=purged-job')
+
+    await userEvent.click(screen.getByRole('button', { name: 'choose-file' }))
+
+    await screen.findByText('wizard.upload.fileReady')
+    await waitFor(() => { expect(mockToastInfo).toHaveBeenCalledWith('correction.originalUnavailable') })
+    expect(mockToastError).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'common:actions.next' })).toBeEnabled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'common:actions.next' }))
+    expect(screen.getByRole('button', { name: 'apply-mapping' })).toBeInTheDocument()
+  })
+
+  it('does not skip the mapping step when the saved mapping misses a required target', async () => {
+    // m7: the old guard only checked that the saved SOURCE headers still exist.
+    // A mapping that no longer covers the required targets skipped straight into
+    // a guaranteed 422 the operator could not act on.
+    mockGetJob.mockResolvedValueOnce({ column_mapping: { margin: 'margin' } })
+    renderWizard('/settings/import/products?reimport_of=original-job')
+
+    await userEvent.click(screen.getByRole('button', { name: 'choose-file' }))
+    await screen.findByText('wizard.upload.fileReady')
+    await userEvent.click(screen.getByRole('button', { name: 'common:actions.next' }))
+
+    expect(screen.getByRole('button', { name: 'apply-mapping' })).toBeInTheDocument()
+  })
+
+  it('surfaces the server\'s reimport_notice rather than re-deciding the reuse rule', async () => {
+    // The "re-apply the original mapping unless the headers changed" rule has ONE
+    // writer: ImportController::store. The wizard reads its verdict.
+    mockCreateMutate.mockImplementation((_variables: unknown, options?: { onSuccess?: (data: { data: { id: string }; reimport_notice?: string | null }) => void }) => {
+      options?.onSuccess?.({ data: { id: createdJobId }, reimport_notice: 'reimport_headers_changed' })
+    })
+    mockGetJob.mockResolvedValueOnce({ column_mapping: { name: 'name' } })
+    renderWizard('/settings/import/products?reimport_of=original-job')
+
+    await userEvent.click(screen.getByRole('button', { name: 'choose-file' }))
+    await screen.findByText('wizard.upload.fileReady')
+    await userEvent.click(screen.getByRole('button', { name: 'common:actions.next' }))
+
+    await waitFor(() => { expect(mockToastInfo).toHaveBeenCalledWith('correction.headersChanged') })
   })
 
   afterEach(() => {

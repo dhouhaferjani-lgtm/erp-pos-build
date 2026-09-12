@@ -194,6 +194,30 @@ final class ImportRowExportTest extends TestCase
         ])->assertStatus(409)->assertJsonPath('error.code', 'IMPORT_COMPANY_MISMATCH');
     }
 
+    public function test_a_reused_mapping_that_misses_a_required_target_is_refused_with_the_column_list(): void
+    {
+        // m7: re-applying the original mapping does not exempt the upload from
+        // header validation. The refusal is coded and names the missing target,
+        // so the operator is told what to map rather than silently importing
+        // a file with no name column.
+        $this->actingAs($this->user, 'sanctum');
+        $original = $this->postJson('/api/v1/imports', [
+            'type' => 'products', 'column_mapping' => json_encode(['Marge' => 'margin']),
+            'file' => UploadedFile::fake()->createWithContent('original.csv', "Marge\n10\n"),
+        ])->assertStatus(422)->json('data.id');
+
+        $response = $this->postJson('/api/v1/imports', [
+            'type' => 'products', 'reimport_of' => $original,
+            'file' => UploadedFile::fake()->createWithContent('corrected.csv', "Marge\n12\n"),
+        ])->assertStatus(422);
+
+        $response->assertJsonPath('error.code', 'validation_failed')
+            ->assertJsonPath('errors.missing_columns', ['name'])
+            ->assertJsonPath('data.error_detail.missing_columns', ['name']);
+        $reimported = ImportJob::findOrFail($response->json('data.id'));
+        $this->assertSame(['Marge' => 'margin'], $reimported->column_mapping);
+    }
+
     public function test_automatic_mapping_preserves_original_header_spelling(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/imports', [

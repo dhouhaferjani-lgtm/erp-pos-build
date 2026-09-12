@@ -125,6 +125,21 @@ function defaultPlacementNodeType(depth: number): LocationNodeType {
   return DEFAULT_PLACEMENT_DEPTH_TYPES[depth] ?? 'section'
 }
 
+/**
+ * One writer for "this mapping covers the type's required targets".
+ * Used by the mapping step's own validity gate and by the re-import pre-check,
+ * so the two cannot drift.
+ */
+function mappingCoversRequiredTargets(importType: ImportType, mapping: Record<string, string>): boolean {
+  if (isDeprecatedImportType(importType)) return false
+
+  const mappedTargets = new Set(Object.values(mapping))
+
+  return TARGET_COLUMNS[importType]
+    .flatMap((column) => (column.required ? [column.name] : []))
+    .every((column) => mappedTargets.has(column))
+}
+
 function mappingFromSuggestions(
   suggestions: Record<string, string | null>,
   targetColumns: readonly { name: string }[],
@@ -593,17 +608,31 @@ export function ImportWizardPage() {
       const { headers } = await importApi.parseHeaders(file)
       if (requestId !== mappingRequestIdRef.current) return
       if (reimportOf) {
-        const original = await importApi.getJob(reimportOf)
-        if (requestId !== mappingRequestIdRef.current) return
-        const mapping = original.column_mapping
-        const sourceHeaderSet = new Set(headers)
-        if (mapping && Object.keys(mapping).every((header) => sourceHeaderSet.has(header))) {
-          setColumnMapping(mapping)
-          reimportMappingReadyRef.current = true
-          setSourceColumns(headers)
-          return
+        // The RULE that decides whether the original mapping is re-applied lives
+        // on the server (ImportController::store) and is reported back as
+        // reimport_notice — this is only the question "can the operator skip the
+        // mapping step?", and its own failure must never be reported as a bad
+        // file (BUG-004 class: that catch clears the selection).
+        try {
+          const original = await importApi.getJob(reimportOf)
+          if (requestId !== mappingRequestIdRef.current) return
+          const mapping = original.column_mapping
+          const stillPresent = new Set(headers)
+          if (
+            mapping
+            && Object.keys(mapping).every((header) => stillPresent.has(header))
+            && mappingCoversRequiredTargets(importType, mapping)
+          ) {
+            setColumnMapping(mapping)
+            reimportMappingReadyRef.current = true
+            setSourceColumns(headers)
+            return
+          }
+        } catch (originalError: unknown) {
+          if (requestId !== mappingRequestIdRef.current) return
+          console.error('Import wizard: re-import original unavailable', originalError)
+          toast.info(t('correction.originalUnavailable'))
         }
-        toast.info(t('correction.headersChanged'))
       }
 
       setSourceColumns(headers)
@@ -669,6 +698,10 @@ export function ImportWizardPage() {
       {
         onSuccess: (data) => {
           setJobId(data.data.id)
+          // The server owns the re-import reuse rule and reports its verdict here.
+          if (data.reimport_notice === 'reimport_headers_changed') {
+            toast.info(t('correction.headersChanged'))
+          }
           // Backend returns validation status in the job, not rows directly
           // Fetch validation rows separately if needed
           markStepCompleted('mapping')
@@ -676,7 +709,7 @@ export function ImportWizardPage() {
         },
       }
     )
-  }, [selectedFile, importType, columnMapping, reimportOf, createImport, markStepCompleted, shouldShowOptionsStep])
+  }, [selectedFile, importType, columnMapping, reimportOf, createImport, markStepCompleted, shouldShowOptionsStep, t])
 
   const handleOptionsComplete = useCallback(async () => {
     if (!previewJobId) return
@@ -823,9 +856,7 @@ export function ImportWizardPage() {
     // `every()` over an empty required list, which would report "valid".
     if (isDeprecatedImportType(importType)) return false
 
-    const requiredCols = TARGET_COLUMNS[importType].flatMap((c) => (c.required ? [c.name] : []))
-    const mappedTargets = new Set(Object.values(columnMapping))
-    return requiredCols.every((col) => mappedTargets.has(col))
+    return mappingCoversRequiredTargets(importType, columnMapping)
   }, [importType, columnMapping])
 
   // Render step content
