@@ -174,3 +174,184 @@ Completed
 Refreshed evidence (committed): `docs/superpowers/reviews/2026-09-10-imp1-evidence/phase-b/` — for each of the two scenarios, `-completion.png`, `-completion-actions.png`, `-history-loading.png`, `-history.png`, `-history.txt`, `-full-report.xlsx`, plus `imp1-partial.csv-rows.xlsx`. `imp1-partial.csv-rows.csv` is **byte-identical** to the previous run and therefore shows no diff — an incidental re-confirmation of the export's stable bytes.
 
 Processes stopped afterwards; `lsof -nP -iTCP:8012 -sTCP:LISTEN` and `-iTCP:5176` both return nothing, and 5433/6380 were released with the containers.
+
+---
+
+## Fix round 2
+
+**Base:** `6776ed772` (clean tree at start). **Registers answered:** imports gate r2
+`docs/superpowers/reviews/2026-09-12-imp1-impl-gate-r2-imports.md` (M2-R, M3-R, m-A) and frontend gate r1
+`docs/superpowers/reviews/2026-09-12-imp1-impl-gate-r1-frontend.md` (M1–M10, m1–m7).
+
+### Commits
+
+| SHA | Subject | Closes |
+|---|---|---|
+| `cfeb6f795` | Phase 9.1.10: Close the coded-failure channel on every operator surface | M2-R, M1, M2b, M10, m1, m-A |
+| `fef4ff27a` | Phase 9.1.11: Make a correction export private to the request that wrote it | M3-R |
+| `d50b01a07` | Phase 9.1.12: Tell the operator the truth about a failed correction download | M3, M4 |
+| `5375a03a0` | Phase 9.1.13: Let the server own the history filter and the page window | M5 |
+| `248a09736` | Phase 9.1.14: Give the re-import reuse rule a single writer | M6, M7, m7 |
+| `9fd4217ed` | Phase 9.1.15: One main element per screen on the history table | M8, m4 (component) |
+| `76f8090d5` | Phase 9.1.16: Make the re-run scenario assert the re-run | M9, m6 |
+| `da84bad5f` | Phase 9.1.17: Close gate r1 minors m2, m3 and the wizard half of m4 | m2, m3, m4 (wizard) |
+| `09eb7b639` | Phase 9.1.18: Record what fix round 2 closed and what it deliberately did not | deferred register |
+| `f9406becd` | Phase 9.1.19: Refresh the browser evidence for the full six-scenario run | browser gate |
+
+### Every surface that renders a job error, and how each is sourced
+
+The fix round 1 enumeration named two surfaces and was wrong. There are **four**, and all four now read the
+coded channel through `apps/web/src/features/import/jobErrorMessage.ts`:
+
+| Surface | Source of the code | Note |
+|---|---|---|
+| history row alert — `ImportHistoryPage.tsx` | `GET /imports` → `formatJob()` `error_code` + `error_detail` | was already coded; now also job-scoped copy |
+| wizard execute + completion alerts — `ImportWizardPage.tsx` | `GET /imports/{id}` → `formatJob()` | was already coded; now also job-scoped copy |
+| validation-step job banner — `ValidationResults.tsx` (via `ErrorViewer`) | `GET /imports/{id}/error-summary` → new `job_error_code` / `job_error_detail` | **was rendering `job_error_message` raw** (M1) |
+| global progress toast — `GlobalImportProgress.tsx` | the progress store: `error_code` from the wizard's API feeder; the WebSocket `ImportCompleted` broadcast carries no code, so that feeder resolves to the generic sentence | **was rendering `progress.errorMessage` raw** (M2-R / M2b) |
+
+`error_message` is still published on the wire for support (m-E, ticketed); `docs/modules/imports.md` now says
+"disclosed but never rendered" and carries this table. The `errors` payload gained `job_error_code` /
+`job_error_detail` too, for symmetry with `error-summary`.
+
+**Broadcast contract: unchanged.** The minimal fix the imports reviewer named was taken — the widget renders a
+translated sentence rather than the raw string. `ImportCompleted` was **not** restructured (rule 8); carrying
+`error_code` on it is ticketed as its own lane.
+
+### Route taken for M6/M7
+
+**The escape hatch, deliberately, and narrowed.** The rule now has one writer: `ImportController::store()`
+decides reuse-or-not and reports `reimport_notice`, which the wizard renders as `correction.headersChanged`;
+the frontend's own `toast.info` for that rule is gone, and the frontend no longer re-derives the rule.
+
+What survives on the client is a *presentation* question the server cannot answer before the upload exists —
+"can the operator skip the mapping step?" — because the mapping step is what creates the job
+(`handleMappingComplete` → `createImport`), so a server-side "you must map again" verdict after creation has
+no step to route back to without a second job. That pre-check now (a) has its own try/catch, (b) reports
+`correction.originalUnavailable` and keeps the operator's file and selection on failure, and (c) also requires
+the saved mapping to cover the required targets, through a helper shared with the mapping step's own validity
+gate. M9's browser assertion ("the mapping step is skipped on attempt 1") depends on that skip existing.
+
+**m7 server half: verified, not changed.** `ImportRowExportTest::test_a_reused_mapping_that_misses_a_required_target_is_refused_with_the_column_list`
+proves a re-applied mapping still goes through header validation and is refused 422 `validation_failed` with
+`errors.missing_columns` — so the pre-check's new condition keeps the operator out of a refusal they could not act on.
+
+### Generated types
+
+`packages/shared/types/generated.d.ts` **is** in the commit (`cfeb6f795`), because a DTO field and an enum case
+were added: `ImportErrorDetailData.missing_columns` and `ImportErrorCode::CompanyContextMissing`. The
+regeneration is exactly two lines; `errorCodes.ts` is `satisfies Record<ImportErrorCode, true>`, so the new case
+forced the frontend map and the en/fr/ar copy.
+
+### RED → GREEN
+
+Backend (PG native `127.0.0.1:5432`, `autoerp_test_y`, `phpunit-pgsql.xml`, one class per invocation):
+
+```
+RED  ImportRowExportTest::test_job_level_failure_publishes_its_code_and_detail_on_every_payload
+     Failed asserting that null is identical to Array &0 [ 0 => 'name' ]   (Tests: 1, Assertions: 3, Failures: 1)
+RED  PartiesImportTypeTest::test_legacy_product_images_job_fails_…
+     Error: Undefined constant App\Modules\Import\Domain\Enums\ImportErrorCode::CompanyContextMissing
+RED  ImportRowExportTest::test_a_download_deletes_only_the_artefact_it_generated
+     Unable to find a file or directory at path [imports/rows/01a09693-….xlsx].   (Tests: 3, Assertions: 21, Failures: 1)
+
+GREEN  ImportRowExportTest                    16 passed (100 assertions)  19.7s
+GREEN  ProcessImportJobStatusTest              7 passed  (29 assertions)  13.5s
+GREEN  PurgeExpiredImportArtifactsTest         7 passed  (42 assertions)   9.9s
+GREEN  ImportJobOutcomeTest                    9 passed  (16 assertions)   0.03s
+GREEN  PartiesImportTypeTest                   7 passed  (38 assertions)  10.8s
+GREEN  PartiesImportBalancesTest               5 passed  (54 assertions)  11.2s
+
+SQLite (default phpunit.xml):
+GREEN  ImportRowExportTest                    16 passed (100 assertions)  13.9s
+GREEN  PurgeExpiredImportArtifactsTest         7 passed  (42 assertions)   5.7s
+```
+
+Frontend (Vitest, default pool, one file per invocation; `ps aux | grep 'node (vitest'` → 0 afterwards):
+
+```
+RED  ImportHistoryPage.errorMessage.test.tsx        5 failed | 3 passed (8)
+RED  ImportCorrectionActions.test.tsx               5 failed | 2 passed (7)
+RED  ImportHistoryPage.actions.test.tsx (M4)        2 failed | 1 passed (3)
+RED  importApi.envelope + actions (M5)              3 failed | 7 passed (10)
+RED  ImportWizardPage.options.test.tsx (M6/M7)      3 failed | 19 passed (22)
+RED  ImportCorrectionActions + actions (M8)         2 failed | 13 passed (15)
+
+GREEN  ImportErrorLocales.test.ts                3 passed
+GREEN  ImportHistoryPage.errorMessage.test.tsx    8 passed
+GREEN  ImportCorrectionActions.test.tsx           9 passed
+GREEN  ImportHistoryPage.actions.test.tsx         6 passed
+GREEN  ImportWizardPage.options.test.tsx         22 passed
+GREEN  importApi.envelope.test.ts                 5 passed
+GREEN  tenantScope.test.tsx                      16 passed
+```
+
+### Static
+
+```
+phpstan --level=8  (ProcessProductImageImport, ImportErrorDetailData, ImportErrorCode,
+                    ImportController, ImportRowExportService)                    [OK] No errors
+pint --test        (those five + the three touched test classes)                 {"result":"pass"}
+pnpm typecheck                                                                   exit 0, no output
+pnpm lint                                                                        ✖ 6416 problems (0 errors, 6416 warnings)
+pnpm audit:keys    Gate C: 0 — 0 acknowledged, 0 new, 0 stale
+audit:design-system  797 violations — 797 acknowledged, 0 NEW, 0 stale
+audit:i18n:local   OK — 2810 known gaps (was 2816: the six ar `status.*` entries m2 authored; removal-only)
+```
+
+Two notes on the figures. **Warnings 6407 → 6416**: nine new *warnings* (no-unsafe-type-assertion on the
+error-body cast, `??` on payload fields typed non-nullable, template-expression nits) — the gate is 0 errors,
+which holds. **Design-system 0 new**: M4/M8 delete JSX and the baseline would have gone stale on the history
+status chip, whose raw-`<button>` source the baseline keys on — the page-reset now goes through one
+`setStatusFilter` wrapper so that JSX is byte-identical and the baseline neither grows nor goes stale.
+
+### Playwright — FULL six-scenario run, all green
+
+Lane harness `apps/web/e2e/imports/pw.config.ts`: API :8012, Vite :5176, one queue worker
+(`--queue=imports,default --tries=1 --timeout=300 --memory=512`), containers `autoerp_postgres` (5433) and
+`autoerp_redis` (6380) started for the run, fresh tenant registered by `beforeAll`.
+
+```
+Running 6 tests using 1 worker
+  ✓  1 IMP1 history and rows-to-fix: imp1-success.csv                 (8.9s)
+  ✓  2 IMP1 history and rows-to-fix: imp1-partial.csv                 (8.5s)
+  ✓  3 IMP1 history and rows-to-fix: imp1-partial-async.csv          (13.0s)
+  ✓  4 IMP1 history and rows-to-fix: imp1-suppliers-balances-200.xlsx (15.4s)
+  ✓  5 corrected export reuses mapping and can be re-run             (14.7s)
+  ✓  6 history filters and second-company isolation                  (15.8s)
+  6 passed (1.3m)
+```
+
+The first attempt of the run **failed scenario 1**, and the failure was real information: the spec waited
+unconditionally for "Download rows to fix" on the completion step, which M4 now hides for a clean import. The
+scenario asserts both directions since `f9406becd` (present for the partial fixtures, `toHaveCount(0)` for the
+clean ones) — that is the assertion M4 is worth.
+
+M9's point, captured live in
+`docs/superpowers/reviews/2026-09-10-imp1-evidence/phase-b/corrected-attempt-{1,2}-history.txt` — two distinct
+jobs (different `reimport_of` hrefs), identical counters:
+
+```
+/settings/import/products?reimport_of=01a096b1-4ef9-70eb-b244-58fa558f3a74
+Products  imp1-corrected.csv  Completed  4 imported / 0 skipped / 0 failed / 4 total
+/settings/import/products?reimport_of=01a096b1-6344-718d-8b8f-94cb5c31d4e7
+Products  imp1-corrected.csv  Completed  4 imported / 0 skipped / 0 failed / 4 total
+```
+
+Evidence committed: `…/phase-b/browser-green-fixround2.txt` (the tail above, with the harness line), refreshed
+per-scenario `-completion.png` / `-completion-actions.png` / `-history*.png` / `-history.txt` /
+`-full-report.xlsx` / `-rows.{csv,xlsx}`, `history-fr.png`, `history-ar-rtl.png`, `second-company-empty.png`,
+`corrected-attempt-{1,2}.png`, and `reimport-rows-to-fix.csv` (the re-run scenario's own input — m6's
+cross-test coupling is gone).
+
+Processes stopped afterwards; `lsof -nP -iTCP:8012 -sTCP:LISTEN`, `:5176`, `:5433` and `:6380` all return
+nothing, and both containers are `Exited (0)` again.
+
+### Not done — see `docs/superpowers/tickets/2026-09-11-imp1-followups.md`
+
+frontend **m5** (no `ImportJobData` DTO) and imports **m-B**, **m-C**, **m-D**, **m-E**, **m-F**, as instructed.
+Two items the round itself opened are registered there as well: the `ImportCompleted` broadcast still carrying
+no `error_code` (so the WebSocket feeder resolves to the generic sentence), and the new missing-artefact
+`404 correction_export_unavailable` guard having **no automated test** — `ImportRowExportService` is `final`
+with no interface, so nothing can make `generate()` return a path that is then removed; the guard is code-only
+until a seam exists.
