@@ -69,9 +69,17 @@ interface ImportCorrectionActionsProps {
    * rather than shipped dead (owner ruling OQ-11).
    */
   canDownloadRows: boolean
+  /**
+   * `panel` — the wizard completion step: one screen, one job, so the download
+   * is the screen's main element and the caveat sits with it.
+   * `row` — one history row among N: no filled primary (N of them would compete
+   * with each other and with the page's own main element) and no caveat, which
+   * the table states once above itself. Owner ruling 2026-08-10, OQ-11.
+   */
+  layout?: 'panel' | 'row'
 }
 
-export function ImportCorrectionActions({ jobId, type, canDownloadRows }: ImportCorrectionActionsProps) {
+export function ImportCorrectionActions({ jobId, type, canDownloadRows, layout = 'panel' }: ImportCorrectionActionsProps) {
   const { t } = useTranslation('import')
   const formatId = useId()
   const [format, setFormat] = useState<'csv' | 'xlsx'>('csv')
@@ -91,16 +99,25 @@ export function ImportCorrectionActions({ jobId, type, canDownloadRows }: Import
     }
   }
 
+  const isRow = layout === 'row'
+
   return (
-    <div className="flex max-w-sm flex-col gap-2 text-start">
+    <div className={`flex ${isRow ? 'items-center justify-end gap-2' : 'max-w-sm flex-col gap-2'} flex-wrap text-start`}>
       {canDownloadRows && (
         <div className="flex flex-wrap items-center gap-2">
           <label className="sr-only" htmlFor={formatId}>{t('correction.format')}</label>
-          <Select id={formatId} value={format} onChange={(event) => { setFormat(event.target.value === 'xlsx' ? 'xlsx' : 'csv') }} className={`rounded border ${colors.border.default} ${colors.surface.base} px-2 py-1 text-sm`}>
+          <Select
+            id={formatId}
+            value={format}
+            onChange={(event) => { setFormat(event.target.value === 'xlsx' ? 'xlsx' : 'csv') }}
+            className="w-auto text-sm"
+          >
             <option value="csv">{t('correction.csv')}</option>
             <option value="xlsx">{t('correction.xlsx')}</option>
           </Select>
           <Button
+            variant={isRow ? 'secondary' : 'primary'}
+            size="sm"
             data-testid="import-complete-download-rows_export_csv"
             type="button"
             onClick={() => void download(
@@ -111,13 +128,17 @@ export function ImportCorrectionActions({ jobId, type, canDownloadRows }: Import
             )}
             className="gap-2"
           >
-            <Download className="h-4 w-4" />
+            <Download className="h-4 w-4" aria-hidden="true" />
             {t('correction.download')}
           </Button>
         </div>
       )}
-      {canDownloadRows && <p className={`whitespace-normal text-xs ${colors.text.subtle}`}>{t('correction.caveat')}</p>}
-      <div className="flex flex-wrap gap-3 text-sm">
+      {/* The caveat belongs to the surface, not to the control: one history table
+          states it once above itself, one completion panel states it here. */}
+      {canDownloadRows && !isRow && (
+        <p className={`whitespace-normal text-xs ${colors.text.subtle}`}>{t('correction.caveat')}</p>
+      )}
+      <div className="flex flex-wrap items-center gap-3 text-sm">
         <Link to={`/settings/import/${type}?reimport_of=${jobId}`} className={colors.intent.primary.text}>{t('correction.reupload')}</Link>
         <Button
           variant="ghost"

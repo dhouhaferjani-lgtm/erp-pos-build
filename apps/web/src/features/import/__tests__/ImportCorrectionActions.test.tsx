@@ -25,10 +25,10 @@ function codedBlob404(code: string) {
   }
 }
 
-function renderActions(canDownloadRows = true) {
+function renderActions(canDownloadRows = true, layout: 'panel' | 'row' = 'panel') {
   return render(
     <MemoryRouter>
-      <ImportCorrectionActions jobId="job-1" type="products" canDownloadRows={canDownloadRows} />
+      <ImportCorrectionActions jobId="job-1" type="products" canDownloadRows={canDownloadRows} layout={layout} />
     </MemoryRouter>,
   )
 }
@@ -88,5 +88,21 @@ describe('ImportCorrectionActions dead-control gating', () => {
     expect(screen.queryByRole('button', { name: 'correction.download' })).not.toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: 'correction.format' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'correction.fullReport' })).toBeInTheDocument()
+  })
+})
+
+describe('ImportCorrectionActions layouts', () => {
+  it('states the caveat on the wizard completion panel, where it appears once', () => {
+    renderActions(true, 'panel')
+
+    expect(screen.getByText('correction.caveat')).toBeInTheDocument()
+  })
+
+  it('omits the caveat on a history row, where the table states it once above', () => {
+    renderActions(true, 'row')
+
+    expect(screen.queryByText('correction.caveat')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'correction.download' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'correction.format' })).toBeInTheDocument()
   })
 })

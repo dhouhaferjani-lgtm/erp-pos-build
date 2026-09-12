@@ -5,14 +5,11 @@ type ImportErrorDetail = App.Modules.Import.Domain.Data.ImportErrorDetailData
 
 /**
  * Narrowed to what `useTranslation('import')` hands back, so callers pass `t`
- * directly. Two call signatures rather than one optional parameter: `TFunction`
- * does not accept an explicit `undefined` second argument under
- * `exactOptionalPropertyTypes`.
+ * directly. The options argument is always passed (empty when there is nothing
+ * to interpolate): `TFunction` does not accept an explicit `undefined` there
+ * under `exactOptionalPropertyTypes`.
  */
-interface Translate {
-  (key: string): string
-  (key: string, options: Record<string, string>): string
-}
+type Translate = (key: string, options: Record<string, string>) => string
 
 function isKnownErrorCode(code: string): code is ImportErrorCode {
   return code in ERROR_TRANSLATION_KEYS
@@ -57,7 +54,7 @@ export function importJobErrorMessage(
   }
 
   if (code === null || !isKnownErrorCode(code)) {
-    return t('errors.unknown')
+    return t('errors.unknown', {})
   }
 
   const missingColumns = job.error_detail?.missing_columns ?? null
@@ -65,5 +62,5 @@ export function importJobErrorMessage(
     return t('errors.job.missing_columns', { columns: missingColumns.join(', ') })
   }
 
-  return JOB_SCOPED_CODES[code] === true ? t(`errors.job.${code}`) : t(`errors.${code}`)
+  return JOB_SCOPED_CODES[code] === true ? t(`errors.job.${code}`, {}) : t(`errors.${code}`, {})
 }

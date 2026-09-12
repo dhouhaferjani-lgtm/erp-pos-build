@@ -238,6 +238,7 @@ export function ImportHistoryPage() {
                         jobId={job.id}
                         type={job.type}
                         canDownloadRows={(job.failed_rows ?? 0) + (job.warning_rows ?? 0) > 0}
+                        layout="row"
                       />
                     ) : (
                       <span className={cn('text-sm', colorTokens.text.disabled)}>-</span>

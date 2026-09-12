@@ -75,6 +75,20 @@ describe('ImportHistoryPage server-side status filter and pagination', () => {
   })
 })
 
+describe('ImportHistoryPage one main element per screen', () => {
+  it('states the correction caveat once for the table, not once per row', () => {
+    renderWith(
+      job({ id: 'a', failed_rows: 1 }),
+      job({ id: 'b', failed_rows: 2 }),
+    )
+
+    expect(screen.getAllByText('correction.caveat')).toHaveLength(1)
+    // The row action itself keeps its accessible name, so the operator (and the
+    // browser gate) can still reach it.
+    expect(screen.getAllByRole('button', { name: 'correction.download' })).toHaveLength(2)
+  })
+})
+
 describe('ImportHistoryPage rows-to-fix gating', () => {
   it('renders no rows-to-fix control for a clean import, but keeps the full report', () => {
     renderWith(job({}))
