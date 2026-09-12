@@ -4,6 +4,8 @@
 
 > **2026-09-12 update:** wave 0a resumes from Task 1 (Task 0 landed at `ed88aa2ed` on `lane/rbac-w0a`; `dev` moved to `477c877a3` with the G0 guardrails — merge-tree clean, all 32 wave-0a paths unclaimed by the three active lanes). The self-contained resume packet is `docs/handoff/CODEX-DISPATCH-RBAC-W0a-resume-2026-09-12.md`; it supersedes the 2026-09-10 brief. The Codex audit of the current state (guardrails, launch pilot, posting recovery, account-payment R1/R1b, operational-ledgers ADR) lives on the `codex/*` branches, not on `dev` — see the orchestrator memory file.
 
+> **2026-09-12 gate r1 on wave 0a (tip `b3e35990d`):** `tenancy-authz-reviewer` = **MERGE-WITH-FIXES 0B/2M/5m** (`docs/superpowers/reviews/2026-09-12-rbac-w0a-impl-gate-r1-tenancy.md`). Both majors are records; addendum committed on the lane as `Phase 0.1.8`. **Owner-owed before the origin/dev push that carries wave 0a (M-1):** existing tenants may lack the nine keys the 17 gates use — run `php artisan tenants:seed --force --class='Database\Seeders\RolesAndPermissionsSeeder'` or set `SYNC_PERMISSIONS_ON_BOOT=true` for that deploy, then `permission:cache-reset` per tenant, and spot-check `manager` on every staging tenant. The seeder's `syncPermissions` overwrites tenant-edited roles, so pick the form deliberately. UI follow-up ticket: `docs/superpowers/tickets/2026-09-12-rbac-w0a-unguarded-row-actions-menus-promotions-coupons.md` (0b-15 / 2a).
+
 ## Where things stand
 
 | Item | State | Location |
