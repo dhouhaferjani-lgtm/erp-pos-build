@@ -71,7 +71,7 @@ for (const name of ['imp1-success.csv', 'imp1-partial.csv', 'imp1-partial-async.
         await expect(row).toContainText('Completed')
         await expect(row).not.toContainText('Completed with errors')
         await expect(row.getByRole('alert')).toHaveCount(0)
-        await expect(row).toContainText('200')
+        await expect(row).toContainText('200 imported')
       }
       await page.screenshot({ path: resolve(evidence, `${name}-history.png`), fullPage: true })
       const download = page.waitForEvent('download')
@@ -111,23 +111,49 @@ test('corrected export reuses mapping and can be re-run', async ({ page }) => {
   const reupload = original.getByRole('link', { name: 'Re-upload corrected file' })
   const reuploadUrl = await reupload.getAttribute('href')
   expect(reuploadUrl).toContain('reimport_of=')
-  const corrected = readFileSync(resolve(evidence, 'imp1-partial.csv-rows.csv'), 'utf8')
+
+  // This test owns its own input: reading an artefact an earlier test happened to
+  // write coupled the two through the file system and through their order.
+  const rowsDownload = page.waitForEvent('download')
+  await original.getByRole('button', { name: 'Download rows to fix' }).click()
+  await (await rowsDownload).saveAs(resolve(evidence, 'reimport-rows-to-fix.csv'))
+  const corrected = readFileSync(resolve(evidence, 'reimport-rows-to-fix.csv'), 'utf8')
     .replace(',NO-SUCH-UNIT,', ',pc,').replace(',invalid,', ',12.500,')
   writeFileSync(resolve(evidence, 'imp1-corrected.csv'), corrected)
+
+  const counters: Record<number, string> = {}
   for (const attempt of [1, 2]) {
     await page.goto(reuploadUrl!)
     const ui = campaignSelectors(page).import
     await ui.fileInput.setInputFiles(resolve(evidence, 'imp1-corrected.csv'))
     await ui.next.click()
-    await expect(ui.step.options.or(ui.step.preview)).toBeVisible()
+    // The original mapping still covers this file, so the server re-applies it
+    // and the operator goes straight past mapping. A regression here is silent
+    // otherwise: the wizard would just show one more step.
+    await expect(ui.step.options.or(ui.step.preview)).toBeVisible({ timeout: 90_000 })
+    await expect(ui.step.mapping).toHaveCount(0)
     if (await ui.step.options.isVisible()) await ui.next.click()
     await expect(ui.step.preview).toBeVisible()
     await ui.proceed.click()
     await expect(ui.step.execute).toBeVisible()
     await ui.execute.click()
-    await expect(ui.step.complete).toBeVisible()
+    await expect(ui.step.complete).toBeVisible({ timeout: 90_000 })
     await page.screenshot({ path: resolve(evidence, `corrected-attempt-${attempt}.png`), fullPage: true })
+
+    await page.goto('/settings/import/history')
+    const run = page.getByRole('row').filter({ hasText: 'imp1-corrected.csv' }).first()
+    await expect(run).toBeVisible({ timeout: 90_000 })
+    await expect(run).toContainText('0 failed')
+    const jobId = await run.getByRole('link', { name: 'Re-upload corrected file' }).getAttribute('href')
+    counters[attempt] = await run.innerText()
+    writeFileSync(resolve(evidence, `corrected-attempt-${attempt}-history.txt`), `${jobId ?? ''}\n${counters[attempt]}`)
   }
+
+  // Same file, same re-applied mapping, same duplicate policy: the second run
+  // must land on the same counters as the first. If reimport_of stops
+  // re-applying the mapping, or the duplicate handling drifts, the two differ.
+  const countersOf = (text: string) => text.split('\n').find((line) => line.includes('imported'))
+  expect(countersOf(counters[2] ?? ''), 'attempt 2 counters').toBe(countersOf(counters[1] ?? ''))
 })
 
 test('history filters and second-company isolation', async ({ page, request }) => {
