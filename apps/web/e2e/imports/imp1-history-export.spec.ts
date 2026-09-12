@@ -52,9 +52,17 @@ for (const name of ['imp1-success.csv', 'imp1-partial.csv', 'imp1-partial-async.
     await test.step(name, async () => {
       await runImportWizard(page, name.includes('suppliers') ? 'parties' : 'products', resolve(fixtures, name))
       await page.screenshot({ path: resolve(evidence, `${name}-completion.png`), fullPage: true })
-      await page.getByRole('button', { name: 'Download rows to fix' }).scrollIntoViewIfNeeded()
+      const completionRowsToFix = page.getByRole('button', { name: 'Download rows to fix' })
+      if (name.includes('partial')) {
+        await completionRowsToFix.scrollIntoViewIfNeeded()
+        expect.soft(await completionRowsToFix.count(), `${name}: completion rows-to-fix action`).toBeGreaterThan(0)
+      } else {
+        // M4: an import with nothing to fix hides the control instead of shipping
+        // it dead — ImportRowExportService::generate() returns null for it, so the
+        // endpoint is a guaranteed 404.
+        await expect(completionRowsToFix).toHaveCount(0)
+      }
       await page.screenshot({ path: resolve(evidence, `${name}-completion-actions.png`), fullPage: true })
-      if (name.includes('partial')) expect.soft(await page.getByRole('button', { name: /download rows to fix/i }).count(), `${name}: completion rows-to-fix action`).toBeGreaterThan(0)
       await page.goto('/settings/import/history')
       await page.screenshot({ path: resolve(evidence, `${name}-history-loading.png`), fullPage: true })
       const row = page.getByRole('row').filter({ hasText: name }).first()

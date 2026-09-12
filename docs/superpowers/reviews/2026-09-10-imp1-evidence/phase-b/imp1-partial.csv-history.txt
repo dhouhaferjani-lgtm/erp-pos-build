@@ -3,13 +3,10 @@ Products
 	
 Completed with errors	
 9 imported / 1 skipped / 2 failed / 12 total
-	9/12/2026, 5:33:55 PM	
+	9/12/2026, 6:35:58 PM	
 File format
 CSV
 Excel
 Download rows to fix
-
-Includes errors and warnings with status, code and message columns. Unmapped source columns are omitted.
-
 Re-upload corrected file
 Full report
