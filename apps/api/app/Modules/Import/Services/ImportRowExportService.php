@@ -159,7 +159,28 @@ final class ImportRowExportService
             return ['error', $code->value, $message];
         }
         $warning = ($row->warnings ?? [])[0] ?? null;
+        $code = $warning['code'] ?? ImportErrorCode::InternalError->value;
 
-        return ['warning', $warning['code'] ?? 'internal_error', $warning['detail'] ?? ''];
+        return ['warning', $code, $this->warningMessage($code, $warning['detail'] ?? '')];
+    }
+
+    /**
+     * Operator copy for a warning row.
+     *
+     * Section 4.10 asks for the translated message for the code, so the coded
+     * channel is what is consulted first. The stored per-row detail is the
+     * fallback and is deliberately still what most codes resolve to: today's
+     * details name the actual values ("provided 12.00 vs derived 11.90"), which a
+     * generic per-code sentence would throw away in a file whose whole purpose is
+     * telling the operator what to change on THAT row. Seed
+     * lang/{en,fr,ar}/import.php `warnings` one code at a time, only with copy
+     * that carries at least as much row context.
+     */
+    private function warningMessage(string $code, string $detail): string
+    {
+        $key = 'import.warnings.'.$code;
+        $translated = __($key);
+
+        return is_string($translated) && $translated !== $key ? $translated : $detail;
     }
 }

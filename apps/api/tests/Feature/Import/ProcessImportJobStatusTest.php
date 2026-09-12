@@ -288,6 +288,11 @@ class ProcessImportJobStatusTest extends TestCase
         ]);
         $importService->validateJob($job->refresh());
 
+        // Rule 20: a queued worker runs with NO CompanyContext. setUp() binds one
+        // for the controller-side fixture work above, so clear it here — leaving it
+        // bound is what let the staging currency-scale defect through a green suite.
+        app(CompanyContext::class)->clear();
+
         $this->runJob($job->refresh());
 
         $this->assertSame(1, OpeningBalanceBatch::where('type', OpeningBatchType::ArOpenItems)->count());
