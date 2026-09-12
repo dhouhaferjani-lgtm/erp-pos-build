@@ -54,7 +54,10 @@ Route::prefix('api/v1/support-access')
         EnforceTokenTenantClaim::class,
     ])
     ->group(function (): void {
+        // Self-service: a principal ending their OWN impersonation session. The
+        // {session} parameter is self-addressable (SELF_ADDRESSABLE_PARAMETERS).
         Route::post('sessions/{session}/exit', [TenantSessionController::class, 'exit'])
+            ->middleware('authz.self')
             ->name('support-access.sessions.exit');
     });
 
