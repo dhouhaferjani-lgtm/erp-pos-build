@@ -2763,6 +2763,8 @@ Rejected alternatives, recorded and not open: (a) "expense with shrinkage" — n
 
 **S1 fix round 2, I-12 (orchestrator transcription of the handback decision):** `TransferReconciliationSummaryData` carries NO quantity totals — only `lines`, `lines_with_discrepancy` and `freight_uncapitalized`. Quantity values live only on unit-bearing lines/lots; mixed-unit quantities are never summed anywhere in the lane (S2–S4 inherit this rule).
 
+**S1 fix round 3, I-15 (orchestrator ruling, gate r3 inventory 2026-09-12):** the I-12 rule applies to the immutable event stream as well. `StockTransferReceivedV1` carries NO `totalReceived`/`totalDamaged` and `StockTransferClosedV1` carries NO `totalWrittenOff`/`totalReturned`; the receipt writer accumulates no cross-line quantity total. Per-line quantities live on `StockTransferReceiptLineRecordedV1` only. Ruled before the two V1 classes first ship, so no V2 is needed (CLAUDE.md rule 8). `lineCount` stays (it is a count of lines, not a quantity).
+
 `TransferStatus` gains three cases and three methods; `isTerminal()`, `canBeCompleted()` and `label()` are extended; `canBeCancelled()` and `canBeInitiated()` are **unchanged**, so `partially_received` is not cancellable. Gate r1 M4 asked for the complete modified enum rather than a fragment, because this file is the source of the generated `TransferStatus` TypeScript union (`packages/shared/types/generated.d.ts:1240`, four members today, seven after S1) and the only exhaustiveness site in PHP. **The whole file after S1, replacing `apps/api/app/Modules/Inventory/Domain/Enums/TransferStatus.php` in place:**
 
 ```php
