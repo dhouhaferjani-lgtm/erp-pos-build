@@ -838,6 +838,9 @@ class ImportController extends Controller
             return response()->json(['error' => ['code' => 'no_rows_to_fix', 'message' => 'No rows to fix.']], 404);
         }
         $content = Storage::disk('local')->get($filePath);
+        // The bytes are captured, so the artefact is ephemeral: it never outlives
+        // the request that generated it (spec 4.10 retention).
+        $this->rowExportService->deleteArtifacts($job);
         $filename = sprintf('%s-rows-to-fix.%s', pathinfo($job->original_filename, PATHINFO_FILENAME), $format);
 
         return response()->streamDownload(static function () use ($content): void {
@@ -939,6 +942,8 @@ class ImportController extends Controller
         if ($deleted !== 1) {
             return $this->importHasEffectsConflict();
         }
+
+        $this->rowExportService->deleteArtifacts($job);
 
         if (! Storage::disk('local')->delete($job->file_path)) {
             Log::warning('import_jobs.discard_orphaned_source', [

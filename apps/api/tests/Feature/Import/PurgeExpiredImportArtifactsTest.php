@@ -263,6 +263,26 @@ final class PurgeExpiredImportArtifactsTest extends TestCase
         ]);
     }
 
+    public function test_expired_sweep_also_removes_correction_row_exports(): void
+    {
+        $tenant = $this->createTenant('purge-rows');
+        $expired = $this->createJob($tenant, 'expired.csv', now()->subDays(91));
+        $live = $this->createJob($tenant, 'live.csv', now()->subDays(89));
+        Storage::disk('local')->put($expired->file_path, 'expired bytes');
+        Storage::disk('local')->put($live->file_path, 'live bytes');
+        // Downloads delete their own artefact; these stand in for one orphaned by
+        // a connection that dropped mid-stream, which must not outlive retention.
+        Storage::disk('local')->put('imports/rows/'.$expired->id.'.csv', 'expired rows');
+        Storage::disk('local')->put('imports/rows/'.$expired->id.'.xlsx', 'expired rows');
+        Storage::disk('local')->put('imports/rows/'.$live->id.'.csv', 'live rows');
+
+        $this->assertSame(0, Artisan::call('imports:purge-expired'));
+
+        Storage::disk('local')->assertMissing('imports/rows/'.$expired->id.'.csv');
+        Storage::disk('local')->assertMissing('imports/rows/'.$expired->id.'.xlsx');
+        Storage::disk('local')->assertExists('imports/rows/'.$live->id.'.csv');
+    }
+
     private function createJob(Tenant $tenant, string $filename, \DateTimeInterface $completedAt): ImportJob
     {
         return ImportJob::create([

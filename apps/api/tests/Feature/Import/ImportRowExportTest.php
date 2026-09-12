@@ -234,6 +234,33 @@ final class ImportRowExportTest extends TestCase
         $this->assertStringContainsString('Accepted unit codes: pc, kg.', Storage::disk('local')->get($path));
     }
 
+    public function test_correction_export_never_outlives_the_download(): void
+    {
+        // The artefact holds the operator's raw rows (partner names, tax ids,
+        // balances). Spec 4.10 rules it ephemeral, so nothing is left to purge.
+        $job = $this->exportJob();
+        $job->update(['status' => ImportStatus::Completed, 'total_rows' => 100]);
+
+        $this->actingAs($this->user, 'sanctum')->get('/api/v1/imports/'.$job->id.'/failed-rows.csv')->assertOk();
+        $this->assertSame([], Storage::disk('local')->files('imports/rows'));
+
+        $this->get('/api/v1/imports/'.$job->id.'/failed-rows.xlsx')->assertOk();
+        $this->assertSame([], Storage::disk('local')->files('imports/rows'));
+    }
+
+    public function test_discarding_a_job_removes_its_correction_exports(): void
+    {
+        $job = $this->exportJob();
+        $service = app(ImportRowExportService::class);
+        $service->generate($job, 'csv');
+        $service->generate($job, 'xlsx');
+        $this->assertCount(2, Storage::disk('local')->files('imports/rows'));
+
+        $this->actingAs($this->user, 'sanctum')->deleteJson('/api/v1/imports/'.$job->id)->assertNoContent();
+
+        $this->assertSame([], Storage::disk('local')->files('imports/rows'));
+    }
+
     private function exportJob(): ImportJob
     {
         $job = app(ImportService::class)->createJob(

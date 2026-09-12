@@ -7,6 +7,7 @@ namespace App\Modules\Import\Infrastructure\Commands;
 use App\Console\TenantScopedCommand;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Import\Domain\ImportJob;
+use App\Modules\Import\Services\ImportRowExportService;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -27,8 +28,10 @@ final class PurgeExpiredImportArtifactsCommand extends TenantScopedCommand
     /** @var string */
     protected $description = 'Delete import source files older than 90 days while keeping job rows';
 
-    public function __construct(CompanyContext $companyContext)
-    {
+    public function __construct(
+        CompanyContext $companyContext,
+        private readonly ImportRowExportService $rowExportService,
+    ) {
         parent::__construct($companyContext);
     }
 
@@ -50,6 +53,11 @@ final class PurgeExpiredImportArtifactsCommand extends TenantScopedCommand
                 })
                 ->lazyById(500)
                 ->each(function (ImportJob $job) use (&$purged): void {
+                    // Correction exports are deleted by their own download, but an
+                    // orphan must not outlive retention either — sweep it first, so
+                    // a source that cannot be deleted does not strand it.
+                    $this->rowExportService->deleteArtifacts($job);
+
                     $disk = Storage::disk('local');
                     $sourcePurged = ! $disk->exists($job->file_path);
                     if (! $sourcePurged) {

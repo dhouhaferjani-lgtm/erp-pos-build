@@ -21,9 +21,12 @@ use RuntimeException;
 /** One row selection and cell contract for both correction-file formats. */
 final class ImportRowExportService
 {
+    /** @var list<string> */
+    private const FORMATS = ['csv', 'xlsx'];
+
     public function generate(ImportJob $job, string $format = 'csv'): ?string
     {
-        if (! in_array($format, ['csv', 'xlsx'], true)) {
+        if (! in_array($format, self::FORMATS, true)) {
             throw new InvalidArgumentException('Unsupported import row export format.');
         }
 
@@ -64,8 +67,9 @@ final class ImportRowExportService
             $cells[] = [...$values, ...$this->diagnostic($row)];
         }
 
-        // Stable names bound storage growth; the controller streams the captured bytes.
-        $path = 'imports/rows/'.$job->id.'.'.$format;
+        // Stable names bound storage growth; the controller streams the captured
+        // bytes and then deletes the artefact (see deleteArtifacts()).
+        $path = self::artifactPath($job, $format);
         if ($format === 'csv') {
             $stream = fopen('php://temp', 'w+');
             if ($stream === false) {
@@ -103,6 +107,31 @@ final class ImportRowExportService
         }
 
         return $path;
+    }
+
+    /**
+     * Remove every correction artefact a job may have left on disk.
+     *
+     * Spec 4.10 rules generated exports ephemeral: the file holds the operator's
+     * raw rows (partner names and codes, tax ids, balances), so it must not
+     * survive the download that produced it, the job's discard, or the retention
+     * window. Downloads delete their own artefact; this also covers one orphaned
+     * by a request that died between generate() and the stream.
+     */
+    public function deleteArtifacts(ImportJob $job): void
+    {
+        $disk = Storage::disk('local');
+        foreach (self::FORMATS as $format) {
+            $path = self::artifactPath($job, $format);
+            if ($disk->exists($path)) {
+                $disk->delete($path);
+            }
+        }
+    }
+
+    private static function artifactPath(ImportJob $job, string $format): string
+    {
+        return 'imports/rows/'.$job->id.'.'.$format;
     }
 
     public function getDownloadUrl(ImportJob $job): string
