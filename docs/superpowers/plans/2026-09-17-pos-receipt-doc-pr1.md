@@ -10,6 +10,15 @@
 
 **Spec:** [`docs/superpowers/specs/2026-09-17-pos-receipt-preview-design.md`](../specs/2026-09-17-pos-receipt-preview-design.md) — Delivery table, PR 1 row. Phase-1 evidence (every `path:line` below): `docs/sessions/2026-09-17-lane-e/phase1-report.md`. Registry rows: `docs/qa/DEV-QA-registry.md` DEV-QA-085…088 (DEV-QA-089 is out of scope, ticket E-4).
 
+## Amendments (read before any task)
+
+**A1 — 2026-09-17, owner ruling (Dhouha): HT mode prints NO Remise line and derives nothing.** Overrides Task 3 wherever it computes `discount_ht` or divides by `(1 + rate)`:
+- `computeHtTotals(vatDetails, decimals)` keeps its name and export but returns `{ subtotal_ht: string } | null`: `subtotal_ht` = `bcadd` over every `VatBreakdownLine` **net base** already printed in the VAT table (the same strings, at the currency scale). No division, no `discount_ht`, no per-rate remise share. Return `null` when the receipt carries no VAT rows (pre-D-1 era) → the builder falls back to TTC layout and sets `doc.fallback = 'subtotal-mode'`.
+- HT layout = `Sous-total HT` · VAT table (or aggregate `TVA` line) · `TOTAL TTC`. The TTC layout is unchanged (`Sous-total` · `Remise` · TVA · `TOTAL`).
+- Test replaces the division cases: `Σ base + Σ vat == total` on the fixture (exact, from existing strings); HT fallback flag on a receipt with no VAT rows; second location whose bases differ.
+- Drop the `discount_ht` label field and the `discountHt` i18n key (fr/en). Keep `subtotalHt` and `totalTtc`.
+- Rationale: `discount_allocated` is a TTC share (`FiscalPayloadConstraintValidator.php:1595-1639`); an HT remise would be new printed-money arithmetic, which the owner refused.
+
 ## Global Constraints
 
 - **Money and quantities are strings end to end (CLAUDE.md rule 19).** No `Number(...)`, no `parseFloat`, no `+value` anywhere in this PR. `packages/shared/src/receipt` performs **zero arithmetic on money**: every monetary figure it prints arrives already formatted at currency scale from `apps/pos/src/lib/buildReceiptData.ts` (the same boundary that already precomputes `has_tolerance` / `has_cash_rounding` so Rust never parses money).

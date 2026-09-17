@@ -16,7 +16,7 @@ Owner rulings (Dhouha, 2026-09-17, recorded in `.superpowers/sdd/progress.md`):
 4. Backend change limited to the existing receipt-settings endpoint: `receipt_logo` gets its missing validation rule, one new column `receipt_subtotal_mode`.
 5. Thermal logo raster is **deferred** (no image command exists in `escpos.rs`); the toggle drives the PDF and the preview now.
 6. QR: keep **one** labelled refund-lookup QR, drop the raw fiscal-hash QR.
-7. HT mode prints `Sous-total HT`, `Remise HT`, TVA lines, `TOTAL TTC`.
+7. HT mode prints `Sous-total HT`, TVA lines, `TOTAL TTC` — **no Remise line, nothing derived** (r3 ruling: `discount_allocated` is a TTC share; an HT remise would be new printed-money arithmetic).
 
 ## Industry baseline (benchmark-first — convention 10)
 
@@ -131,7 +131,7 @@ Edit → RHF state → `buildReceiptDoc` (pure, synchronous, < 1 ms) → preview
 - QR: drop the fiscal-hash QR (`receipt_template.rs:760-764`); the hash and signature stay as text (`:745-757`). Keep the token QR (`:775-788`) with label `pos:receipt.qrScanLabel` (« Scanner pour retour / échange »). Refund receipts keep their original-token QR with its existing label (`:496-497`).
 
 ### 4.2 Subtotal HT / TTC (ruling 7)
-TTC (default; today's post-D-1 layout — see the golden-bytes rule in §5): `Sous-total` (TTC before remise) · `Remise` · VAT table or `TVA` line · `TOTAL`. HT: `Sous-total HT` = Σ VAT bases before remise · `Remise HT` = Σ per-rate remise bases · VAT table · `TOTAL` (TTC). All values are already present as strings in `VatBreakdownLine` / `ReceiptData` (`printing.ts:144-223`); when a receipt lacks per-rate remise bases (pre-D-1 era, `buildReceiptData.ts:169-171`), HT mode falls back to TTC for that ticket and the builder marks `doc.fallback = 'subtotal-mode'` so a test can assert it. Labels: `pos:receipt.subtotalHt`, `pos:receipt.discountHt` (fr/en/ar).
+TTC (default; today's post-D-1 layout — see the golden-bytes rule in §5): `Sous-total` (TTC before remise) · `Remise` · VAT table or `TVA` line · `TOTAL`. HT (r3): `Sous-total HT` = Σ VAT net bases already on the ticket (string addition only) · VAT table · `TOTAL` (TTC); no Remise line, nothing derived. All values are already present as strings in `VatBreakdownLine` / `ReceiptData` (`printing.ts:144-223`); when a receipt lacks per-rate remise bases (pre-D-1 era, `buildReceiptData.ts:169-171`), HT mode falls back to TTC for that ticket and the builder marks `doc.fallback = 'subtotal-mode'` so a test can assert it. Labels: `pos:receiptLabel.subtotalHt`, `pos:receiptLabel.totalTtc` (fr/en; the POS has no ar locale).
 
 ### 4.3 Code page / encoding (Rust)
 `PrintSettings` (`receipt_template.rs:265-280`): `cp437 → ESC t 0` + CP437 bytes (accents become `?`, honest), `cp858 → ESC t 19` + a static 128-entry CP858 table for U+00A0–U+00FF and `€`, `cp1252 → ESC t 16` + `WINDOWS_1252` (unchanged, the correct pairing for Epson TM / Xprinter). `ESC t` is **always** emitted (the `page != 0` guard at `:312-315` goes). `format_test_page_with_columns` (`:921`) and its command (`commands/printing.rs:107-112`) take `PrintSettings` so the operator's test page reveals a mismatch. Fixture expectation: `Café crème` → `43 61 66 E9 20 63 72 E8 6D 65` preceded by `1B 74 10`.
