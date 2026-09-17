@@ -20,7 +20,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::escpos::{Alignment, CutMode, EscPosBuilder, FontSize, QrErrorCorrection, TextEncoding};
-use super::receipt_template::{CompanyInfo, PrintSettings};
+use super::receipt_template::{money, CompanyInfo, PrintSettings};
 
 /// Localized voucher-ticket labels. All optional with English defaults.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -163,7 +163,7 @@ pub fn format_voucher_ticket_with_settings(
     b.align(Alignment::Left);
     b.two_column(
         &data.label(|l| &l.balance, "Balance:"),
-        &format!("{}{}", data.currency_symbol, data.initial_balance),
+        &money(&data.initial_balance, &data.currency_symbol),
     );
 
     let expires_value = match data.expires_at.as_ref() {

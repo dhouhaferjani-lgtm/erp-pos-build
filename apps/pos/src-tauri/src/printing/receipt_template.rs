@@ -513,17 +513,17 @@ pub fn format_receipt_with_settings(
         if let Some(ref before) = data.account_balance_before {
             b.two_column(
                 &data.label(|l| &l.balance_before, "Balance before:"),
-                &format!("{}{}", data.currency_symbol, before),
+                &money(before, &data.currency_symbol),
             );
         }
         b.two_column(
             &data.label(|l| &l.amount, "Amount"),
-            &format!("{}{}", data.currency_symbol, data.total),
+            &money(&data.total, &data.currency_symbol),
         );
         if let Some(ref after) = data.account_balance_after {
             b.two_column(
                 &data.label(|l| &l.balance_after, "Balance after:"),
-                &format!("{}{}", data.currency_symbol, after),
+                &money(after, &data.currency_symbol),
             );
         }
         if data.account_snapshot_stale {
@@ -538,7 +538,7 @@ pub fn format_receipt_with_settings(
             for payment in &data.payments {
                 b.two_column(
                     &format!("  {}", payment.method),
-                    &format!("{}{}", data.currency_symbol, payment.amount),
+                    &money(&payment.amount, &data.currency_symbol),
                 );
             }
         }
@@ -557,7 +557,7 @@ pub fn format_receipt_with_settings(
         for line in &data.lines {
             // Product name on its own line if long
             let qty_price = format!("{} x {}", line.quantity, line.unit_price);
-            let total_str = format!("{}{}", data.currency_symbol, line.line_total);
+            let total_str = money(&line.line_total, &data.currency_symbol);
 
             if line.name.len() > 20 {
                 // Long name: print name on first line, details on second
@@ -574,7 +574,7 @@ pub fn format_receipt_with_settings(
                     let mod_price = if modifier.price == "0.00" || modifier.price == "0" {
                         String::new()
                     } else {
-                        format!("+{}{}", data.currency_symbol, modifier.price)
+                        money(&format!("+{}", modifier.price), &data.currency_symbol)
                     };
                     b.two_column(&format!("  + {}", modifier.name), &mod_price);
                 }
@@ -584,7 +584,7 @@ pub fn format_receipt_with_settings(
             if let Some(ref discount) = line.discount {
                 b.two_column(
                     &format!("  {}", data.label(|l| &l.discount, "Discount")),
-                    &format!("-{}{}", data.currency_symbol, discount),
+                    &money(&format!("-{}", discount), &data.currency_symbol),
                 );
             }
         }
@@ -594,7 +594,7 @@ pub fn format_receipt_with_settings(
         // ── Totals ──
         b.two_column(
             &data.label(|l| &l.subtotal, "Subtotal:"),
-            &format!("{}{}", data.currency_symbol, data.subtotal),
+            &money(&data.subtotal, &data.currency_symbol),
         );
 
         if data.discount_amount != "0.00" && data.discount_amount != "0" {
@@ -604,7 +604,7 @@ pub fn format_receipt_with_settings(
                     data.label(|l| &l.discount, "Discount")
                         .trim_end_matches(':')
                 ),
-                &format!("-{}{}", data.currency_symbol, data.discount_amount),
+                &money(&format!("-{}", data.discount_amount), &data.currency_symbol),
             );
         }
 
@@ -639,15 +639,15 @@ pub fn format_receipt_with_settings(
             for vat in &data.vat_breakdown {
                 b.three_column(
                     &format!("{}%", vat.rate),
-                    &format!("{}{}", data.currency_symbol, vat.taxable),
-                    &format!("{}{}", data.currency_symbol, vat.tax),
+                    &money(&vat.taxable, &data.currency_symbol),
+                    &money(&vat.tax, &data.currency_symbol),
                 );
             }
             b.separator('-');
         } else {
             b.two_column(
                 &data.label(|l| &l.tax, "Tax:"),
-                &format!("{}{}", data.currency_symbol, data.tax_amount),
+                &money(&data.tax_amount, &data.currency_symbol),
             );
         }
 
@@ -665,7 +665,7 @@ pub fn format_receipt_with_settings(
             if let Some(ref adjustment) = data.cash_rounding_adjustment {
                 b.two_column(
                     &data.label(|l| &l.rounding, "Rounding"),
-                    &format!("{}{}", data.currency_symbol, adjustment),
+                    &money(adjustment, &data.currency_symbol),
                 );
             }
         }
@@ -674,7 +674,7 @@ pub fn format_receipt_with_settings(
         b.font_size(FontSize::DoubleHeight);
         b.two_column(
             &data.label(|l| &l.total, "TOTAL:"),
-            &format!("{}{}", data.currency_symbol, data.total),
+            &money(&data.total, &data.currency_symbol),
         );
         b.font_size(FontSize::Normal);
         b.bold(false);
@@ -689,7 +689,7 @@ pub fn format_receipt_with_settings(
             for payment in &data.payments {
                 b.two_column(
                     &format!("  {}", payment.method),
-                    &format!("{}{}", data.currency_symbol, payment.amount),
+                    &money(&payment.amount, &data.currency_symbol),
                 );
             }
 
@@ -697,7 +697,7 @@ pub fn format_receipt_with_settings(
                 b.bold(true);
                 b.two_column(
                     &data.label(|l| &l.change_due, "Change Due:"),
-                    &format!("{}{}", data.currency_symbol, data.change_due),
+                    &money(&data.change_due, &data.currency_symbol),
                 );
                 b.bold(false);
             }
@@ -717,7 +717,7 @@ pub fn format_receipt_with_settings(
                 if let Some(ref tolerance) = data.tolerance_writeoff {
                     b.two_column(
                         &data.label(|l| &l.tolerance, "Tolerance"),
-                        &format!("-{}{}", data.currency_symbol, tolerance),
+                        &money(&format!("-{}", tolerance), &data.currency_symbol),
                     );
                 }
             }
@@ -866,6 +866,18 @@ pub fn format_receipt_with_settings(
     }
 
     b.build()
+}
+
+/// Render one monetary cell as `<amount> <currency>` (DEV-QA-095).
+///
+/// Every printed amount goes through this ONE helper: the previous
+/// `format!("{}{}", currency_symbol, amount)` glued the code to the left of
+/// the digits (`TND10.000`), which is wrong for `fr-TN` and for every locale
+/// that suffixes the code. `amount` is already formatted at currency scale by
+/// the TS boundary (rule 19) and is never parsed here; a sign, when the caller
+/// needs one, is part of `amount` (`money("-1.000", "TND")` -> `-1.000 TND`).
+pub(crate) fn money(amount: &str, symbol: &str) -> String {
+    format!("{amount} {symbol}")
 }
 
 fn non_empty_trimmed(value: &str) -> Option<&str> {
@@ -1178,9 +1190,9 @@ mod tests_z_cash_counts {
 
         assert!(text.contains("ACCOUNT PAYMENT RECEIPT"));
         assert!(text.contains("Balance before:"));
-        assert!(text.contains("TND300.000"));
+        assert!(text.contains("300.000 TND"));
         assert!(text.contains("Balance after:"));
-        assert!(text.contains("TND200.000"));
+        assert!(text.contains("200.000 TND"));
         assert!(text.contains("Balance snapshot stale"));
         assert!(text.contains("Business date:"));
         assert!(text.contains("2026-05-21"));
@@ -1478,12 +1490,15 @@ mod tests_z_cash_counts {
             .lines()
             .find(|l| l.contains(label))
             .unwrap_or_else(|| panic!("no printed line contains {label:?}\n---\n{text}\n---"));
+        // DEV-QA-095: the currency code now TRAILS the amount (`10.000 TND`),
+        // so the last whitespace-separated token is the symbol, not the money.
+        // Take the last token that actually carries digits.
         let token = line
             .split_whitespace()
+            .filter(|t| t.chars().any(|c| c.is_ascii_digit()))
             .next_back()
             .unwrap_or_else(|| panic!("no amount token on {line:?}"));
-        // The sign sits either side of the currency symbol depending on the
-        // line ("TND-0.020" vs "-TND0.050"), so read it from the whole token.
+        // The sign is always part of the amount token now ("-0.020").
         let negative = token.contains('-');
         let digits: String = token
             .chars()
@@ -1576,7 +1591,7 @@ mod tests_z_cash_counts {
         );
 
         // The ticket's own arithmetic. `printed_millimes` reads the printed
-        // sign, and the Remise line prints as `-TND50.000`, so the discount
+        // sign, and the Remise line prints as `-50.000 TND`, so the discount
         // comes back NEGATIVE and is ADDED here.
         assert_eq!(
             printed_millimes(&text, "Subtotal:") + printed_millimes(&text, "Discount"),
@@ -1630,7 +1645,7 @@ mod tests_z_cash_counts {
         let text = String::from_utf8_lossy(&bytes);
 
         assert_eq!(printed_millimes(&text, "Rounding"), 30);
-        assert!(!text.contains("TND-0.030"));
+        assert!(!text.contains("-0.030 TND"));
     }
 
     #[test]
