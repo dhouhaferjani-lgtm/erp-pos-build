@@ -131,7 +131,7 @@ Edit → RHF state → `buildReceiptDoc` (pure, synchronous, < 1 ms) → preview
 - QR: drop the fiscal-hash QR (`receipt_template.rs:760-764`); the hash and signature stay as text (`:745-757`). Keep the token QR (`:775-788`) with label `pos:receipt.qrScanLabel` (« Scanner pour retour / échange »). Refund receipts keep their original-token QR with its existing label (`:496-497`).
 
 ### 4.2 Subtotal HT / TTC (ruling 7)
-TTC (default, byte-identical to today's post-D-1 ticket): `Sous-total` (TTC before remise) · `Remise` · VAT table or `TVA` line · `TOTAL`. HT: `Sous-total HT` = Σ VAT bases before remise · `Remise HT` = Σ per-rate remise bases · VAT table · `TOTAL` (TTC). All values are already present as strings in `VatBreakdownLine` / `ReceiptData` (`printing.ts:144-223`); when a receipt lacks per-rate remise bases (pre-D-1 era, `buildReceiptData.ts:169-171`), HT mode falls back to TTC for that ticket and the builder marks `doc.fallback = 'subtotal-mode'` so a test can assert it. Labels: `pos:receipt.subtotalHt`, `pos:receipt.discountHt` (fr/en/ar).
+TTC (default; today's post-D-1 layout — see the golden-bytes rule in §5): `Sous-total` (TTC before remise) · `Remise` · VAT table or `TVA` line · `TOTAL`. HT: `Sous-total HT` = Σ VAT bases before remise · `Remise HT` = Σ per-rate remise bases · VAT table · `TOTAL` (TTC). All values are already present as strings in `VatBreakdownLine` / `ReceiptData` (`printing.ts:144-223`); when a receipt lacks per-rate remise bases (pre-D-1 era, `buildReceiptData.ts:169-171`), HT mode falls back to TTC for that ticket and the builder marks `doc.fallback = 'subtotal-mode'` so a test can assert it. Labels: `pos:receipt.subtotalHt`, `pos:receipt.discountHt` (fr/en/ar).
 
 ### 4.3 Code page / encoding (Rust)
 `PrintSettings` (`receipt_template.rs:265-280`): `cp437 → ESC t 0` + CP437 bytes (accents become `?`, honest), `cp858 → ESC t 19` + a static 128-entry CP858 table for U+00A0–U+00FF and `€`, `cp1252 → ESC t 16` + `WINDOWS_1252` (unchanged, the correct pairing for Epson TM / Xprinter). `ESC t` is **always** emitted (the `page != 0` guard at `:312-315` goes). `format_test_page_with_columns` (`:921`) and its command (`commands/printing.rs:107-112`) take `PrintSettings` so the operator's test page reveals a mismatch. Fixture expectation: `Café crème` → `43 61 66 E9 20 63 72 E8 6D 65` preceded by `1B 74 10`.
@@ -145,6 +145,8 @@ TTC (default, byte-identical to today's post-D-1 ticket): `Sous-total` (TTC befo
 |---|---|---|
 | Vitest (shared) | `buildReceiptDoc` snapshots of the fixture: `{TTC,HT} × {logo on,off} × {42,32}`; dedup on/off by location; QR presence + label; HT fallback flag on a pre-D-1 receipt; `formatReceiptMoney` placement for `fr-TN`, `fr`, `en`; `padColumns` parity table copied from `escpos.rs:552-594` | `packages/shared/src/receipt/__tests__/` |
 | Cross-language contract | Vitest writes/asserts `packages/shared/src/receipt/fixtures/sampleReceipt.doc.json` (committed); a Rust test loads the same JSON and snapshots the encoded bytes (`ESC t`, `E9`/`E7` bytes, no fiscal-hash QR, one labelled QR, `11.000 TND` right-aligned) | `apps/pos/src-tauri/src/printing/doc_encoder.rs` tests |
+| Golden-bytes regression | Capture `format_receipt_with_settings` output for the fixture (sale, refund, Z) at 42 and 32 columns on **unchanged `origin/dev`** and commit them under `apps/pos/src-tauri/tests/golden/`. A Rust test encodes the same fixture through `doc_encoder` and asserts the byte diff is confined to four whitelisted regions: the dropped `N° TVA` line, the dropped fiscal-hash QR block, the `ESC t` prologue, and the currency cells. Any other byte difference fails the test. | `apps/pos/src-tauri/src/printing/doc_encoder.rs` tests + `tests/golden/` |
+| Reprint fiscal parity | Explicit test: print a sale, change `subtotalMode` and `logo`, reprint → signed receipt payload, hash chain and DUPLICATA marker are byte-identical to the first print; existing parity suites (`saleReceiptV5CanonicalParity`, `SaleReceiptV1V2ByteStability`) stay green | `apps/pos/src/lib/fiscal/__tests__/` |
 | Vitest (pos) | `printReceipt` calls `print_receipt_doc` with a `ReceiptDoc`; display settings defaults when `/company/config` lacks the fields; fiscal parity tests untouched and green | `apps/pos/src/lib/__tests__/` |
 | Vitest (web) | `ReceiptPreview` renders the fixture text (`Café crème`, `Garçon`, `11.000 TND`), toggles re-render, 58 mm switch changes column count, logo placeholder appears; `ReceiptSettingsTab` new controls gated by `settings.update` | `apps/web/src/features/settings/components/__tests__/` |
 | PHPUnit (scoped) | `UpdateReceiptSettingsRequest`: valid/invalid `receipt_subtotal_mode`, boolean `receipt_logo`; controller round-trip create→edit→revert; **second company** no bleed; **cashier 403** on PUT; save-twice idempotent; `/company/config` exposes the two fields; `ReceiptSettingsData` shape | `apps/api/tests/Feature/Company/ReceiptSettingsTest.php` (lane registered in `feature-lane-manifest.json`) |
@@ -153,6 +155,13 @@ TTC (default, byte-identical to today's post-D-1 ticket): `Sous-total` (TTC befo
 | Physical printer | **not verified** unless Dhouha prints the fixture on the terminal; the PR states this | — |
 
 Gates: `pnpm --filter @autoerp/web test|lint|typecheck`, `pnpm --filter @autoerp/pos test|lint|typecheck`, shared package Vitest, `cargo test -p <pos crate> --lib` **once** at the gate under the machine budget (one process, swap < 9000M), `PREFLIGHT_TEST_PATHS='tests/Feature/Company' ./scripts/preflight.sh`, `scripts/run-feature-lane-local.sh` for the Company lane when Docker is up (Fable owns Docker).
+
+## Delivery: two PRs
+
+| PR | Content | Gate |
+|---|---|---|
+| PR 1 `feat/pos-receipt-preview` (this branch) | `packages/shared/src/receipt` + POS wiring + Rust `doc_encoder` + the four fixes (§4) + glossary row | shared/POS Vitest, golden-bytes + cross-language contract via **one** `cargo test` run, reprint parity, POS lint/typecheck |
+| PR 2 `feat/pos-receipt-settings-web` (off PR 1) | API columns/enum/DTO/config read + web controls + `ReceiptPreview` + i18n | scoped PHPUnit (second company, cashier 403, idempotency), web Vitest, Playwright round-trip, scoped preflight |
 
 ## 6. Out of scope — tickets to open (DEV-QA registry + `tk`)
 
