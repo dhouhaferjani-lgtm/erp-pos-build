@@ -181,6 +181,163 @@ function renderGrid(overrides: Partial<ProductGridProps> = {}) {
   return render(<ProductGrid {...defaults} {...overrides} />);
 }
 
+describe('ProductGrid — completed barcode scans', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    settingsStoreMock.state.displayMode = 'vitrine';
+    settingsStoreMock.state.density = 'comfortable';
+    settingsStoreMock.state.parapharmacySkinFiltersEnabled = true;
+    productStoreMock.state.companyConfig = null;
+    mockT.mockImplementation((key: string) => key);
+  });
+
+  function scannerGridProps(): ProductGridProps {
+    return {
+      products: [
+        makeProduct({ id: 'scan-alpha', name: 'Scan alpha', barcode: '0012345678905' }),
+        makeProduct({ id: 'scan-beta', name: 'Scan beta', barcode: '0098765432105' }),
+      ],
+      categories: [],
+      onAddToCart: vi.fn(),
+      cartProductIds: [],
+    };
+  }
+
+  it('given a completed scan in the focused search, replaces the received text with the exact decoded barcode', () => {
+    const props = scannerGridProps();
+    const { rerender } = render(<ProductGrid {...props} />);
+    const search = screen.getByRole('textbox') as HTMLInputElement;
+    search.focus();
+    fireEvent.change(search, { target: { value: 'àà&é"\'(-è_çà(' } });
+
+    rerender(<ProductGrid {...props} completedScan={{ barcode: '0012345678905', target: search }} />);
+
+    expect(search).toHaveValue('0012345678905');
+    expect(search.selectionStart).toBe(0);
+    expect(search.selectionEnd).toBe(13);
+    expect(screen.getByRole('button', { name: 'Scan alpha' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Scan beta' })).not.toBeInTheDocument();
+    expect(props.onAddToCart).not.toHaveBeenCalled();
+  });
+
+  it('given identical successive scans, reselects the complete value for the next scan', () => {
+    const props = scannerGridProps();
+    const { rerender } = render(<ProductGrid {...props} />);
+    const search = screen.getByRole('textbox') as HTMLInputElement;
+    search.focus();
+    fireEvent.change(search, { target: { value: '0012345678905' } });
+    rerender(<ProductGrid {...props} completedScan={{ barcode: '0012345678905', target: search }} />);
+    search.setSelectionRange(13, 13);
+
+    rerender(<ProductGrid {...props} completedScan={{ barcode: '0012345678905', target: search }} />);
+
+    expect(search).toHaveValue('0012345678905');
+    expect(search.selectionStart).toBe(0);
+    expect(search.selectionEnd).toBe(13);
+  });
+
+  it('given a different subsequent scan, replaces the prior query and shows the new product', () => {
+    const props = scannerGridProps();
+    const { rerender } = render(<ProductGrid {...props} />);
+    const search = screen.getByRole('textbox') as HTMLInputElement;
+    search.focus();
+    fireEvent.change(search, { target: { value: '0012345678905' } });
+    rerender(<ProductGrid {...props} completedScan={{ barcode: '0012345678905', target: search }} />);
+    fireEvent.change(search, { target: { value: 'ààç_è(-"é&à(' } });
+
+    rerender(<ProductGrid {...props} completedScan={{ barcode: '0098765432105', target: search }} />);
+
+    expect(search).toHaveValue('0098765432105');
+    expect(search.selectionStart).toBe(0);
+    expect(search.selectionEnd).toBe(13);
+    expect(screen.getByRole('button', { name: 'Scan beta' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Scan alpha' })).not.toBeInTheDocument();
+  });
+
+  it('given a consumed scan, allows manual search and clear without replaying it on rerender', () => {
+    const props = scannerGridProps();
+    const { rerender } = render(<ProductGrid {...props} />);
+    const search = screen.getByRole('textbox') as HTMLInputElement;
+    search.focus();
+    const completedScan = { barcode: '0012345678905', target: search };
+    rerender(<ProductGrid {...props} completedScan={completedScan} />);
+    fireEvent.change(search, { target: { value: 'beta' } });
+
+    rerender(<ProductGrid {...props} completedScan={completedScan} />);
+
+    expect(search).toHaveValue('beta');
+    expect(screen.getByRole('button', { name: 'Scan beta' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Scan alpha' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('products.clearSearch'));
+    rerender(<ProductGrid {...props} completedScan={completedScan} />);
+
+    expect(search).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Scan alpha' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Scan beta' })).toBeInTheDocument();
+  });
+
+  it('given a scan from another target, preserves the current focused manual search', () => {
+    const props = scannerGridProps();
+    const { rerender } = render(<ProductGrid {...props} />);
+    const search = screen.getByRole('textbox');
+    search.focus();
+    fireEvent.change(search, { target: { value: 'alpha' } });
+
+    rerender(<ProductGrid {...props} completedScan={{ barcode: '0098765432105', target: document.body }} />);
+
+    expect(search).toHaveValue('alpha');
+    expect(search).toHaveFocus();
+  });
+
+  it('given focus moved after the scan, does not steal focus or replay the scan when search is focused again', () => {
+    const props = scannerGridProps();
+    const { rerender } = render(<ProductGrid {...props} />);
+    const search = screen.getByRole('textbox');
+    fireEvent.change(search, { target: { value: 'alpha' } });
+    const sortButton = screen.getByRole('button', { name: 'products.sortByMostSold' });
+    sortButton.focus();
+    const completedScan = { barcode: '0098765432105', target: search };
+
+    rerender(<ProductGrid {...props} completedScan={completedScan} />);
+
+    expect(search).toHaveValue('alpha');
+    expect(sortButton).toHaveFocus();
+    search.focus();
+    rerender(<ProductGrid {...props} completedScan={completedScan} />);
+    expect(search).toHaveValue('alpha');
+  });
+
+  it('given search is removed while loading, does not apply the stale scan after loading', () => {
+    const props = scannerGridProps();
+    const { rerender } = render(<ProductGrid {...props} />);
+    const search = screen.getByRole('textbox');
+    search.focus();
+    fireEvent.change(search, { target: { value: 'alpha' } });
+    const completedScan = { barcode: '0098765432105', target: search };
+
+    rerender(<ProductGrid {...props} isLoading completedScan={completedScan} />);
+    rerender(<ProductGrid {...props} completedScan={completedScan} />);
+
+    expect(screen.getByRole('textbox')).toHaveValue('alpha');
+    expect(screen.getByRole('textbox')).not.toHaveFocus();
+  });
+
+  it('given a remounted grid, does not reuse the scan captured by the previous search element', () => {
+    const props = scannerGridProps();
+    const { unmount } = render(<ProductGrid {...props} />);
+    const search = screen.getByRole('textbox');
+    search.focus();
+    const completedScan = { barcode: '0012345678905', target: search };
+    unmount();
+
+    render(<ProductGrid {...props} completedScan={completedScan} />);
+
+    expect(screen.getByRole('textbox')).toHaveValue('');
+    expect(screen.getByRole('textbox')).not.toHaveFocus();
+  });
+});
+
 describe('ProductGrid', () => {
   beforeEach(() => {
     vi.clearAllMocks();
