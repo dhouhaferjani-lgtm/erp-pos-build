@@ -7,16 +7,17 @@
  * identities, so that cashier cleared every manager-only route.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-let mockOperator: { id: string; name: string; roles: string[] } | null = null;
+let mockOperator: { id: string; name: string; roles: string[]; permissions?: string[]; authority_stale?: boolean } | null = null;
 let mockUserRoles: string[] | undefined;
+let mockCompanyId = 'co-1';
 
 vi.mock('@/stores/operatorStore', () => ({
   useOperatorStore: Object.assign(
@@ -28,7 +29,7 @@ vi.mock('@/stores/operatorStore', () => ({
 
 vi.mock('@/stores/authStore', () => ({
   useAuthStore: <T,>(selector: (s: unknown) => T): T =>
-    selector({ companyId: 'co-1', user: { id: 'u-1', roles: mockUserRoles } }),
+    selector({ companyId: mockCompanyId, user: { id: 'u-1', roles: mockUserRoles } }),
 }));
 
 vi.mock('@/stores/settingsStore', () => ({
@@ -48,15 +49,6 @@ vi.mock('@/stores/syncStore', () => ({
 // Child surfaces are irrelevant to the routing decision — stub them all so the
 // assertion is purely "which route element rendered".
 vi.mock('../Header', () => ({ Header: () => <div data-testid="header" /> }));
-vi.mock('../NavRail', () => ({
-  NavRail: (props: { items: { id: string; label: string }[] }) => (
-    <nav data-testid="nav-rail">
-      {props.items.map((i) => (
-        <span key={i.id} data-testid={`nav-${i.id}`}>{i.label}</span>
-      ))}
-    </nav>
-  ),
-}));
 vi.mock('../TrainingModeBanner', () => ({ TrainingModeBanner: () => null }));
 vi.mock('../C2MigrationBanner', () => ({ C2MigrationBanner: () => null }));
 vi.mock('../RemoteShiftCloseBanner', () => ({ RemoteShiftCloseBanner: () => null }));
@@ -85,14 +77,19 @@ vi.mock('@/lib/db', () => ({ getDatabase: vi.fn().mockResolvedValue({}) }));
 
 import { AppShell } from '../AppShell';
 
+function LocationProbe() {
+  return <output aria-label="Current route">{useLocation().pathname}</output>;
+}
+
 async function renderAt(path: string) {
   const view = render(
     <MemoryRouter initialEntries={[path]}>
       <AppShell />
+      <LocationProbe />
     </MemoryRouter>,
   );
   // Route elements are lazy() — let the dynamic import resolve.
-  await screen.findByTestId('nav-rail');
+  await screen.findByRole('navigation', { name: 'nav.ariaLabel' });
   return view;
 }
 
@@ -102,6 +99,7 @@ describe('AppShell manager-gated routes', () => {
   beforeEach(() => {
     mockOperator = null;
     mockUserRoles = undefined;
+    mockCompanyId = 'co-1';
   });
 
   it('refuses every manager route to a cashier PIN on an OWNER-logged-in terminal', async () => {
@@ -123,8 +121,8 @@ describe('AppShell manager-gated routes', () => {
     mockOperator = { id: 'op-2', name: 'Cashier', roles: ['cashier'] };
     mockUserRoles = ['owner'];
     await renderAt('/');
-    expect(screen.queryByTestId('nav-shift')).toBeNull();
-    expect(screen.getByTestId('nav-caisse')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'nav.shift' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'nav.caisse' })).toBeInTheDocument();
   });
 
   it('allows the manager routes to a manager PIN operator', async () => {
@@ -137,7 +135,7 @@ describe('AppShell manager-gated routes', () => {
 
     const shiftView = await renderAt('/shift');
     expect(await screen.findByTestId('page-shift')).toBeInTheDocument();
-    expect(screen.getByTestId('nav-shift')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'nav.shift' })).toBeInTheDocument();
     shiftView.unmount();
 
     await renderAt('/reports/z');
@@ -152,5 +150,49 @@ describe('AppShell manager-gated routes', () => {
     mockUserRoles = ['owner'];
     await renderAt('/shift');
     expect(await screen.findByTestId('page-shift')).toBeInTheDocument();
+  });
+
+  it.each(['co-1', 'co-2'])('opens permitted sales when a cashier selects Reports in %s', async (companyId) => {
+    mockCompanyId = companyId;
+    mockOperator = {
+      id: 'op-cashier', name: 'Cashier', roles: ['cashier'],
+      permissions: ['pos.view_receipts', 'pos.manage_shifts', 'pos.generate_z_report'],
+    };
+    mockUserRoles = ['owner'];
+    await renderAt('/');
+
+    fireEvent.click(screen.getByRole('button', { name: 'nav.rapports' }));
+
+    expect(await screen.findByTestId('page-sales')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Current route' })).toHaveTextContent('/sales');
+    expect(screen.getByRole('button', { name: 'nav.rapports' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByTestId('page-reports')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'nav.caisse' }));
+    expect(await screen.findByTestId('page-home')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'nav.rapports' }));
+    expect(await screen.findByTestId('page-sales')).toBeInTheDocument();
+  });
+
+  it('opens manager reports using the PIN permission even for a custom role', async () => {
+    mockOperator = {
+      id: 'op-supervisor', name: 'Supervisor', roles: ['custom-supervisor'],
+      permissions: ['pos.view_reports'],
+    };
+    await renderAt('/');
+    fireEvent.click(screen.getByRole('button', { name: 'nav.rapports' }));
+    expect(await screen.findByTestId('page-reports')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Current route' })).toHaveTextContent('/reports');
+  });
+
+  it('keeps Reports usable without elevating stale manager authority', async () => {
+    mockOperator = {
+      id: 'op-supervisor', name: 'Supervisor', roles: ['manager'],
+      permissions: ['pos.view_reports'], authority_stale: true,
+    };
+    await renderAt('/');
+    fireEvent.click(screen.getByRole('button', { name: 'nav.rapports' }));
+    expect(await screen.findByTestId('page-sales')).toBeInTheDocument();
+    expect(screen.queryByTestId('page-reports')).not.toBeInTheDocument();
   });
 });

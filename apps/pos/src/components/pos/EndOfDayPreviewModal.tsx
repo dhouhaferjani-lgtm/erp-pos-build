@@ -84,6 +84,9 @@ export function EndOfDayPreviewModal({
   const [preview, setPreview] = useState<EndOfDayPreview | null>(null);
   const [result, setResult] = useState<EndOfDayConfirmResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // How many times the operator already printed THIS Z. Every press after
+  // the first is a DUPLICATA of the same Z number (fiscal reprint marking).
+  const [printCount, setPrintCount] = useState(0);
 
   // Cash-count flow state
   const [cashCountFlow, setCashCountFlow] = useState<CashCountFlowState>({
@@ -167,6 +170,7 @@ export function EndOfDayPreviewModal({
       setPreview(null);
       setResult(null);
       setErrorMessage(null);
+      setPrintCount(0);
       setCashCountFlow({
         policy: null,
         payload: null,
@@ -181,6 +185,9 @@ export function EndOfDayPreviewModal({
 
     const loadPreview = async () => {
       setPhase('loading');
+      // A fresh open (new shift, or the same modal re-opened) starts its print
+      // counter at zero: the first press of the new Z is an original.
+      setPrintCount(0);
       try {
         const { getDatabase } = await import('@/lib/db');
         const { useAuthStore } = await import('@/stores/authStore');
@@ -588,7 +595,16 @@ export function EndOfDayPreviewModal({
           <div className="mt-4 flex gap-3">
             {onPrintReceipt && (
               <button
-                onClick={() => onPrintReceipt(result)}
+                onClick={() => {
+                  // Every press after the first is a DUPLICATA of the same Z
+                  // (fiscal reprint marking); a Z that was already reused is a
+                  // reprint from press 1.
+                  onPrintReceipt({
+                    ...result,
+                    wasReused: result.wasReused || printCount > 0,
+                  });
+                  setPrintCount((n) => n + 1);
+                }}
                 className="flex items-center gap-2 rounded-ctl border border-border-strong bg-surface-raised px-6 py-2.5 text-sm font-semibold text-ink-muted hover:bg-surface-sunken"
               >
                 <Printer className="h-4 w-4" />

@@ -92,7 +92,9 @@ export function AppShell() {
     <NavRail
       items={navItems}
       active={activeDestForPath(location.pathname)}
-      onSelect={(d) => navigate(NAV_ROUTE[d])}
+      // Cashiers have the sales-history surface used by the header reports
+      // menu; /reports itself remains permission-gated for manager analytics.
+      onSelect={(d) => navigate(d === 'rapports' && !isManager ? '/sales' : NAV_ROUTE[d])}
       theme={theme}
       onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
       ariaLabel={t('nav.ariaLabel')}

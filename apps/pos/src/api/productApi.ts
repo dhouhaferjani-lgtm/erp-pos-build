@@ -3,15 +3,16 @@ import type { POSProduct, GetPOSProductsParams } from '@/types/product';
 import type { CompanyConfig } from '@/types/companyConfig';
 import type { ModifierGroup } from '@/types/modifier';
 import { buildMenuCompositeId } from '@/lib/menu/compositeId';
+import { toPOSProduct, type POSProductPayload } from '@/lib/productCategory';
 
 export async function fetchPOSProducts(params?: GetPOSProductsParams): Promise<POSProduct[]> {
   if (!params) {
-    const result = await apiGet<POSProduct[] | { data: POSProduct[] }>('/products');
-    return Array.isArray(result) ? result : result.data;
+    const result = await apiGet<POSProductPayload[] | { data: POSProductPayload[] }>('/products');
+    return (Array.isArray(result) ? result : result.data).map(toPOSProduct);
   }
   const { limit, ...rest } = params;
-  const result = await apiGet<POSProduct[] | { data: POSProduct[] }>('/products', { ...rest, per_page: limit });
-  return Array.isArray(result) ? result : result.data;
+  const result = await apiGet<POSProductPayload[] | { data: POSProductPayload[] }>('/products', { ...rest, per_page: limit });
+  return (Array.isArray(result) ? result : result.data).map(toPOSProduct);
 }
 
 /**
@@ -31,12 +32,12 @@ export async function fetchProductByBarcode(
   barcode: string,
   opts?: ApiRequestOptions,
 ): Promise<POSProduct[]> {
-  const result = await apiGet<POSProduct[] | { data: POSProduct[] }>(
+  const result = await apiGet<POSProductPayload[] | { data: POSProductPayload[] }>(
     '/products',
     { barcode, per_page: 10 },
     opts,
   );
-  return Array.isArray(result) ? result : result.data;
+  return (Array.isArray(result) ? result : result.data).map(toPOSProduct);
 }
 
 export async function fetchCompanyConfig(): Promise<CompanyConfig> {

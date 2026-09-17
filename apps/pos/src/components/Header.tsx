@@ -76,7 +76,24 @@ export function Header() {
   const isSyncing = useSyncStore((s) => s.isSyncing);
   const triggerSync = useSyncStore((s) => s.triggerSync);
 
-  const [showEndOfDay, setShowEndOfDay] = useState(false);
+  // The live shift is cleared by closeShift before the modal renders its Z
+  // result. Keep the shift selected for this closure until Done, scoped to the
+  // operator and terminal that opened it.
+  const [endOfDaySession, setEndOfDaySession] = useState<{
+    shift: NonNullable<typeof shift>;
+    companyId: typeof companyId;
+    terminalId: string;
+    operatorId: string | null;
+  } | null>(null);
+  const endOfDayScopeMatches = endOfDaySession !== null
+    && endOfDaySession.companyId === companyId
+    && endOfDaySession.terminalId === terminal?.id
+    && endOfDaySession.operatorId === (operator?.id ?? null)
+    && (shift === null || endOfDaySession.shift.id === shift.id);
+  if (endOfDaySession !== null && !endOfDayScopeMatches) {
+    setEndOfDaySession(null);
+  }
+  const showEndOfDay = endOfDayScopeMatches;
 
   // Cash-count fraud settings state (loaded when EOD modal opens)
   const [fraudSettingsValue, setFraudSettingsValue] = useState<CompanyFraudSettings | null>(null);
@@ -290,6 +307,7 @@ export function Header() {
   }, [showEndOfDay, terminal, companyId]);
 
   const handleOpenEndOfDay = useCallback(() => {
+    if (!shift || !terminal) return;
     // Fail closed on every open. This prevents a first-load null or a stale
     // false policy from mounting a disclosure path while the refresh is in flight.
     setFraudSettingsValue(null);
@@ -297,8 +315,13 @@ export function Header() {
     setAuthorizedManagersValue([]);
     setAuthorizedManagersTerminal(null);
     setCashCountPolicyTerminal(null);
-    setShowEndOfDay(true);
-  }, []);
+    setEndOfDaySession({
+      shift,
+      companyId,
+      terminalId: terminal.id,
+      operatorId: operator?.id ?? null,
+    });
+  }, [shift, terminal, companyId, operator?.id]);
 
   // Other screens (e.g. the `/shift` service reading) ask for the ONE real
   // closure flow rather than standing up a second cash-count path. The request
@@ -842,11 +865,11 @@ export function Header() {
       </header>
 
       {/* End of Day Preview Modal (replaces CloseShiftModal) */}
-      {shift && (
+      {showEndOfDay && endOfDaySession && (
         <EndOfDayPreviewModal
           isOpen={showEndOfDay}
-          onClose={() => setShowEndOfDay(false)}
-          shift={shift}
+          onClose={() => setEndOfDaySession(null)}
+          shift={endOfDaySession.shift}
           terminalId={terminal?.id ?? ''}
           onConfirmAndClose={handleEndOfDayConfirm}
           onPrintReceipt={isTauriEnvironment() ? handlePrintZReport : undefined}
