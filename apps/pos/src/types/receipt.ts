@@ -21,6 +21,8 @@ export interface ReceiptLabels {
   tax_id?: string
   tel?: string
   notes?: string
+  /** Caption printed above the refund-lookup QR (DEV-QA-093). */
+  qr_scan_label?: string
 }
 
 export interface CreateReceiptRequest {

@@ -104,6 +104,12 @@ export interface ReceiptLabels {
   original_ticket?: string;
   /** "Scan original ticket:" label printed above the original-receipt QR re-print. */
   original_qr_label?: string;
+  /**
+   * Caption printed above the refund-lookup QR on sale receipts (DEV-QA-093).
+   * Tells the customer what the code is for — scanning it in-store pulls the
+   * ticket up for a return / exchange.
+   */
+  qr_scan_label?: string;
   account_payment_header?: string;
   balance_before?: string;
   balance_after?: string;

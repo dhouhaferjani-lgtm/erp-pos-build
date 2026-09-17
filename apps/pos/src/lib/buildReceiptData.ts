@@ -600,6 +600,7 @@ export function buildReceiptLabels(): ReceiptLabels {
     refund_header: t('refundHeader'),
     original_ticket: t('originalTicket'),
     original_qr_label: t('originalQrLabel'),
+    qr_scan_label: t('qrScanLabel'),
     account_payment_header: t('accountPaymentHeader'),
     balance_before: t('balanceBefore'),
     balance_after: t('balanceAfter'),

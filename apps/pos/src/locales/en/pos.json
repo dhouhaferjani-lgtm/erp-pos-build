@@ -891,6 +891,7 @@
     "refundHeader": "REFUND",
     "originalTicket": "Original ticket:",
     "originalQrLabel": "Scan original ticket:",
+    "qrScanLabel": "Scan for return / exchange",
     "accountPaymentHeader": "ACCOUNT PAYMENT RECEIPT",
     "balanceBefore": "Balance before:",
     "balanceAfter": "Balance after:",
