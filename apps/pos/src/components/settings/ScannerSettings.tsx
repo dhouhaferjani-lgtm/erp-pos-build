@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Barcode } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -7,7 +7,10 @@ import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 
 export function ScannerSettings() {
   const { t } = useTranslation('pos');
+  const layoutId = useId();
 
+  const keyboardLayout = useScannerStore((s) => s.keyboardLayout);
+  const setKeyboardLayout = useScannerStore((s) => s.setKeyboardLayout);
   const keystrokeThresholdMs = useScannerStore((s) => s.keystrokeThresholdMs);
   const minBarcodeLength = useScannerStore((s) => s.minBarcodeLength);
   const autoAddToCart = useScannerStore((s) => s.autoAddToCart);
@@ -39,6 +42,24 @@ export function ScannerSettings() {
       </div>
 
       <div className="space-y-4">
+        <div>
+          <label htmlFor={layoutId} className="mb-1 block text-sm font-medium text-ink">
+            {t('settings.scannerKeyboardLayout')}
+          </label>
+          <select
+            id={layoutId}
+            value={keyboardLayout}
+            onChange={(e) => setKeyboardLayout(e.target.value === 'us' ? 'us' : 'system')}
+            aria-describedby={`${layoutId}-help`}
+            className="min-h-[44px] w-full rounded-ctl border border-border-subtle bg-surface-raised px-3 text-sm text-ink focus:border-action focus:outline-none focus:ring-2 focus:ring-action"
+          >
+            <option value="system">{t('settings.scannerKeyboardSystem')}</option>
+            <option value="us">{t('settings.scannerKeyboardUS')}</option>
+          </select>
+          <p id={`${layoutId}-help`} className="mt-1 text-xs text-ink-faint">
+            {t('settings.scannerKeyboardLayoutDesc')}
+          </p>
+        </div>
         {/* Sensitivity */}
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">
