@@ -501,7 +501,18 @@ export function Header() {
     cashCountPayload: CashCountCommitPayload | null,
   ): Promise<EndOfDayConfirmResult> => {
     if (!terminal || !companyId || !tenantId) {
-      throw new Error('Missing terminal, shift, company, or tenant context');
+      throw new Error('Missing terminal, company, or tenant context');
+    }
+
+    // Fail closed if the live shift moved on while this close was in flight.
+    // `shift === null` is the normal mid-close state (closeShift nulls it), so
+    // only a DIFFERENT open shift is a mismatch. Defense in depth: the scope
+    // check above (`endOfDayScopeMatches`) already drops the session — and
+    // unmounts the modal — the moment another shift becomes active, so this
+    // should be unreachable from the UI; it exists so a future caller cannot
+    // silently close shift A and stamp the Z on shift B.
+    if (shift !== null && shift.id !== closingShift.id) {
+      throw new Error('Active shift changed during close');
     }
 
     // F-1/F-2 (B7, fail-closed): a v3 device-authoritative close needs the
@@ -598,13 +609,13 @@ export function Header() {
    * (`CashReconciliationSection` / `EndOfDayPreviewModal`), not by withholding
    * the close.
    */
-  const handlePrintZReport = (result: EndOfDayConfirmResult) => {
-    if (!isTauriEnvironment()) return;
+  const handlePrintZReport = (result: EndOfDayConfirmResult): boolean => {
+    if (!isTauriEnvironment()) return false;
 
     const { printerConfig } = usePrinterStore.getState();
     if (!printerConfig) {
       toast.error(t('settings.noPrinterConfigured'));
-      return;
+      return false;
     }
 
     const { companies } = useAuthStore.getState();
@@ -699,6 +710,12 @@ export function Header() {
         toast.error(err instanceof Error ? err.message : t('reports.endOfDay.printError', 'Failed to send receipt to printer.'));
       },
     );
+
+    // The receipt WAS handed to the printer: a later async failure (paper out,
+    // socket refused) is a failed dispatch of a print that already happened, so
+    // the next press must still be marked DUPLICATA — the ticket may well have
+    // come out. Only the early returns above are "never dispatched".
+    return true;
   };
 
   const handleExitFullscreen = async () => {

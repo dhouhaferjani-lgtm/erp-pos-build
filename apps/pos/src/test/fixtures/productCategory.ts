@@ -1,4 +1,3 @@
-
 export function productCategory(
   overrides: Partial<App.Modules.Product.Application.DTOs.CategoryData> = {},
 ): App.Modules.Product.Application.DTOs.CategoryData {

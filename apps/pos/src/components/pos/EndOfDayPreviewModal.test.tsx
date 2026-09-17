@@ -155,7 +155,7 @@ const baseFraudSettings: CompanyFraudSettings = {
 function renderModal(
   onConfirmAndClose = vi.fn().mockResolvedValue(confirmResult),
   onClose = vi.fn(),
-  onPrintReceipt?: (result: EndOfDayConfirmResult) => void,
+  onPrintReceipt?: (result: EndOfDayConfirmResult) => boolean,
 ) {
   return render(
     <MemoryRouter>
@@ -367,8 +367,11 @@ describe('EndOfDayPreviewModal', () => {
     });
   });
 
-  it('marks every print after the first as a reprint (DUPLICATA)', async () => {
-    const onPrintReceipt = vi.fn();
+  it('counts only the presses the handler reports as dispatched to the printer', async () => {
+    // The handler returns false when the press never reached a printer (no
+    // printer configured / not in Tauri). Such a press must NOT consume the
+    // "first print", otherwise the first physical ticket prints as DUPLICATA.
+    const onPrintReceipt = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
     const onConfirmAndClose = vi
       .fn()
       .mockResolvedValue({ formattedZNumber: 'Z0001', wasReused: false });
@@ -385,13 +388,13 @@ describe('EndOfDayPreviewModal', () => {
 
     expect(onPrintReceipt.mock.calls.map(([r]) => r)).toEqual([
       { formattedZNumber: 'Z0001', wasReused: false },
-      { formattedZNumber: 'Z0001', wasReused: true },
+      { formattedZNumber: 'Z0001', wasReused: false },
       { formattedZNumber: 'Z0001', wasReused: true },
     ]);
   });
 
   it('a Z that was already reused prints as a reprint from the first press', async () => {
-    const onPrintReceipt = vi.fn();
+    const onPrintReceipt = vi.fn().mockReturnValue(true);
     const onConfirmAndClose = vi
       .fn()
       .mockResolvedValue({ formattedZNumber: 'Z0002', wasReused: true });

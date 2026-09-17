@@ -26,6 +26,10 @@ describe('cachedProductCategoryLabel', () => {
     '{"name":"operator label"}',
     '["Soins"]',
     '{"id":"12","name":"x","slug":"x"}',
+    // Leading whitespace: migration 68 matches `category LIKE '{%'`, so a row
+    // like this is NOT rewritten on disk — the reader must not decode it
+    // either, or the label flips depending on which path touched the row.
+    ' {"id":12,"name":"x","slug":"x"}',
   ])('keeps operator labels that merely look like JSON: %s', (label) => {
     expect(cachedProductCategoryLabel(label)).toBe(label);
   });

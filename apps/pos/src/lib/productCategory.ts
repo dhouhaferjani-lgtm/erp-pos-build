@@ -37,7 +37,10 @@ function isCachedCategoryData(value: unknown): value is Pick<CategoryData, 'id' 
  */
 export function cachedProductCategoryLabel(category: string | null): string | undefined {
   if (category === null) return undefined;
-  if (!category.trimStart().startsWith('{')) return category;
+  // Byte-identical to migration 68's `category LIKE '{%'` (lib/db/migrations.ts):
+  // a row the migration skips must not be decoded here either, or the same text
+  // resolves to two different labels depending on which path read it.
+  if (!category.startsWith('{')) return category;
   try {
     const parsed: unknown = JSON.parse(category);
     return isCachedCategoryData(parsed) ? parsed.name : category;

@@ -16,7 +16,11 @@ const mocks = vi.hoisted(() => ({
   fetchAuthorizedManagers: vi.fn(),
   printReceipt: vi.fn(),
   verifyScopedManagerPin: vi.fn(),
+  toastError: vi.fn(),
   tauri: false,
+  // Switchable so a test can press Print with NO printer configured — the
+  // real-world sequence that used to burn the first (non-dispatched) print.
+  printerConfig: null as { connection_type: 'network'; address: string; name: string } | null,
 }));
 
 vi.mock('react-i18next', () => ({
@@ -54,14 +58,11 @@ vi.mock('@/lib/printing', async (importOriginal) => {
 // PrinterConfig is { connection_type, address, name } (lib/printing.ts:298) and
 // getPrintSettingsFromStore() reads `settings` off the same store, so the stub
 // must carry both slices.
+vi.mock('sonner', () => ({ toast: { error: mocks.toastError, success: vi.fn() } }));
 vi.mock('@/stores/printerStore', () => ({
   usePrinterStore: {
     getState: () => ({
-      printerConfig: {
-        connection_type: 'network' as const,
-        address: '127.0.0.1:9100',
-        name: 'Test printer',
-      },
+      printerConfig: mocks.printerConfig,
       settings: {
         paperWidth: '80mm' as const,
         cutMode: 'partial' as const,
@@ -131,6 +132,11 @@ describe('Header report and close flow', () => {
     mocks.preview.mockResolvedValue(preview);
     mocks.fetchAuthorizedManagers.mockResolvedValue([]);
     mocks.printReceipt.mockResolvedValue(undefined);
+    mocks.printerConfig = {
+      connection_type: 'network',
+      address: '127.0.0.1:9100',
+      name: 'Test printer',
+    };
     mocks.verifyScopedManagerPin.mockReset();
     mocks.generateZReport.mockResolvedValue({ formatted_z_number: 'Z0001', was_reused: false, cash_counts: [] });
     mocks.fetchFraudSettings.mockResolvedValue({
@@ -238,6 +244,17 @@ describe('Header report and close flow', () => {
     await confirmCountedShift();
     expect(await screen.findByText('Z0001')).toBeInTheDocument();
 
+    // A press that never reaches a printer must not consume the first print.
+    mocks.printerConfig = null;
+    fireEvent.click(screen.getByRole('button', { name: 'reports.endOfDay.printReceipt' }));
+    expect(mocks.printReceipt).not.toHaveBeenCalled();
+    expect(mocks.toastError).toHaveBeenCalledWith('settings.noPrinterConfigured');
+
+    mocks.printerConfig = {
+      connection_type: 'network',
+      address: '127.0.0.1:9100',
+      name: 'Test printer',
+    };
     fireEvent.click(screen.getByRole('button', { name: 'reports.endOfDay.printReceipt' }));
     fireEvent.click(screen.getByRole('button', { name: 'reports.endOfDay.printReceipt' }));
 
