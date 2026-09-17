@@ -19,7 +19,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::escpos::{Alignment, CutMode, EscPosBuilder, FontSize, QrErrorCorrection};
+use super::escpos::{Alignment, CutMode, EscPosBuilder, FontSize, QrErrorCorrection, TextEncoding};
 use super::receipt_template::{CompanyInfo, PrintSettings};
 
 /// Localized voucher-ticket labels. All optional with English defaults.
@@ -103,16 +103,10 @@ pub fn format_voucher_ticket_with_settings(
     settings: Option<&PrintSettings>,
 ) -> Vec<u8> {
     let columns = settings.map_or(42, |s| s.columns);
-    let mut b = EscPosBuilder::with_columns(columns);
-
-    // Encoding / code page (same convention as receipt_template).
-    if let Some(s) = settings {
-        b.set_encoding(s.encoding_rs());
-        let page = s.code_page();
-        if page != 0 {
-            b.set_code_page(page);
-        }
-    }
+    let encoding = settings.map_or(TextEncoding::Cp1252, |s| s.text_encoding());
+    // Encoding / code page (same convention as receipt_template): the builder
+    // declares `ESC t n` and transcodes to that same page (DEV-QA-094).
+    let mut b = EscPosBuilder::with_columns_and_encoding(columns, encoding);
 
     // ── Company Header ──
     b.align(Alignment::Center);

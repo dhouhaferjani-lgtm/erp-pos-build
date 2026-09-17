@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::escpos::{Alignment, CutMode, EscPosBuilder, FontSize, QrErrorCorrection};
+use super::escpos::{Alignment, CutMode, EscPosBuilder, FontSize, QrErrorCorrection, TextEncoding};
 
 /// Per-tender cash count row for Z-report printing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -262,20 +262,17 @@ pub struct DrawerKickSettings {
 }
 
 impl PrintSettings {
-    pub(crate) fn code_page(&self) -> u8 {
+    /// Resolve the stored `encoding` string to the ONE type that owns both the
+    /// declared code page (`ESC t n`) and the transcoding (DEV-QA-094).
+    ///
+    /// Anything unrecognised falls back to CP1252 — the device default
+    /// (`printerStore.ts`) and the only one of the three that can print the
+    /// French accents this market needs.
+    pub(crate) fn text_encoding(&self) -> TextEncoding {
         match self.encoding.as_str() {
-            "cp858" => 19,
-            "cp1252" => 16,
-            _ => 0, // cp437
-        }
-    }
-
-    /// Return the `encoding_rs` encoding matching the configured code page.
-    pub(crate) fn encoding_rs(&self) -> &'static encoding_rs::Encoding {
-        match self.encoding.as_str() {
-            "cp1252" => encoding_rs::WINDOWS_1252,
-            "cp858" => encoding_rs::WINDOWS_1252, // CP858 ≈ CP850 + euro; 1252 covers French needs
-            _ => encoding_rs::WINDOWS_1252,       // default to 1252 instead of cp437
+            "cp437" => TextEncoding::Cp437,
+            "cp858" => TextEncoding::Cp858,
+            _ => TextEncoding::Cp1252,
         }
     }
 
@@ -304,16 +301,10 @@ pub fn format_receipt_with_settings(
     settings: Option<&PrintSettings>,
 ) -> Vec<u8> {
     let columns = settings.map_or(42, |s| s.columns);
-    let mut b = EscPosBuilder::with_columns(columns);
-
-    // Set encoding and code page if specified (after initialize, which is called in with_columns)
-    if let Some(s) = settings {
-        b.set_encoding(s.encoding_rs());
-        let page = s.code_page();
-        if page != 0 {
-            b.set_code_page(page);
-        }
-    }
+    let encoding = settings.map_or(TextEncoding::Cp1252, |s| s.text_encoding());
+    // The builder emits `ESC @` + `ESC t <code page>` and transcodes to that
+    // same page — the two can no longer disagree (DEV-QA-094).
+    let mut b = EscPosBuilder::with_columns_and_encoding(columns, encoding);
 
     // ── Company Header ──
     b.align(Alignment::Center);
@@ -914,13 +905,25 @@ fn format_cash_count_row(row: &ZReceiptCashCountRow, cols: usize) -> String {
 
 /// Format a test page for printer alignment verification.
 pub fn format_test_page() -> Vec<u8> {
-    format_test_page_with_columns(None)
+    format_test_page_with_columns(None, None)
 }
 
-/// Format a test page with optional column width.
-pub fn format_test_page_with_columns(columns: Option<u8>) -> Vec<u8> {
-    let cols = columns.unwrap_or(42);
-    let mut b = EscPosBuilder::with_columns(cols);
+/// Format a test page with optional column width and print settings.
+///
+/// The settings matter here more than anywhere else: this is the page the
+/// operator prints to validate a printer, so it must go out under the SAME
+/// code page and transcoding as a real receipt (DEV-QA-094). Before the fix it
+/// took only `columns` and emitted no `ESC t` at all, which is precisely why a
+/// green test page never revealed the mojibake on the ticket.
+pub fn format_test_page_with_columns(
+    columns: Option<u8>,
+    settings: Option<&PrintSettings>,
+) -> Vec<u8> {
+    let cols = columns
+        .or_else(|| settings.map(|s| s.columns))
+        .unwrap_or(42);
+    let encoding = settings.map_or(TextEncoding::Cp1252, |s| s.text_encoding());
+    let mut b = EscPosBuilder::with_columns_and_encoding(cols, encoding);
 
     b.align(Alignment::Center);
     b.font_size(FontSize::DoubleWidthHeight);
@@ -942,6 +945,17 @@ pub fn format_test_page_with_columns(columns: Option<u8>) -> Vec<u8> {
     b.text_line("Right aligned text");
 
     b.align(Alignment::Left);
+    b.separator('-');
+
+    // Code-page / accent check (DEV-QA-094). The operator validates a printer
+    // with THIS page, so it has to show what the ticket will show: the page
+    // that was declared, and the accents that page is supposed to carry. If
+    // these print as `Θ` / `τ`, the printer ignored `ESC t` — switch the
+    // encoding setting until they are right.
+    b.text_line(&format!("Code page: ESC t {}", encoding.code_page()));
+    b.text_line("Accents: Café crème, Garçon");
+    b.text_line("àâäéèêëîïôöùûüç");
+
     b.separator('-');
 
     // Test two-column

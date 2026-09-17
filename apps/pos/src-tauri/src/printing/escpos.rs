@@ -86,49 +86,131 @@ impl QrErrorCorrection {
     }
 }
 
+/// Character set the printer is told to use (`ESC t n`) AND that the builder
+/// transcodes text into. The two MUST stay in lock-step: DEV-QA-094 was
+/// exactly this pair coming apart — CP1252 bytes on the wire while the
+/// printer was left on its power-on CP437 page, so `é` (0xE9) printed `Θ`
+/// and `ç` (0xE7) printed `τ`.
+///
+/// `code_page()` is the `n` of `ESC t n`; `encode()` produces the bytes that
+/// page expects. Anything the page cannot represent becomes `?` — an honest
+/// placeholder instead of a silently wrong glyph.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextEncoding {
+    /// CP437 — the printer power-on page. Has no `é` / `è` / `ç` at all.
+    Cp437,
+    /// CP858 — CP850 with the euro sign at 0xD5.
+    Cp858,
+    /// CP1252 — Windows Western European. The device default.
+    Cp1252,
+}
+
+impl TextEncoding {
+    /// `n` for the `ESC t n` code-page selection command.
+    pub fn code_page(self) -> u8 {
+        match self {
+            TextEncoding::Cp437 => 0,
+            TextEncoding::Cp858 => 19,
+            TextEncoding::Cp1252 => 16,
+        }
+    }
+
+    /// Transcode UTF-8 text into this code page's bytes.
+    ///
+    /// CP1252 goes through `encoding_rs`; CP437 and CP858 do not ship in
+    /// `encoding_rs`, so CP437 is ASCII-only (its accented range is Greek /
+    /// box-drawing glyphs, not Latin accents) and CP858 uses the static
+    /// table below.
+    pub fn encode(self, s: &str) -> Vec<u8> {
+        match self {
+            TextEncoding::Cp1252 => {
+                let (cow, _encoding_used, _had_errors) = encoding_rs::WINDOWS_1252.encode(s);
+                cow.into_owned()
+            }
+            TextEncoding::Cp437 => s
+                .chars()
+                .map(|c| if c.is_ascii() { c as u8 } else { b'?' })
+                .collect(),
+            TextEncoding::Cp858 => s.chars().map(cp858_byte).collect(),
+        }
+    }
+}
+
+/// CP858 bytes for U+00A0..=U+00FF, indexed by `code point - 0xA0`.
+/// Transcribed from the CP850 layout (CP858 differs only at 0xD5, which is
+/// `€` instead of `ı` — handled separately in `cp858_byte`).
+const CP858_LATIN1_SUPPLEMENT: [u8; 96] = [
+    0xFF, 0xAD, 0xBD, 0x9C, 0xCF, 0xBE, 0xDD, 0xF5, // A0 NBSP ¡ ¢ £ ¤ ¥ ¦ §
+    0xF9, 0xB8, 0xA6, 0xAE, 0xAA, 0xF0, 0xA9, 0xEE, // A8 ¨ © ª « ¬ SHY ® ¯
+    0xF8, 0xF1, 0xFD, 0xFC, 0xEF, 0xE6, 0xF4, 0xFA, // B0 ° ± ² ³ ´ µ ¶ ·
+    0xF7, 0xFB, 0xA7, 0xAF, 0xAC, 0xAB, 0xF3, 0xA8, // B8 ¸ ¹ º » ¼ ½ ¾ ¿
+    0xB7, 0xB5, 0xB6, 0xC7, 0x8E, 0x8F, 0x92, 0x80, // C0 À Á Â Ã Ä Å Æ Ç
+    0xD4, 0x90, 0xD2, 0xD3, 0xDE, 0xD6, 0xD7, 0xD8, // C8 È É Ê Ë Ì Í Î Ï
+    0xD1, 0xA5, 0xE3, 0xE0, 0xE2, 0xE5, 0x99, 0x9E, // D0 Ð Ñ Ò Ó Ô Õ Ö ×
+    0x9D, 0xEB, 0xE9, 0xEA, 0x9A, 0xED, 0xE8, 0xE1, // D8 Ø Ù Ú Û Ü Ý Þ ß
+    0x85, 0xA0, 0x83, 0xC6, 0x84, 0x86, 0x91, 0x87, // E0 à á â ã ä å æ ç
+    0x8A, 0x82, 0x88, 0x89, 0x8D, 0xA1, 0x8C, 0x8B, // E8 è é ê ë ì í î ï
+    0xD0, 0xA4, 0x95, 0xA2, 0x93, 0xE4, 0x94, 0xF6, // F0 ð ñ ò ó ô õ ö ÷
+    0x9B, 0x97, 0xA3, 0x96, 0x81, 0xEC, 0xE7, 0x98, // F8 ø ù ú û ü ý þ ÿ
+];
+
+/// Map one character to its CP858 byte, `?` when the page cannot print it.
+fn cp858_byte(c: char) -> u8 {
+    let cp = c as u32;
+    if c.is_ascii() {
+        return c as u8;
+    }
+    if (0xA0..=0xFF).contains(&cp) {
+        return CP858_LATIN1_SUPPLEMENT[(cp - 0xA0) as usize];
+    }
+    if c == '€' {
+        return 0xD5; // the one cell where CP858 departs from CP850
+    }
+    b'?'
+}
+
 /// Builder that accumulates ESC/POS commands into a byte buffer.
 pub struct EscPosBuilder {
     buffer: Vec<u8>,
     /// Number of printable columns (typically 42 for 80mm paper, 32 for 58mm).
     columns: u8,
-    /// Character encoding for text output (default: Windows-1252 for French accented chars).
-    encoding: &'static encoding_rs::Encoding,
+    /// Character encoding for text output (default: CP1252 for French accented chars).
+    encoding: TextEncoding,
 }
 
 impl EscPosBuilder {
     /// Create a new builder for an 80mm (42-column) printer.
     pub fn new() -> Self {
-        let mut builder = Self {
-            buffer: Vec::with_capacity(4096),
-            columns: 42,
-            encoding: encoding_rs::WINDOWS_1252,
-        };
-        builder.initialize();
-        builder
+        Self::with_columns_and_encoding(42, TextEncoding::Cp1252)
     }
 
     /// Create a new builder with a specific column width.
     pub fn with_columns(columns: u8) -> Self {
+        Self::with_columns_and_encoding(columns, TextEncoding::Cp1252)
+    }
+
+    /// Create a new builder with a specific column width AND character set.
+    ///
+    /// The prologue is always `ESC @` followed by `ESC t <code page>` — the
+    /// code page is declared UNCONDITIONALLY, including for CP437 (`n = 0`),
+    /// so a printer left on another page by a previous job is reset. There is
+    /// no way to construct a builder whose declared page disagrees with the
+    /// bytes it emits (DEV-QA-094).
+    pub fn with_columns_and_encoding(columns: u8, encoding: TextEncoding) -> Self {
         let mut builder = Self {
             buffer: Vec::with_capacity(4096),
             columns,
-            encoding: encoding_rs::WINDOWS_1252,
+            encoding,
         };
         builder.initialize();
+        builder.set_code_page(encoding.code_page());
         builder
-    }
-
-    /// Set the character encoding used for text output.
-    pub fn set_encoding(&mut self, enc: &'static encoding_rs::Encoding) -> &mut Self {
-        self.encoding = enc;
-        self
     }
 
     /// Encode a UTF-8 string into the target code page bytes.
     /// Characters not representable in the target encoding become `?` (lossy).
     fn encode_text(&self, s: &str) -> Vec<u8> {
-        let (cow, _encoding_used, _had_errors) = self.encoding.encode(s);
-        cow.into_owned()
+        self.encoding.encode(s)
     }
 
     /// ESC @ — Initialize printer (reset to default settings).
@@ -401,6 +483,10 @@ impl Default for EscPosBuilder {
 mod tests {
     use super::*;
 
+    /// Every builder opens with `ESC @` + `ESC t <code page>` (5 bytes), so
+    /// the body of a stream starts at index 5.
+    const PROLOGUE_LEN: usize = 5;
+
     #[test]
     fn test_initialize_command() {
         let builder = EscPosBuilder::new();
@@ -412,15 +498,33 @@ mod tests {
     }
 
     #[test]
+    fn test_prologue_always_declares_the_code_page() {
+        // DEV-QA-094: the code page is declared unconditionally, CP437 (n=0)
+        // included — a printer left on another page by a previous job is reset.
+        for (encoding, page) in [
+            (TextEncoding::Cp437, 0u8),
+            (TextEncoding::Cp858, 19u8),
+            (TextEncoding::Cp1252, 16u8),
+        ] {
+            let data = EscPosBuilder::with_columns_and_encoding(42, encoding).build();
+            assert_eq!(
+                &data[..PROLOGUE_LEN],
+                &[0x1B, 0x40, 0x1B, 0x74, page],
+                "{encoding:?} must open with ESC @ then ESC t {page}"
+            );
+        }
+    }
+
+    #[test]
     fn test_bold_toggle() {
         let mut builder = EscPosBuilder::new();
         builder.bold(true);
         let data = builder.build();
-        // ESC @ (2 bytes) + ESC E 1 (3 bytes)
-        assert_eq!(data.len(), 5);
-        assert_eq!(data[2], 0x1B);
-        assert_eq!(data[3], 0x45);
-        assert_eq!(data[4], 1);
+        // ESC @ + ESC t n (5 bytes) + ESC E 1 (3 bytes)
+        assert_eq!(data.len(), PROLOGUE_LEN + 3);
+        assert_eq!(data[PROLOGUE_LEN], 0x1B);
+        assert_eq!(data[PROLOGUE_LEN + 1], 0x45);
+        assert_eq!(data[PROLOGUE_LEN + 2], 1);
     }
 
     #[test]
@@ -428,7 +532,7 @@ mod tests {
         let mut builder = EscPosBuilder::new(); // 42 columns
         builder.two_column("Item", "10.00");
         let data = builder.build();
-        let text_start = 2; // skip ESC @
+        let text_start = PROLOGUE_LEN; // skip ESC @ + ESC t n
         let line = String::from_utf8_lossy(&data[text_start..]);
         assert!(line.contains("Item"));
         assert!(line.contains("10.00"));
@@ -456,7 +560,7 @@ mod tests {
         builder.cash_drawer_kick(0);
         let data = builder.build();
         // ESC p m t1 t2
-        let cmd_start = 2; // after ESC @
+        let cmd_start = PROLOGUE_LEN; // after ESC @ + ESC t n
         assert_eq!(data[cmd_start], 0x1B);
         assert_eq!(data[cmd_start + 1], 0x70);
         assert_eq!(data[cmd_start + 2], 0); // pin 2
@@ -469,7 +573,7 @@ mod tests {
         let mut builder = EscPosBuilder::new();
         builder.cash_drawer_kick_custom(1, 100, 75);
         let data = builder.build();
-        let cmd_start = 2;
+        let cmd_start = PROLOGUE_LEN;
         assert_eq!(data[cmd_start], 0x1B);
         assert_eq!(data[cmd_start + 1], 0x70);
         assert_eq!(data[cmd_start + 2], 1); // pin 5
@@ -482,7 +586,7 @@ mod tests {
         let mut builder = EscPosBuilder::new();
         builder.beep();
         let data = builder.build();
-        assert_eq!(data[2], 0x07);
+        assert_eq!(data[PROLOGUE_LEN], 0x07);
     }
 
     #[test]
@@ -490,18 +594,19 @@ mod tests {
         let mut builder = EscPosBuilder::new();
         builder.set_code_page(19); // CP858
         let data = builder.build();
-        assert_eq!(data[2], 0x1B);
-        assert_eq!(data[3], 0x74);
-        assert_eq!(data[4], 19);
+        assert_eq!(data[PROLOGUE_LEN], 0x1B);
+        assert_eq!(data[PROLOGUE_LEN + 1], 0x74);
+        assert_eq!(data[PROLOGUE_LEN + 2], 19);
     }
 
     #[test]
     fn test_encode_french_accented_text_cp1252() {
-        let mut builder = EscPosBuilder::new(); // defaults to WINDOWS_1252
+        let mut builder = EscPosBuilder::new(); // defaults to CP1252
         builder.text("Café crème");
         let data = builder.build();
-        // Skip ESC @ (2 bytes), then check encoded text
-        let text_bytes = &data[2..];
+        // The declared page and the bytes must agree: ESC t 16 then CP1252.
+        assert_eq!(&data[..PROLOGUE_LEN], &[0x1B, 0x40, 0x1B, 0x74, 0x10]);
+        let text_bytes = &data[PROLOGUE_LEN..];
         // In CP1252: C=0x43, a=0x61, f=0x66, é=0xE9, space=0x20,
         // c=0x63, r=0x72, è=0xE8, m=0x6D, e=0x65
         assert_eq!(
@@ -511,32 +616,61 @@ mod tests {
     }
 
     #[test]
+    fn test_encode_french_accented_text_cp858() {
+        // CP858 (= CP850 + €) has its own slots for the French accents; the
+        // old code emitted CP1252 bytes under an ESC t 19 header, which is
+        // what printed `é` as `Ú` (DEV-QA-094).
+        let mut builder = EscPosBuilder::with_columns_and_encoding(42, TextEncoding::Cp858);
+        builder.text("éçè€");
+        let data = builder.build();
+        assert_eq!(&data[..PROLOGUE_LEN], &[0x1B, 0x40, 0x1B, 0x74, 19]);
+        assert_eq!(&data[PROLOGUE_LEN..], &[0x82, 0x87, 0x8A, 0xD5]);
+    }
+
+    #[test]
+    fn test_encode_cp437_replaces_unprintable_accents() {
+        // CP437 genuinely cannot print é/è/ç — 0xE9 there is `Θ`. `?` is the
+        // honest output; the fix is for the operator to pick CP1252/CP858.
+        let mut builder = EscPosBuilder::with_columns_and_encoding(42, TextEncoding::Cp437);
+        builder.text("Cafe é");
+        let data = builder.build();
+        assert_eq!(&data[..PROLOGUE_LEN], &[0x1B, 0x40, 0x1B, 0x74, 0x00]);
+        assert_eq!(&data[PROLOGUE_LEN..], b"Cafe ?");
+    }
+
+    #[test]
     fn test_encode_ascii_passthrough() {
         let mut builder = EscPosBuilder::new();
         builder.text("Hello World");
         let data = builder.build();
-        let text_bytes = &data[2..];
+        let text_bytes = &data[PROLOGUE_LEN..];
         assert_eq!(text_bytes, b"Hello World");
     }
 
     #[test]
     fn test_encode_unmappable_chars_no_panic() {
-        let mut builder = EscPosBuilder::new(); // WINDOWS_1252
-        // Chinese characters are not in CP1252 — should produce replacement bytes, not panic
-        builder.text("价格");
-        let data = builder.build();
-        // Should have ESC @ + some bytes (replacements), and not panic
-        assert!(data.len() > 2);
+        // Chinese characters are in none of the three pages — every encoder
+        // must produce replacement bytes, not panic.
+        for encoding in [
+            TextEncoding::Cp437,
+            TextEncoding::Cp858,
+            TextEncoding::Cp1252,
+        ] {
+            let mut builder = EscPosBuilder::with_columns_and_encoding(42, encoding);
+            builder.text("价格");
+            let data = builder.build();
+            assert!(data.len() > PROLOGUE_LEN, "{encoding:?} produced no bytes");
+        }
     }
 
     #[test]
-    fn test_set_encoding() {
-        let mut builder = EscPosBuilder::new();
-        builder.set_encoding(encoding_rs::WINDOWS_1252);
+    fn test_with_columns_and_encoding_sets_both_width_and_text_encoding() {
+        let mut builder = EscPosBuilder::with_columns_and_encoding(32, TextEncoding::Cp1252);
+        assert_eq!(builder.columns(), 32);
         builder.text("à");
         let data = builder.build();
         // à in CP1252 = 0xE0
-        assert_eq!(data[2], 0xE0);
+        assert_eq!(data[PROLOGUE_LEN], 0xE0);
     }
 
     #[test]
@@ -545,7 +679,7 @@ mod tests {
         builder.text_line("Pâté");
         let data = builder.build();
         // Skip ESC @ (2 bytes): P=0x50, â=0xE2, t=0x74, é=0xE9, LF=0x0A
-        assert_eq!(&data[2..], &[0x50, 0xE2, 0x74, 0xE9, 0x0A]);
+        assert_eq!(&data[PROLOGUE_LEN..], &[0x50, 0xE2, 0x74, 0xE9, 0x0A]);
     }
 
     #[test]
@@ -556,7 +690,7 @@ mod tests {
         let mut builder = EscPosBuilder::new(); // 42 columns
         builder.two_column("Reçu :", "12345");
         let data = builder.build();
-        let text_start = 2; // skip ESC @
+        let text_start = PROLOGUE_LEN; // skip ESC @ + ESC t n
         let line_bytes = &data[text_start..];
         let lf_pos = line_bytes.iter().position(|&b| b == 0x0A).unwrap();
         // Encoded line should be exactly 42 bytes: 6 (left) + 31 (spaces) + 5 (right)
@@ -570,7 +704,7 @@ mod tests {
         let mut builder_ascii = EscPosBuilder::new();
         builder_ascii.two_column("Recu :", "12345");
         let data_ascii = builder_ascii.build();
-        let line_ascii = &data_ascii[2..];
+        let line_ascii = &data_ascii[PROLOGUE_LEN..];
         let lf_pos_ascii = line_ascii.iter().position(|&b| b == 0x0A).unwrap();
         assert_eq!(
             lf_pos, lf_pos_ascii,
@@ -583,7 +717,7 @@ mod tests {
         let mut builder = EscPosBuilder::new(); // 42 columns
         builder.three_column("Réf", "Désignation", "Prix");
         let data = builder.build();
-        let text_start = 2;
+        let text_start = PROLOGUE_LEN;
         let line_bytes = &data[text_start..];
         let lf_pos = line_bytes.iter().position(|&b| b == 0x0A).unwrap();
         assert_eq!(

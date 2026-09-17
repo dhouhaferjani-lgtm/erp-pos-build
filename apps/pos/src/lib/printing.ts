@@ -416,12 +416,16 @@ export async function printVoucherTicket(
  */
 export async function printTestPage(
   printer: PrinterConfig,
-  columns?: number,
+  printSettings?: PrintSettings,
 ): Promise<void> {
+  // DEV-QA-094: the test page must be rendered with the SAME settings as a
+  // receipt (code page + transcoding), otherwise a clean test page proves
+  // nothing about the ticket the customer gets.
   return invoke<void>('print_test_page', {
     connectionType: printer.connection_type,
     address: printer.address,
-    columns: columns ?? null,
+    columns: printSettings?.columns ?? null,
+    printSettings: printSettings ?? null,
   });
 }
 

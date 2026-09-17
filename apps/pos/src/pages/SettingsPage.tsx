@@ -176,7 +176,7 @@ export function SettingsPage() {
     setPrinterMessage('');
     try {
       const ps = getPrintSettingsFromStore();
-      await printTestPage(printerConfig, ps.columns);
+      await printTestPage(printerConfig, ps);
       setPrinterStatus('success');
       setPrinterMessage(t('settings.testPrintSent'));
     } catch (err: unknown) {
