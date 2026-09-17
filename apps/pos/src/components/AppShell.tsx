@@ -92,9 +92,10 @@ export function AppShell() {
     <NavRail
       items={navItems}
       active={activeDestForPath(location.pathname)}
-      // Cashiers have the sales-history surface used by the header reports
-      // menu; /reports itself remains permission-gated for manager analytics.
-      onSelect={(d) => navigate(d === 'rapports' && !isManager ? '/sales' : NAV_ROUTE[d])}
+      // One surface per concept (docs/conventions/11): the nav rail always goes
+      // to the destination's route; WHO gets the manager analytics page and who
+      // gets sales history is decided once, on the /reports route element.
+      onSelect={(d) => navigate(NAV_ROUTE[d])}
       theme={theme}
       onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
       ariaLabel={t('nav.ariaLabel')}
@@ -221,7 +222,11 @@ export function AppShell() {
             <Route path="/sales" element={<TodaySalesPage />} />
             <Route
               path="/reports"
-              element={isManager ? <ReportsPage /> : <Navigate to="/" replace />}
+              // Cashiers get the sales-history surface the header reports menu
+              // already uses — a nav click, a deep link, a restored route and a
+              // browser-back all resolve here; the manager analytics page stays
+              // permission-gated (B-13 iv).
+              element={isManager ? <ReportsPage /> : <Navigate to="/sales" replace />}
             />
             <Route
               path="/shift"

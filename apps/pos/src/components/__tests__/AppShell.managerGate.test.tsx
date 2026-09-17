@@ -17,7 +17,8 @@ vi.mock('react-i18next', () => ({
 
 let mockOperator: { id: string; name: string; roles: string[]; permissions?: string[]; authority_stale?: boolean } | null = null;
 let mockUserRoles: string[] | undefined;
-let mockCompanyId = 'co-1';
+// Fixed: the company id feeds getDatabase only, never a nav/route decision.
+const COMPANY_ID = 'co-1';
 
 vi.mock('@/stores/operatorStore', () => ({
   useOperatorStore: Object.assign(
@@ -29,7 +30,7 @@ vi.mock('@/stores/operatorStore', () => ({
 
 vi.mock('@/stores/authStore', () => ({
   useAuthStore: <T,>(selector: (s: unknown) => T): T =>
-    selector({ companyId: mockCompanyId, user: { id: 'u-1', roles: mockUserRoles } }),
+    selector({ companyId: COMPANY_ID, user: { id: 'u-1', roles: mockUserRoles } }),
 }));
 
 vi.mock('@/stores/settingsStore', () => ({
@@ -93,13 +94,14 @@ async function renderAt(path: string) {
   return view;
 }
 
-const MANAGER_ROUTES = ['/reports', '/shift', '/reports/z'] as const;
+// `/reports` is NOT in this list: a cashier deep-linking it lands on the
+// permitted sales-history surface, not the till — see the dedicated test below.
+const MANAGER_ROUTES = ['/shift', '/reports/z'] as const;
 
 describe('AppShell manager-gated routes', () => {
   beforeEach(() => {
     mockOperator = null;
     mockUserRoles = undefined;
-    mockCompanyId = 'co-1';
   });
 
   it('refuses every manager route to a cashier PIN on an OWNER-logged-in terminal', async () => {
@@ -115,6 +117,15 @@ describe('AppShell manager-gated routes', () => {
       expect(screen.queryByTestId('page-zlist')).toBeNull();
       unmount();
     }
+  });
+
+  it('sends a cashier who deep-links /reports to the permitted sales history, not the till', async () => {
+    mockOperator = { id: 'op-2', name: 'Cashier', roles: ['cashier'] };
+    mockUserRoles = ['owner'];
+    await renderAt('/reports');
+    expect(await screen.findByTestId('page-sales')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Current route' })).toHaveTextContent('/sales');
+    expect(screen.queryByTestId('page-reports')).not.toBeInTheDocument();
   });
 
   it('hides the Caisse-Shift nav destination for a cashier PIN on an owner terminal', async () => {
@@ -152,8 +163,9 @@ describe('AppShell manager-gated routes', () => {
     expect(await screen.findByTestId('page-shift')).toBeInTheDocument();
   });
 
-  it.each(['co-1', 'co-2'])('opens permitted sales when a cashier selects Reports in %s', async (companyId) => {
-    mockCompanyId = companyId;
+  // `companyId` enters no nav decision (AppShell.tsx:68 feeds getDatabase only),
+  // so parametrising this over two company ids proved nothing.
+  it('opens permitted sales when a cashier selects Reports', async () => {
     mockOperator = {
       id: 'op-cashier', name: 'Cashier', roles: ['cashier'],
       permissions: ['pos.view_receipts', 'pos.manage_shifts', 'pos.generate_z_report'],
