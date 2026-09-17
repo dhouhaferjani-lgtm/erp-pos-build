@@ -61,6 +61,7 @@ import { TerminalNotReadyBanner } from '@/components/atoms/TerminalNotReadyBanne
 import { ConsumptionModeToggle } from '@/components/atoms/ConsumptionModeToggle';
 import { TableSelector } from '@/components/atoms/TableSelector';
 import { ProductGrid } from '@/components/organisms/ProductGrid';
+import type { CompletedScan } from '@/components/organisms/ProductGrid/ProductGrid';
 import { ProductDetailSheet, type DetailTab } from '@/components/organisms/ProductDetailDrawer';
 import { ProductPaneHost } from '@/components/pos/ProductPaneHost';
 import { RequestRefillSheet } from '@/components/organisms/RequestRefillSheet';
@@ -553,6 +554,13 @@ export function HomePage() {
   );
 
   /**
+   * Lane C 2026-09-17 — the last completed scanner burst, handed to
+   * ProductGrid so a scan into the focused product search replaces and
+   * selects the query instead of appending to it.
+   */
+  const [completedScan, setCompletedScan] = useState<CompletedScan | null>(null);
+
+  /**
    * Wrapped scan handler (Phase H Task 50, spec §6.1 entry 2):
    *   1. If terminal + companyId are present, run `dispatchScan` first.
    *   2. On `'receipt-token'` kind, set the pending state — the
@@ -562,7 +570,11 @@ export function HomePage() {
    *      existing product-barcode logic unchanged.
    */
   const handleBarcodeScan = useCallback(
-    (barcode: string) => {
+    (barcode: string, target: EventTarget | null) => {
+      // Lane C 2026-09-17 — a fresh object per scan so ProductGrid's
+      // identity-based guard applies each burst exactly once, even when the
+      // same barcode is scanned twice in a row.
+      setCompletedScan({ barcode, target });
       // Read both companyId and terminalId from store getState() at scan-time
       // (not from the captured React state) so a stale closure on the active
       // terminal can't misroute scans after a terminal switch. Using
@@ -1724,6 +1736,7 @@ export function HomePage() {
             </div>
           )}
           <ProductGrid
+            completedScan={completedScan}
             products={products}
             categories={categories}
             onAddToCart={handleAddToCart}
