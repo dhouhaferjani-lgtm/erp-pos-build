@@ -184,11 +184,6 @@ impl EscPosBuilder {
         Self::with_columns_and_encoding(42, TextEncoding::Cp1252)
     }
 
-    /// Create a new builder with a specific column width.
-    pub fn with_columns(columns: u8) -> Self {
-        Self::with_columns_and_encoding(columns, TextEncoding::Cp1252)
-    }
-
     /// Create a new builder with a specific column width AND character set.
     ///
     /// The prologue is always `ESC @` followed by `ESC t <code page>` — the

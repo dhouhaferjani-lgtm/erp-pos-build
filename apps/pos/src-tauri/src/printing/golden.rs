@@ -57,7 +57,7 @@
 
 use std::path::PathBuf;
 
-use super::escpos::{CutMode, EscPosBuilder, QrErrorCorrection};
+use super::escpos::{CutMode, EscPosBuilder, QrErrorCorrection, TextEncoding};
 use super::receipt_template::{
     format_receipt_with_settings, CompanyInfo, PaymentLine, PrintSettings, ReceiptData,
     ReceiptLabels, ReceiptLine, VatBreakdownLine, ZReceiptCashCountRow,
@@ -796,6 +796,36 @@ fn failure(a: &[Item], b: &[Item], gi: Option<usize>, nj: Option<usize>) -> Stri
     )
 }
 
+/// Span of an inserted QR caption: `[start, end)` covers the caption text line
+/// plus the `Font` / `Align` tokens that frame it, where `end` is the index of
+/// the workflow-token QR the caption announces.
+///
+/// Returns `None` unless `b[j]` is a non-empty text line that does NOT contain
+/// the fiscal hash and that reaches the `qr_token` QR through Font/Align tokens
+/// only. Anything else — a blank caption, a re-printed hash, a caption with
+/// real content between it and the QR — is left for the reviewer.
+fn qr_caption_span(b: &[Item], j: usize, wl: &Whitelist) -> Option<(usize, usize)> {
+    match &b[j] {
+        Item::Text(t) if !t.trim().is_empty() && !t.contains(wl.fiscal_hash) => {}
+        _ => return None,
+    }
+
+    let mut end = j + 1;
+    while matches!(b.get(end), Some(Item::Font(_)) | Some(Item::Align(_))) {
+        end += 1;
+    }
+    match b.get(end) {
+        Some(Item::Qr { payload, .. }) if payload == wl.qr_token => {}
+        _ => return None,
+    }
+
+    let mut start = j;
+    while start > 0 && matches!(b[start - 1], Item::Font(_) | Item::Align(_)) {
+        start -= 1;
+    }
+    Some((start, end))
+}
+
 /// Classify one contiguous change hunk. Content-keyed classes (1, 2, 5) are
 /// resolved first so that the permissive currency pairing (4) can never absorb
 /// them by accident.
@@ -830,26 +860,40 @@ fn classify_hunk(
     });
 
     // 5 — one added caption line immediately before the workflow QR (DEV-QA-093).
-    inss.retain(|&j| {
-        if matches!(&b[j], Item::Text(_))
-            && matches!(b.get(j + 1), Some(Item::Qr { payload, .. }) if payload == wl.qr_token)
-        {
-            classes.push(WhitelistClass::QrCaptionAdded);
-            return false;
-        }
-        true
-    });
+    //
+    // Tightened after review: the codebase's labelled-QR idiom is
+    // `select_font(true); text_line(label); select_font(false); qr_code(..)`
+    // (`receipt_template.rs:490-494`), so `ESC M` tokens sit BETWEEN the caption
+    // and the QR. The lookahead skips Font/Align tokens and whitelists the ones
+    // that frame this caption — and only those, so a style toggle anywhere else
+    // still fails. The caption must be non-empty and must not smuggle the fiscal
+    // hash back onto the ticket in text form.
+    if let Some((start, end)) = inss.iter().find_map(|&j| qr_caption_span(b, j, wl)) {
+        classes.push(WhitelistClass::QrCaptionAdded);
+        inss.retain(|&j| !(start..end).contains(&j));
+    }
 
-    // 3 — ESC t prologue added or changed (DEV-QA-094).
-    dels.retain(|&i| {
-        if matches!(a[i], Item::CodePage(_)) {
-            classes.push(WhitelistClass::CodePagePrologue);
-            return false;
-        }
-        true
-    });
+    // 3 — ESC t prologue added or CHANGED (DEV-QA-094).
+    //
+    // Tightened after review: a LONE `CodePage` deletion is not whitelisted.
+    // "The stream stopped declaring a code page" is the defect this lane exists
+    // to fix, so it must fail the gate instead of being waved through as
+    // prologue churn. A deletion is accepted only when the same hunk also
+    // carries a `CodePage` insertion (i.e. the page CHANGED), and only in the
+    // prologue itself — `ESC @` is item 0, `ESC t n` item 1.
+    const PROLOGUE_MAX_INDEX: usize = 1;
+    let code_page_redeclared = inss.iter().any(|&j| matches!(b[j], Item::CodePage(_)));
+    if code_page_redeclared {
+        dels.retain(|&i| {
+            if matches!(a[i], Item::CodePage(_)) && i <= PROLOGUE_MAX_INDEX {
+                classes.push(WhitelistClass::CodePagePrologue);
+                return false;
+            }
+            true
+        });
+    }
     inss.retain(|&j| {
-        if matches!(b[j], Item::CodePage(_)) {
+        if matches!(b[j], Item::CodePage(_)) && j <= PROLOGUE_MAX_INDEX {
             classes.push(WhitelistClass::CodePagePrologue);
             return false;
         }
@@ -1045,11 +1089,30 @@ fn golden_z_32() {
 
 /// Minimal well-formed stream: init + the given body + feed/cut tail.
 fn synthetic(body: impl FnOnce(&mut EscPosBuilder)) -> Vec<u8> {
-    let mut b = EscPosBuilder::with_columns(42);
+    synthetic_in(TextEncoding::Cp1252, body)
+}
+
+/// Same, under an explicit code page — the builder always opens with
+/// `ESC @` + `ESC t <page>`, so this is how a prologue CHANGE is synthesised.
+fn synthetic_in(encoding: TextEncoding, body: impl FnOnce(&mut EscPosBuilder)) -> Vec<u8> {
+    let mut b = EscPosBuilder::with_columns_and_encoding(42, encoding);
     body(&mut b);
     b.feed_lines(4);
     b.cut(CutMode::Partial);
     b.build()
+}
+
+/// Strip the `ESC t n` out of a stream's prologue — the shape of a regression
+/// that stops declaring a code page at all (the tamper case for class 3).
+fn without_code_page(bytes: &[u8]) -> Vec<u8> {
+    assert_eq!(
+        &bytes[..4],
+        &[0x1B, 0x40, 0x1B, 0x74],
+        "expected an ESC @ + ESC t prologue"
+    );
+    let mut out = bytes[..2].to_vec();
+    out.extend_from_slice(&bytes[5..]);
+    out
 }
 
 fn classify_pair(golden: &[u8], new: &[u8]) -> Result<Vec<WhitelistClass>, String> {
@@ -1088,16 +1151,47 @@ fn whitelist_accepts_class2_removed_fiscal_hash_qr() {
 
 #[test]
 fn whitelist_accepts_class3_codepage_prologue() {
-    let golden = synthetic(|b| {
-        b.text_line("Café Nour");
+    // A prologue CHANGE: CP437 (ESC t 0) -> CP1252 (ESC t 16), both at item 1.
+    let golden = synthetic_in(TextEncoding::Cp437, |b| {
+        b.text_line("Cafe Nour");
     });
-    let new = synthetic(|b| {
-        b.set_code_page(16);
-        b.text_line("Café Nour");
+    let new = synthetic_in(TextEncoding::Cp1252, |b| {
+        b.text_line("Cafe Nour");
     });
     assert_eq!(
         classify_pair(&golden, &new).expect("class 3 must be whitelisted"),
+        vec![
+            WhitelistClass::CodePagePrologue,
+            WhitelistClass::CodePagePrologue
+        ]
+    );
+}
+
+#[test]
+fn whitelist_accepts_class3_codepage_prologue_added() {
+    // A prologue ADDED where the golden had none — the pre-fix cp437 baseline.
+    let new = synthetic_in(TextEncoding::Cp1252, |b| {
+        b.text_line("Cafe Nour");
+    });
+    let golden = without_code_page(&new);
+    assert_eq!(
+        classify_pair(&golden, &new).expect("class 3 must whitelist an added prologue"),
         vec![WhitelistClass::CodePagePrologue]
+    );
+}
+
+#[test]
+fn whitelist_rejects_a_stream_that_stops_declaring_a_code_page() {
+    // The tamper case: dropping `ESC t` entirely IS the DEV-QA-094 defect.
+    // A lone CodePage deletion must never be waved through as prologue churn.
+    let golden = synthetic_in(TextEncoding::Cp1252, |b| {
+        b.text_line("Cafe Nour");
+    });
+    let new = without_code_page(&golden);
+    let err = classify_pair(&golden, &new).expect_err("a dropped ESC t must NOT be whitelisted");
+    assert!(
+        err.contains("NOT covered by any whitelist class"),
+        "unexpected failure text: {err}"
     );
 }
 
@@ -1126,13 +1220,33 @@ fn whitelist_accepts_class5_added_qr_caption() {
         b.qr_code(QR_TOKEN, 4, QrErrorCorrection::M);
     });
     let new = synthetic(|b| {
+        // The codebase's labelled-QR idiom: Font B for the caption, back to
+        // Font A before the QR (`receipt_template.rs:490-494`).
+        b.select_font(true);
         b.text_line("Scanner pour un retour ou un échange");
+        b.select_font(false);
         b.qr_code(QR_TOKEN, 4, QrErrorCorrection::M);
     });
     assert_eq!(
         classify_pair(&golden, &new).expect("class 5 must be whitelisted"),
         vec![WhitelistClass::QrCaptionAdded]
     );
+}
+
+#[test]
+fn whitelist_rejects_an_empty_qr_caption() {
+    // A blank line before the QR is not a caption — it explains nothing and
+    // must not buy a free text insertion.
+    let golden = synthetic(|b| {
+        b.qr_code(QR_TOKEN, 4, QrErrorCorrection::M);
+    });
+    let new = synthetic(|b| {
+        b.select_font(true);
+        b.text_line("   ");
+        b.select_font(false);
+        b.qr_code(QR_TOKEN, 4, QrErrorCorrection::M);
+    });
+    classify_pair(&golden, &new).expect_err("a blank caption must NOT be whitelisted");
 }
 
 #[test]
