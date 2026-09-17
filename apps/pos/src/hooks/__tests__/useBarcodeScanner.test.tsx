@@ -251,6 +251,32 @@ describe('useBarcodeScanner', () => {
     },
   );
 
+  it('given a held key auto-repeating below the threshold, does not emit a phantom scan', () => {
+    useScannerStore.setState({ keyboardLayout: 'us' });
+    const onScan = vi.fn();
+    renderHook(() => useBarcodeScanner({ onScan }));
+
+    press(window, { key: '0', code: 'Digit0' });
+    for (let i = 0; i < 5; i++) {
+      press(window, { key: '0', code: 'Digit0', repeat: true }, 5);
+    }
+    const terminator = press(window, { key: 'Enter', code: 'Enter' }, 5);
+
+    expect(onScan).not.toHaveBeenCalled();
+    expect(terminator.defaultPrevented).toBe(false);
+  });
+
+  it('given a repeated keydown inside a real burst, ignores only the repeat', () => {
+    const onScan = vi.fn();
+    renderHook(() => useBarcodeScanner({ onScan }));
+
+    const keys = keysFor('001234');
+    keys.splice(3, 0, { ...keys[2], repeat: true });
+    scan(window, keys);
+
+    expect(onScan.mock.calls.map(([barcode]) => barcode)).toEqual(['001234']);
+  });
+
   it('given a too-short fragment, clears it before the next complete scan', () => {
     const onScan = vi.fn();
     renderHook(() => useBarcodeScanner({ onScan }));

@@ -52,6 +52,8 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScannerO
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // Scanners never set `repeat`; Windows auto-repeat (~30 ms) is under the 50 ms threshold.
+      if (e.repeat) return;
 
       const { keyboardLayout, keystrokeThresholdMs, minBarcodeLength, soundOnScan } =
         useScannerStore.getState();
@@ -93,6 +95,7 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScannerO
       lastKeystrokeRef.current = now;
 
       if (isPrintable) {
+        // A Dead key is not printable, so it falls through here and contributes nothing to the raw token.
         rawRef.current += e.key;
       }
       if (keyboardLayout === 'us') {

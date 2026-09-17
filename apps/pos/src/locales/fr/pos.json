@@ -686,7 +686,7 @@
     "scannerKeyboardLayout": "Disposition du clavier de la douchette",
     "scannerKeyboardSystem": "Identique à l’ordinateur (par défaut)",
     "scannerKeyboardUS": "Douchette US QWERTY",
-    "scannerKeyboardLayoutDesc": "Choisissez US QWERTY si la douchette est configurée pour un clavier américain et l’ordinateur utilise une autre disposition (par exemple, des accents remplacent les chiffres sur AZERTY). Ce réglage s’applique aux scans terminés ; la saisie manuelle reste inchangée.",
+    "scannerKeyboardLayoutDesc": "Choisissez US QWERTY si la douchette est configurée pour un clavier américain et que l’ordinateur utilise une autre disposition (par exemple, des accents remplacent les chiffres sur AZERTY). Ce réglage s’applique aux scans terminés ; la saisie manuelle reste inchangée.",
     "scannerSensitivity": "Seuil de frappe",
     "scannerSensitivityDesc": "Valeur basse = détection rapide, haute = plus tolérant pour les scanners lents",
     "minBarcodeLength": "Longueur min. du code-barres",
