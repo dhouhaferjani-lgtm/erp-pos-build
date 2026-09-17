@@ -25,9 +25,9 @@ Règle : on n'écrit ici que ce qui est prouvé (scénario rejoué, `file:line`)
 
 Critères de sortie (à rejouer tels quels par le manager) : voir la section « Critères de sortie après correction » de `BUGS-CLAUDE-CODE-2026-09-08.md`.
 
-## POS — catégories et rapports, reproduction locale du 2026-09-16
+## POS — catégories, Rapports caissier, résultat Z — reproduction et preuve du 2026-09-17 (lane D)
 
-Base `origin/dev@0b20e28dc`, branche isolée `fix/pos-category-reports`. Reproduction Playwright avec les vrais composants/stores/services POS et une base SQLite jetable ; seul le transport Tauri est adapté au navigateur. Le catalogue provient d'un nouveau tenant de test créé via l'API Laravel locale. Aucun déploiement ni changement de données de production.
+Base `origin/dev@0b20e28dc`, branche `fix/pos-category-reports` (diff Codex du 2026-09-16 repris, revu par deux relecteurs adversariaux, durci en 8 commits). Preuve navigateur : Playwright 1.57 headless sur les vrais `AppShell`/stores/migrations SQLite du POS, **API Laravel locale réelle** (:8012, `apps/api` identique à `origin/dev`) avec un tenant jetable auto-inscrit (2 sociétés × 2 emplacements, 2 catégories et 4 produits chacune) ; IPC Tauri / plugin-sql / plugin-store / plugin-http remplacés par des adaptateurs navigateur, rapports X/Z serveur et moyens de paiement en fixtures. Baseline (source inchangée) : les 3 défauts reproduits sur les 2 sociétés. Branche corrigée : 5 scénarios PASS sur les 2 sociétés, dont la migration 68 constatée dans le SQLite de l'appareil. Non vérifié : transport Tauri natif, impression thermique / bandeau DUPLICATA (couvert par Vitest `Header.reports-flow`), écran de connexion, recette manuelle.
 
 | ID | Origine | Prio | Zone | Résumé | Repro | Statut | Lane / branche | Preuve |
 |---|---|---:|---|---|---:|---|---|---|
