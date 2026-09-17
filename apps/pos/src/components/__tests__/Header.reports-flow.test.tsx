@@ -12,6 +12,10 @@ const mocks = vi.hoisted(() => ({
   generateZReport: vi.fn(),
   generateXReport: vi.fn(),
   fetchFraudSettings: vi.fn(),
+  fetchAuthorizedManagers: vi.fn(),
+  printReceipt: vi.fn(),
+  verifyScopedManagerPin: vi.fn(),
+  tauri: false,
 }));
 
 vi.mock('react-i18next', () => ({
@@ -41,7 +45,35 @@ vi.mock('@/api/fraudSettingsApi', () => ({
   fetchFraudSettings: mocks.fetchFraudSettings,
   refreshFraudSettingsCache: vi.fn(),
 }));
-vi.mock('@/api/managersApi', () => ({ fetchAuthorizedManagers: vi.fn().mockResolvedValue([]) }));
+vi.mock('@/api/managersApi', () => ({ fetchAuthorizedManagers: mocks.fetchAuthorizedManagers }));
+vi.mock('@/lib/printing', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/printing')>();
+  return { ...actual, printReceipt: mocks.printReceipt, isTauriEnvironment: () => mocks.tauri };
+});
+// PrinterConfig is { connection_type, address, name } (lib/printing.ts:298) and
+// getPrintSettingsFromStore() reads `settings` off the same store, so the stub
+// must carry both slices.
+vi.mock('@/stores/printerStore', () => ({
+  usePrinterStore: {
+    getState: () => ({
+      printerConfig: {
+        connection_type: 'network' as const,
+        address: '127.0.0.1:9100',
+        name: 'Test printer',
+      },
+      settings: {
+        paperWidth: '80mm' as const,
+        cutMode: 'partial' as const,
+        copies: 1,
+        footerText: '',
+        encoding: 'cp1252' as const,
+      },
+    }),
+  },
+}));
+vi.mock('@/lib/operatorApproval/scopedManagerPin', () => ({
+  verifyScopedManagerPin: mocks.verifyScopedManagerPin,
+}));
 vi.mock('@/api/toleranceApi', () => ({ fetchToleranceReceiptsForShift: vi.fn().mockResolvedValue([]) }));
 
 const terminal: Terminal = {
@@ -94,7 +126,11 @@ async function confirmCountedShift() {
 describe('Header report and close flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.tauri = false;
     mocks.preview.mockResolvedValue(preview);
+    mocks.fetchAuthorizedManagers.mockResolvedValue([]);
+    mocks.printReceipt.mockResolvedValue(undefined);
+    mocks.verifyScopedManagerPin.mockReset();
     mocks.generateZReport.mockResolvedValue({ formatted_z_number: 'Z0001', was_reused: false, cash_counts: [] });
     mocks.fetchFraudSettings.mockResolvedValue({
       cashVarianceOverSoft: '5.00', cashVarianceOverHard: '20.00',
@@ -180,6 +216,79 @@ describe('Header report and close flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'shift.number' }));
     expect(await screen.findByTestId('end-of-day-confirm-button')).toBeDisabled();
     expect(await screen.findByTestId('commit-counts-button')).toBeDisabled();
+  });
+
+  it('prints the Z after close and marks the second print as a reprint (newly reachable path)', async () => {
+    mocks.tauri = true;
+    renderHeader();
+    await confirmCountedShift();
+    expect(await screen.findByText('Z0001')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'reports.endOfDay.printReceipt' }));
+    fireEvent.click(screen.getByRole('button', { name: 'reports.endOfDay.printReceipt' }));
+
+    expect(mocks.printReceipt).toHaveBeenCalledTimes(2);
+    // buildZReceiptData maps formattedZNumber -> receipt_number (printing.ts:265)
+    expect(mocks.printReceipt.mock.calls[0][0]).toMatchObject({
+      is_reprint: false,
+      receipt_number: 'Z0001',
+    });
+    expect(mocks.printReceipt.mock.calls[1][0]).toMatchObject({
+      is_reprint: true,
+      receipt_number: 'Z0001',
+    });
+    expect(useTerminalStore.getState().shift).toBeNull();
+  });
+
+  it('keeps the approving manager name on a post-close print even after the terminal record is refreshed', async () => {
+    mocks.tauri = true;
+    // First open resolves the manager list; the refresh that follows the
+    // terminal-record replacement is still in flight when Print is pressed —
+    // exactly the window in which `authorizedManagers` collapses to [].
+    mocks.fetchAuthorizedManagers
+      .mockResolvedValueOnce([{ id: 'mgr-1', name: 'Mgr One' }])
+      .mockReturnValue(new Promise(() => {}));
+    mocks.verifyScopedManagerPin.mockResolvedValue({ id: 'mgr-1', name: 'Mgr One' });
+    renderHeader();
+    fireEvent.click(screen.getByRole('button', { name: 'shift.number' }));
+    const confirm = await screen.findByTestId('end-of-day-confirm-button');
+    // actual 50 vs expected 130 -> under by 80 > hard 20 -> reason + manager PIN
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('tender-actual-input-CASH'));
+      await Promise.resolve();
+      const panel = screen.getByTestId('cash-count-numpad-panel');
+      for (const d of '50') {
+        fireEvent.click(within(panel).getByTestId(`numpad-digit-${d}`));
+        await Promise.resolve();
+      }
+    });
+    fireEvent.click(screen.getByTestId('commit-counts-button'));
+    await act(async () => {
+      fireEvent.change(await screen.findByTestId('variance-reason-input'), {
+        target: { value: 'Drawer mishap' },
+      });
+    });
+    const pin = await screen.findByTestId('manager-pin-section');
+    await act(async () => {
+      for (const d of '1234') {
+        fireEvent.click(within(pin).getByTestId(`numpad-digit-${d}`));
+        await Promise.resolve();
+      }
+      fireEvent.click(within(pin).getByTestId('manager-pin-verify'));
+    });
+    await waitFor(() => expect(screen.getByTestId('manager-verified')).toBeInTheDocument());
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(confirm);
+    expect(await screen.findByText('Z0001')).toBeInTheDocument();
+
+    // Simulate refreshTerminalRecord replacing the terminal object (same id):
+    await act(async () => {
+      useTerminalStore.setState({ terminal: { ...terminal } });
+    });
+    expect(screen.getByText('Z0001')).toBeInTheDocument(); // scope check compares ids
+
+    fireEvent.click(screen.getByRole('button', { name: 'reports.endOfDay.printReceipt' }));
+    expect(mocks.printReceipt.mock.calls[0][0]).toMatchObject({ manager_name: 'Mgr One' });
   });
 
   it.each(['company', 'terminal', 'operator', 'shift'])('clears the closed result when %s changes', async (scope) => {

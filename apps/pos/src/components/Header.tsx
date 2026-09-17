@@ -117,6 +117,7 @@ export function Header() {
   const lastCashCountPayloadRef = useRef<CashCountCommitPayload | null>(null);
   const lastZReportCashCountsRef = useRef<ZReportCountEntry[] | null>(null);
   const lastPreviewPaymentMethodsRef = useRef<PaymentMethodItem[] | null>(null);
+  const lastManagerNameRef = useRef<string | null>(null);
 
   const approvalContext = useMemo(() => {
     if (!tenantId || !companyId || !terminal) return undefined;
@@ -544,6 +545,14 @@ export function Header() {
     // Store refs so handlePrintZReport can access them after confirmation
     lastCashCountPayloadRef.current = cashCountPayload;
     lastPreviewPaymentMethodsRef.current = preview.payment_methods;
+    // Capture the approving manager's display name NOW: `authorizedManagers` is
+    // keyed on terminal OBJECT identity and collapses to [] across a sync
+    // refresh (refreshTerminalRecord replaces the object), and the print button
+    // is reachable after the close — so resolving the name at print time prints
+    // manager_name: null for an above-hard-variance Z (fiscal I-3).
+    lastManagerNameRef.current = cashCountPayload?.managerUserId
+      ? (authorizedManagers.find((m) => m.id === cashCountPayload.managerUserId)?.name ?? null)
+      : null;
 
     // 1. Generate Z report (offline-first, idempotent)
     const zReport = await generateZReport(
@@ -636,11 +645,10 @@ export function Header() {
           }, bcformat('0', scale))
         : null;
 
-    // Resolve manager name from authorizedManagers list
-    const managerName =
-      payload?.managerUserId
-        ? (authorizedManagers.find((m) => m.id === payload.managerUserId)?.name ?? null)
-        : null;
+    // Resolved at confirm time (see handleEndOfDayConfirm): re-deriving it here
+    // from `authorizedManagers` loses the name whenever the terminal record was
+    // refreshed between the close and the print.
+    const managerName = lastManagerNameRef.current;
 
     // Atomic header identity (spec 2026-06-11 §4.6): the Z header prints the
     // terminal location's tax id (+ vat number / legal identifiers) when the
