@@ -3,6 +3,7 @@ import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { useAuthStore } from '@/stores/authStore';
 import { usePrinterStore } from '@/stores/printerStore';
 import { useCashDrawerStore } from '@/stores/cashDrawerStore';
+import { dedupeVatNumber } from '@/lib/receiptTaxIdentity';
 
 // ── Types ──
 
@@ -259,7 +260,10 @@ export function buildZReceiptData(input: BuildZReceiptDataInput): ReceiptData {
       country: '',
       tax_id: input.taxId ?? '',
       phone: null,
-      vat_number: input.vatNumber ?? null,
+      // DEV-QA-092: display-only dedup — the Z header prints tax_id and
+      // vat_number as two unconditional lines, and in TN they are the same
+      // identifier (the matricule fiscal IS the VAT id).
+      vat_number: dedupeVatNumber(input.taxId, input.vatNumber),
       legal_identifier_lines: input.legalIdentifierLines ?? null,
     },
     receipt_number: input.formattedZNumber,
