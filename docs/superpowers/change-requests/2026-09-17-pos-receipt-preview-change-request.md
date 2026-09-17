@@ -29,7 +29,7 @@ Branche `fix/pos-printed-ticket` : les quatre corrections du ticket imprimé, à
 | DEV-QA-094 | `é` / `ç` imprimés `Θ` / `τ` sur le chemin brut (page de code) | `docs/qa/DEV-QA-registry.md` |
 | DEV-QA-095 | `TND` imprimé à gauche du montant, sans espace | `docs/qa/DEV-QA-registry.md` |
 
-Vérification prévue : test de régression « golden-bytes » (voir §5 de la spec design). **Note d'écart** : au moment de la rédaction de cette demande de changement, `docs/qa/DEV-QA-registry.md` référence encore la branche `feat/pos-receipt-preview` (PR 1) et le statut « EN COURS » pour ces quatre lignes — le registre n'a pas encore été mis à jour pour pointer vers `fix/pos-printed-ticket` ; à corriger par la session qui clôt la branche.
+Vérification prévue : test de régression « golden-bytes » (voir §5 de la spec design).
 
 ### Différé et pourquoi
 

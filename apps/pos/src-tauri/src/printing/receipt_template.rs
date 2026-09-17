@@ -868,16 +868,35 @@ pub fn format_receipt_with_settings(
     b.build()
 }
 
-/// Render one monetary cell as `<amount> <currency>` (DEV-QA-095).
+/// Render one monetary cell, placing the currency by the SHAPE of the symbol
+/// (DEV-QA-095, controller ruling 2026-09-17).
 ///
-/// Every printed amount goes through this ONE helper: the previous
-/// `format!("{}{}", currency_symbol, amount)` glued the code to the left of
-/// the digits (`TND10.000`), which is wrong for `fr-TN` and for every locale
-/// that suffixes the code. `amount` is already formatted at currency scale by
-/// the TS boundary (rule 19) and is never parsed here; a sign, when the caller
-/// needs one, is part of `amount` (`money("-1.000", "TND")` -> `-1.000 TND`).
+/// Every printed amount goes through this ONE helper. The original
+/// `format!("{}{}", currency_symbol, amount)` glued the symbol to the left of
+/// the digits unconditionally, which prints `TND10.000` — wrong for `fr-TN`
+/// and for every locale that suffixes an ISO code. Placing it on the right
+/// unconditionally would have been just as wrong the other way: `10.00 £` and
+/// `10.00 $` regress a UK or US terminal. So:
+///
+/// - **empty symbol** -> the amount alone. A Z ticket really does arrive with
+///   `currency_symbol: ""` (`Header.tsx:653` -> `buildZReceiptData`), and a
+///   trailing space would print on every Z row.
+/// - **alphabetic symbol** (`TND`, `EUR`, `MAD`, …) **or `€`** -> `amount symbol`.
+/// - **anything else** (`£`, `$`, `¥`, …) -> `symbolamount`, exactly as before
+///   this lane touched it.
+///
+/// `amount` is already formatted at currency scale by the TS boundary
+/// (rule 19) and is never parsed here; a sign, when the caller needs one, is
+/// part of `amount` (`money("-1.000", "TND")` -> `-1.000 TND`).
 pub(crate) fn money(amount: &str, symbol: &str) -> String {
-    format!("{amount} {symbol}")
+    if symbol.is_empty() {
+        return amount.to_string();
+    }
+    if symbol.chars().all(char::is_alphabetic) || symbol == "€" {
+        format!("{amount} {symbol}")
+    } else {
+        format!("{symbol}{amount}")
+    }
 }
 
 fn non_empty_trimmed(value: &str) -> Option<&str> {
@@ -1478,6 +1497,89 @@ mod tests_z_cash_counts {
             customer_account_id: None,
             customer_phone: None,
         }
+    }
+
+    /// DEV-QA-095 placement contract, one case per symbol shape.
+    #[test]
+    fn money_places_the_currency_by_the_shape_of_the_symbol() {
+        // No symbol at all (the real Z path) — the amount alone, no trailing space.
+        assert_eq!(money("0.00", ""), "0.00");
+        // ISO codes and the euro sign trail the amount.
+        assert_eq!(money("10.000", "TND"), "10.000 TND");
+        assert_eq!(money("10.00", "EUR"), "10.00 EUR");
+        assert_eq!(money("10.00", "€"), "10.00 €");
+        // Glyph currencies keep the pre-lane prefix placement — a UK or US
+        // terminal must not regress into `10.00 £`.
+        assert_eq!(money("10.00", "£"), "£10.00");
+        assert_eq!(money("10.00", "$"), "$10.00");
+        // The sign travels with the amount, on either placement.
+        assert_eq!(money("-1.000", "TND"), "-1.000 TND");
+        assert_eq!(money("-1.00", "£"), "£-1.00");
+    }
+
+    /// The Z ticket sends `currency_symbol: ""`. Every money row must come out
+    /// right-aligned against the column edge with NO trailing space — a
+    /// trailing space would shift the whole column left by one on every row.
+    #[test]
+    fn an_empty_currency_symbol_prints_no_trailing_space_on_money_rows() {
+        let mut data = make_rounded_sale();
+        data.currency_symbol = String::new();
+        data.has_cash_rounding = Some(false);
+        data.cash_rounding_adjustment = None;
+        data.subtotal = "0.00".to_string();
+        data.tax_amount = "0.00".to_string();
+        data.total = "0.00".to_string();
+        data.payments = vec![];
+        data.show_payment_details = Some(false);
+
+        let bytes = format_receipt_with_settings(&data, None);
+        let text = String::from_utf8_lossy(&bytes);
+
+        for label in ["Subtotal:", "TOTAL:"] {
+            let line = text
+                .lines()
+                .find(|l| l.contains(label))
+                .unwrap_or_else(|| panic!("no printed line contains {label:?}\n---\n{text}\n---"));
+            assert!(
+                line.ends_with("0.00"),
+                "{label} row must end on the amount, not a trailing space: {line:?}"
+            );
+            assert!(
+                !line.ends_with("0.00 "),
+                "{label} row must not carry a trailing separator: {line:?}"
+            );
+        }
+    }
+
+    /// DEV-QA-092, Rust side: no `vat_number` means no VAT-number line at all —
+    /// not a bare label. Same fixture as the positive test above, French labels
+    /// so the assertion is on the bytes the tester actually saw.
+    #[test]
+    fn receipt_header_omits_the_vat_number_line_when_the_company_has_none() {
+        let mut company = make_company();
+        company.tax_id = "BRANCH-FR-TAX".to_string();
+        company.vat_number = None;
+        company.legal_identifier_lines = Some(vec!["SIRET: 55210055400014".to_string()]);
+
+        let mut data = make_rounded_sale();
+        data.company = company;
+        data.labels = Some(
+            serde_json::from_str::<ReceiptLabels>(r#"{"tax_id":"MF :","vat_number":"N° TVA :"}"#)
+                .expect("labels JSON"),
+        );
+
+        let bytes = format_receipt_with_settings(&data, None);
+        let text = String::from_utf8_lossy(&bytes);
+
+        assert!(
+            text.contains("MF : BRANCH-FR-TAX"),
+            "the matricule must still print\n{text}"
+        );
+        assert!(
+            !text.contains("N° TVA"),
+            "no vat_number means the label must not print at all\n{text}"
+        );
+        assert!(text.contains("SIRET: 55210055400014"), "{text}");
     }
 
     /// A 64-hex fiscal hash, the shape `FiscalHashService` produces.

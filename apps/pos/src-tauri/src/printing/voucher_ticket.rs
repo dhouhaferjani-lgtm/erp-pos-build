@@ -242,7 +242,15 @@ mod tests {
         let bytes = format_voucher_ticket(&ticket);
         let text = String::from_utf8_lossy(&bytes);
         assert!(text.contains("VCH-ABC-123"), "should include voucher code");
-        assert!(text.contains("25.00"), "should include balance");
+        // DEV-QA-095: the fixture symbol is `€`, so the balance cell must read
+        // `25.00 €` — the placement, not just the digits. Decoded as CP1252,
+        // because that is what the builder emitted: `€` is the single byte
+        // 0x80 there, which is not valid UTF-8 on its own.
+        let (decoded, _, _) = encoding_rs::WINDOWS_1252.decode(&bytes);
+        assert!(
+            decoded.contains("25.00 €"),
+            "balance must print as `<amount> <symbol>`\n{decoded}"
+        );
         assert!(text.contains("Test Shop"), "should include company name");
     }
 

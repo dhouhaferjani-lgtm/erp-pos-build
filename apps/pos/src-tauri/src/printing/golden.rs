@@ -925,7 +925,15 @@ fn classify_hunk(
     while d < dels.len() {
         let gi = dels[d];
         let mut paired: Option<usize> = None;
+        // The pairing normalises away space runs, so it must never be offered a
+        // line that carries no currency at all: two non-money lines differing
+        // only in padding would normalise equal and be laundered as a
+        // "currency re-layout". Gate on the GOLDEN side carrying the symbol.
         if let Item::Text(golden_text) = &a[gi] {
+            if !golden_text.contains(wl.currency) {
+                d += 1;
+                continue;
+            }
             let golden_norm = normalize_money(golden_text, wl.currency);
             for (k, &nj) in inss.iter().enumerate() {
                 if let Item::Text(new_text) = &b[nj] {
@@ -1320,6 +1328,21 @@ fn whitelist_rejects_an_empty_qr_caption() {
         b.qr_code(QR_TOKEN, 4, QrErrorCorrection::M);
     });
     classify_pair(&golden, &new).expect_err("a blank caption must NOT be whitelisted");
+}
+
+#[test]
+fn whitelist_rejects_a_padding_only_change_on_a_non_currency_line() {
+    // Class 4 collapses space runs, which is correct for a money row that had
+    // to be re-padded — and dangerous for anything else. A header line whose
+    // padding changed carries no currency and must reach the reviewer.
+    let golden = synthetic(|b| {
+        b.text_line("Reçu :    TRM1-2026-000042");
+    });
+    let new = synthetic(|b| {
+        b.text_line("Reçu : TRM1-2026-000042");
+    });
+    classify_pair(&golden, &new)
+        .expect_err("a padding-only change on a non-currency line must NOT be whitelisted");
 }
 
 #[test]

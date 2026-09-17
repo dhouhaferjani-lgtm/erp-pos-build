@@ -137,7 +137,7 @@ TTC (default; today's post-D-1 layout — see the golden-bytes rule in §5): `So
 `PrintSettings` (`receipt_template.rs:265-280`): `cp437 → ESC t 0` + CP437 bytes (accents become `?`, honest), `cp858 → ESC t 19` + a static 128-entry CP858 table for U+00A0–U+00FF and `€`, `cp1252 → ESC t 16` + `WINDOWS_1252` (unchanged, the correct pairing for Epson TM / Xprinter). `ESC t` is **always** emitted (the `page != 0` guard at `:312-315` goes). `format_test_page_with_columns` (`:921`) and its command (`commands/printing.rs:107-112`) take `PrintSettings` so the operator's test page reveals a mismatch. Fixture expectation: `Café crème` → `43 61 66 E9 20 63 72 E8 6D 65` preceded by `1B 74 10`.
 
 ### 4.4 Currency placement
-`formatReceiptMoney` (§1.1) formats every money cell once in TypeScript; the Rust encoder prints cells verbatim. The 17 `format!("{}{}", symbol, …)` sites disappear with `format_receipt_with_settings`. `voucher_ticket.rs:172` keeps its bug until E-2 (declared).
+`formatReceiptMoney` (§1.1) formats every money cell once in TypeScript; the Rust encoder prints cells verbatim. The 17 `format!("{}{}", symbol, …)` sites disappear with `format_receipt_with_settings`. `voucher_ticket.rs:172` is **fixed in this lane too** — it goes through the same `money()` helper as the 17 receipt sites, so the voucher ticket's balance cell carries the same placement (registry row DEV-QA-095 names it).
 
 ## 5. Testing
 
