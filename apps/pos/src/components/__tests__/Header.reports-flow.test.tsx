@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useOperatorStore } from '@/stores/operatorStore';
 import { useTerminalStore, type Shift, type Terminal } from '@/stores/terminalStore';
 import { generateZReport } from '@/api/reportApi';
+import { useShiftActionsStore } from '@/stores/shiftActionsStore';
 
 const mocks = vi.hoisted(() => ({
   preview: vi.fn(),
@@ -218,6 +219,19 @@ describe('Header report and close flow', () => {
     expect(await screen.findByTestId('commit-counts-button')).toBeDisabled();
   });
 
+  it('serves a /shift end-of-day request that arrived before the terminal was loaded', async () => {
+    useTerminalStore.setState({ terminal: null, shift });
+    renderHeader();
+    await act(async () => {
+      useShiftActionsStore.getState().requestEndOfDay();
+    });
+    expect(screen.queryByTestId('end-of-day-confirm-button')).not.toBeInTheDocument();
+    await act(async () => {
+      useTerminalStore.setState({ terminal });
+    });
+    expect(await screen.findByTestId('end-of-day-confirm-button')).toBeInTheDocument();
+  });
+
   it('prints the Z after close and marks the second print as a reprint (newly reachable path)', async () => {
     mocks.tauri = true;
     renderHeader();
@@ -229,11 +243,11 @@ describe('Header report and close flow', () => {
 
     expect(mocks.printReceipt).toHaveBeenCalledTimes(2);
     // buildZReceiptData maps formattedZNumber -> receipt_number (printing.ts:265)
-    expect(mocks.printReceipt.mock.calls[0][0]).toMatchObject({
+    expect(mocks.printReceipt.mock.calls[0]?.[0]).toMatchObject({
       is_reprint: false,
       receipt_number: 'Z0001',
     });
-    expect(mocks.printReceipt.mock.calls[1][0]).toMatchObject({
+    expect(mocks.printReceipt.mock.calls[1]?.[0]).toMatchObject({
       is_reprint: true,
       receipt_number: 'Z0001',
     });
@@ -288,7 +302,7 @@ describe('Header report and close flow', () => {
     expect(screen.getByText('Z0001')).toBeInTheDocument(); // scope check compares ids
 
     fireEvent.click(screen.getByRole('button', { name: 'reports.endOfDay.printReceipt' }));
-    expect(mocks.printReceipt.mock.calls[0][0]).toMatchObject({ manager_name: 'Mgr One' });
+    expect(mocks.printReceipt.mock.calls[0]?.[0]).toMatchObject({ manager_name: 'Mgr One' });
   });
 
   it.each(['company', 'terminal', 'operator', 'shift'])('clears the closed result when %s changes', async (scope) => {
