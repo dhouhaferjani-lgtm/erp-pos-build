@@ -4,8 +4,9 @@ import { applyAllMigrations } from '@/lib/db/__tests__/helpers/migrationTestHelp
 import { productCategory } from '@/test/fixtures/productCategory';
 import { getAllProducts, getProductById, getProductsByBarcode, upsertProducts, type ProductPayload } from '../productRepository';
 
-// Match db_writer.rs::bind_values: JSON objects are bound as JSON TEXT by
-// SQLx. The base better-sqlite3 adapter rejects object parameters instead.
+// Stand-in for the PRE-FIX write path only: the old app passed the CategoryData
+// object and the Rust writer stored it as JSON text. Not a fidelity model of
+// db_writer.rs (numbers/booleans differ).
 class NativeBindingAdapter extends SqliteTestAdapter {
   override execute(sql: string, params?: unknown[]) {
     return super.execute(sql, params?.map((value) =>

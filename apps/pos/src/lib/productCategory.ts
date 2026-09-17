@@ -1,4 +1,3 @@
-import type {} from '../../../../packages/shared/types/generated';
 import type { POSProduct } from '@/types/product';
 
 type CategoryData = App.Modules.Product.Application.DTOs.CategoryData;
@@ -16,24 +15,26 @@ export function toPOSProduct(product: POSProductPayload): POSProduct {
   return { ...product, category: productCategoryLabel(product.category) };
 }
 
-type CachedCategoryData = Pick<CategoryData,
-  'id' | 'company_id' | 'name' | 'slug' | 'path' | 'depth' | 'breadcrumb' | 'default_tax_configuration_id'
->;
-
-function isCachedCategoryData(value: unknown): value is CachedCategoryData {
+/**
+ * Discriminate a cached CategoryData from an operator-typed label with the
+ * creation-era fields only (CategoryData.php, 2025-12-27): newer optional
+ * fields come and go, and must not decide whether a legacy row is readable.
+ */
+function isCachedCategoryData(value: unknown): value is Pick<CategoryData, 'id' | 'name' | 'slug'> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
   const category = value as Record<string, unknown>;
   return typeof category.id === 'number'
-    && typeof category.company_id === 'string'
     && typeof category.name === 'string'
-    && typeof category.slug === 'string'
-    && typeof category.path === 'string'
-    && typeof category.depth === 'number'
-    && (category.breadcrumb === null || Array.isArray(category.breadcrumb))
-    && (category.default_tax_configuration_id === null || typeof category.default_tax_configuration_id === 'string');
+    && typeof category.slug === 'string';
 }
 
-/** Recover old SQLx JSON bindings before incremental sync replaces those rows. */
+/**
+ * Old app builds bound the CategoryData object and SQLx stored it as JSON text.
+ * Incremental sync is `updated_since` (syncService.ts pullProductsCore), so such
+ * rows are NEVER re-pulled unless the product changes server-side; migration 68
+ * rewrites them once, and this decoder covers reads in between plus any row the
+ * migration could not parse.
+ */
 export function cachedProductCategoryLabel(category: string | null): string | undefined {
   if (category === null) return undefined;
   if (!category.trimStart().startsWith('{')) return category;

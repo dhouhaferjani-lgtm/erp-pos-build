@@ -1,4 +1,3 @@
-import type {} from '../../../../../packages/shared/types/generated';
 
 export function productCategory(
   overrides: Partial<App.Modules.Product.Application.DTOs.CategoryData> = {},
