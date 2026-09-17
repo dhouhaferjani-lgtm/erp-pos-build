@@ -135,6 +135,7 @@ fn fr_labels() -> ReceiptLabels {
         refund_header: Some("REMBOURSEMENT".to_string()),
         original_ticket: Some("Ticket original :".to_string()),
         original_qr_label: Some("Scanner le ticket original :".to_string()),
+        qr_scan_label: Some("Scanner pour retour / échange".to_string()),
         account_payment_header: Some("RECU D'ENCAISSEMENT".to_string()),
         balance_before: Some("Solde avant :".to_string()),
         balance_after: Some("Solde apres :".to_string()),

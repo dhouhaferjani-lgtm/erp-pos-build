@@ -169,6 +169,11 @@ pub struct ReceiptLabels {
     pub original_ticket: Option<String>,
     /// "Scan original ticket:" label above the original-receipt QR re-print.
     pub original_qr_label: Option<String>,
+    /// Caption printed immediately above the refund-lookup QR on every ticket
+    /// that carries one (e.g. "Scanner pour retour / échange"). Optional so an
+    /// older device build that does not send it still deserialises.
+    #[serde(default)]
+    pub qr_scan_label: Option<String>,
     pub account_payment_header: Option<String>,
     pub balance_before: Option<String>,
     pub balance_after: Option<String>,
@@ -747,12 +752,10 @@ pub fn format_receipt_with_settings(
             b.text_line(&format!("Sig: {}", sig));
         }
 
-        // QR code with full hash for verification
-        if let Some(ref hash) = data.fiscal_hash {
-            b.empty_line();
-            b.qr_code(hash, 4, QrErrorCorrection::M);
-            b.empty_line();
-        }
+        // DEV-QA-093: no fiscal-hash QR. It encoded the raw hash hex — not a
+        // URL, no scheme, nothing a customer's camera can resolve — and it
+        // duplicated the `Hash:` line printed two lines above. The ticket now
+        // carries exactly ONE QR, the labelled refund-lookup token below.
 
         b.select_font(false); // Back to Font A
     }
@@ -768,6 +771,13 @@ pub fn format_receipt_with_settings(
             b.separator('-');
             b.align(Alignment::Center);
             b.empty_line();
+            // Caption FIRST, so the customer knows what the one remaining QR
+            // is for before they look at it (DEV-QA-093). Same idiom as the
+            // refund path's original-ticket caption above (`:490-494`):
+            // Font B for the label, back to Font A for everything after.
+            b.select_font(true);
+            b.text_line(&data.label(|l| &l.qr_scan_label, "Scan for return / exchange"));
+            b.select_font(false);
             b.qr_code(token, 4, QrErrorCorrection::M);
             b.empty_line();
             // Human-readable token below the QR (small font) so it can be
@@ -1696,6 +1706,7 @@ mod tests_z_cash_counts {
             refund_header: None,
             original_ticket: None,
             original_qr_label: None,
+            qr_scan_label: None,
             account_payment_header: None,
             balance_before: None,
             balance_after: None,
