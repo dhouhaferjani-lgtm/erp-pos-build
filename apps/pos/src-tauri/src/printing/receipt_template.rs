@@ -1480,6 +1480,137 @@ mod tests_z_cash_counts {
         }
     }
 
+    /// A 64-hex fiscal hash, the shape `FiscalHashService` produces.
+    const FISCAL_HASH: &str = "3f7a1c9e08b542d6a15c7e93b0d4f28671ac35e9d8420fb6c7e1539a04d8b2c6";
+    /// The canonical `v:kid:receipt_uuid:mac` refund-lookup token.
+    const QR_TOKEN: &str = "1:kid:uuid:mac";
+
+    /// Every `GS ( k` function-180 ("store QR data") payload, in stream order —
+    /// i.e. what each QR printed on the ticket actually encodes.
+    fn qr_payloads(bytes: &[u8]) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut i = 0usize;
+        while i + 8 <= bytes.len() {
+            if bytes[i..i + 3] == [0x1D, 0x28, 0x6B] && bytes[i + 5..i + 8] == [0x31, 0x50, 0x30] {
+                let block_len = u16::from(bytes[i + 3]) | (u16::from(bytes[i + 4]) << 8);
+                let start = i + 8;
+                let end = (start + block_len.saturating_sub(3) as usize).min(bytes.len());
+                out.push(String::from_utf8_lossy(&bytes[start..end]).into_owned());
+                i = end;
+                continue;
+            }
+            i += 1;
+        }
+        out
+    }
+
+    /// The exact byte run a captioned QR must produce: Font B, the caption and
+    /// its LF, back to Font A, then the first byte of the `GS ( k` sequence.
+    /// Anything between the caption and the QR would break this window, which
+    /// is the point — the caption has to be adjacent to what it captions.
+    fn captioned_qr_window(caption: &str) -> Vec<u8> {
+        let (encoded, _, _) = encoding_rs::WINDOWS_1252.encode(caption);
+        let mut expected = vec![0x1B, 0x4D, 0x01]; // ESC M 1 — Font B
+        expected.extend_from_slice(&encoded);
+        expected.push(0x0A); // text_line's LF
+        expected.extend_from_slice(&[0x1B, 0x4D, 0x00]); // ESC M 0 — back to Font A
+        expected.extend_from_slice(&[0x1D, 0x28, 0x6B]); // GS ( k — the QR starts here
+        expected
+    }
+
+    /// A fiscal sale that carries BOTH a fiscal hash and a refund-lookup token
+    /// — the DEV-QA-093 condition. `labels_json` is deserialised the way the
+    /// device sends it, so a fixture can omit a key entirely.
+    fn make_fiscal_sale_with_token(labels_json: &str) -> ReceiptData {
+        let mut data = make_rounded_sale();
+        data.fiscal_hash = Some(FISCAL_HASH.to_string());
+        data.fiscal_signature = Some("SIG-2026-09-17-AB12CD34EF56".to_string());
+        data.show_fiscal_info = Some(true);
+        data.qr_token = Some(QR_TOKEN.to_string());
+        data.labels =
+            Some(serde_json::from_str::<ReceiptLabels>(labels_json).expect("labels JSON"));
+        data
+    }
+
+    /// DEV-QA-093: the ticket carries exactly ONE QR — the refund-lookup token
+    /// — and it is captioned. The fiscal hash stays as readable text and is
+    /// gone from every QR payload.
+    ///
+    /// The labels payload here has NO `qr_scan_label` key at all, which
+    /// exercises the `#[serde(default)]` on that field AND the English
+    /// fallback in the same fixture.
+    #[test]
+    fn the_only_qr_is_the_captioned_refund_lookup_token() {
+        let labels: ReceiptLabels =
+            serde_json::from_str(r#"{"receipt":"Receipt:","total":"TOTAL:"}"#)
+                .expect("labels without qr_scan_label must still deserialise");
+        assert!(
+            labels.qr_scan_label.is_none(),
+            "the key is absent from the payload, so the field must default to None"
+        );
+
+        let data = make_fiscal_sale_with_token(r#"{"receipt":"Receipt:","total":"TOTAL:"}"#);
+        let bytes = format_receipt_with_settings(&data, None);
+
+        // Exactly one QR, and it is the workflow token — not the fiscal hash.
+        assert_eq!(
+            qr_payloads(&bytes),
+            vec![QR_TOKEN.to_string()],
+            "a sale ticket must print exactly one QR, the refund-lookup token"
+        );
+
+        // The hash and signature are still PRINTED, abbreviated, as text.
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(
+            text.contains(&format!(
+                "Hash: {}...{}",
+                &FISCAL_HASH[..16],
+                &FISCAL_HASH[FISCAL_HASH.len() - 16..]
+            )),
+            "the fiscal hash line must survive\n{text}"
+        );
+        assert!(text.contains("Sig: SIG-2026-09-17-AB12CD34EF56"), "{text}");
+
+        // ... but the full hash is nowhere in the stream any more: the QR was
+        // the only place it appeared in full.
+        assert!(
+            !bytes
+                .windows(FISCAL_HASH.len())
+                .any(|w| w == FISCAL_HASH.as_bytes()),
+            "the full fiscal hash must not survive anywhere in the byte stream"
+        );
+
+        // The English default caption, in the Font-B sandwich, immediately
+        // before the QR.
+        let expected = captioned_qr_window("Scan for return / exchange");
+        assert!(
+            bytes.windows(expected.len()).any(|w| w == expected),
+            "the English default caption must sit immediately before the token QR"
+        );
+    }
+
+    /// A supplied `qr_scan_label` replaces the English default, still adjacent
+    /// to the QR and still inside the Font-B sandwich.
+    #[test]
+    fn a_supplied_qr_scan_label_replaces_the_english_caption() {
+        let data = make_fiscal_sale_with_token(
+            r#"{"receipt":"Reçu :","qr_scan_label":"Scanner pour retour / échange"}"#,
+        );
+        let bytes = format_receipt_with_settings(&data, None);
+
+        assert_eq!(qr_payloads(&bytes), vec![QR_TOKEN.to_string()]);
+
+        let expected = captioned_qr_window("Scanner pour retour / échange");
+        assert!(
+            bytes.windows(expected.len()).any(|w| w == expected),
+            "the supplied caption must sit immediately before the token QR"
+        );
+        assert!(
+            !String::from_utf8_lossy(&bytes).contains("Scan for return / exchange"),
+            "the English default must not also be printed"
+        );
+    }
+
     /// The rendered amount on the first line whose text starts with `label`,
     /// as signed millimes. Test-only parsing — the formatter itself never
     /// parses a monetary string.
