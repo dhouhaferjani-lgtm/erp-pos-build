@@ -1569,7 +1569,11 @@ mod tests_z_cash_counts {
         );
 
         let bytes = format_receipt_with_settings(&data, None);
-        let text = String::from_utf8_lossy(&bytes);
+        // Decoded as CP1252, not `from_utf8_lossy`: `°` is the single byte 0xB0
+        // in the emitted stream, which a lossy UTF-8 read turns into U+FFFD —
+        // the needle "N° TVA" could then never match and the negative
+        // assertion would be dead. Same idiom as the voucher balance test.
+        let (text, _, _) = encoding_rs::WINDOWS_1252.decode(&bytes);
 
         assert!(
             text.contains("MF : BRANCH-FR-TAX"),
@@ -1578,6 +1582,13 @@ mod tests_z_cash_counts {
         assert!(
             !text.contains("N° TVA"),
             "no vat_number means the label must not print at all\n{text}"
+        );
+        // Belt and braces: an ASCII-only needle that survives ANY decoding, so
+        // this half of the assertion cannot be silently disarmed by a future
+        // change to how the test reads the stream.
+        assert!(
+            !text.contains("TVA :"),
+            "no vat_number means no VAT label fragment at all\n{text}"
         );
         assert!(text.contains("SIRET: 55210055400014"), "{text}");
     }
