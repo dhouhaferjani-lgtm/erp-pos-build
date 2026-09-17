@@ -849,16 +849,35 @@ fn classify_hunk(
         true
     });
 
-    // 2 — removed fiscal-hash QR (DEV-QA-093).
-    dels.retain(|&i| {
-        if let Item::Qr { payload, .. } = &a[i] {
-            if payload == wl.fiscal_hash {
-                classes.push(WhitelistClass::FiscalHashQrRemoved);
-                return false;
+    // 2 — removed fiscal-hash QR (DEV-QA-093), with the blank lines that framed it.
+    //
+    // The QR is emitted as `empty_line(); qr_code(hash); empty_line()` — three
+    // items, not one — and the two blanks exist ONLY to give that QR vertical
+    // space on the paper, so they leave with it. Controller ruling against this
+    // module's §5 wording ("the dropped fiscal-hash *block*"): at most ONE blank
+    // on each side, each of which must itself be a deletion in this hunk and sit
+    // directly beside the absorbed QR. A blank removed anywhere else — including
+    // one framing the workflow-TOKEN QR — is still the reviewer's problem.
+    let framed_hash_qrs: Vec<usize> = dels
+        .iter()
+        .copied()
+        .filter(|&i| matches!(&a[i], Item::Qr { payload, .. } if payload == wl.fiscal_hash))
+        .collect();
+    if !framed_hash_qrs.is_empty() {
+        let mut absorbed: Vec<usize> = Vec::with_capacity(framed_hash_qrs.len() * 3);
+        for i in framed_hash_qrs {
+            classes.push(WhitelistClass::FiscalHashQrRemoved);
+            absorbed.push(i);
+            for side in [i.checked_sub(1), Some(i + 1)].into_iter().flatten() {
+                if dels.contains(&side)
+                    && matches!(a.get(side), Some(Item::Text(t)) if t.is_empty())
+                {
+                    absorbed.push(side);
+                }
             }
         }
-        true
-    });
+        dels.retain(|i| !absorbed.contains(i));
+    }
 
     // 5 — one added caption line immediately before the workflow QR (DEV-QA-093).
     //
@@ -1148,6 +1167,59 @@ fn whitelist_accepts_class2_removed_fiscal_hash_qr() {
         classify_pair(&golden, &new).expect("class 2 must be whitelisted"),
         vec![WhitelistClass::FiscalHashQrRemoved]
     );
+}
+
+#[test]
+fn whitelist_accepts_class2_absorbs_the_hash_qr_framing_blank_lines() {
+    // The real shape of `receipt_template.rs:760-764`: the QR carried a blank
+    // line on each side, and all three go when the QR goes.
+    let golden = synthetic(|b| {
+        b.text_line("Hash: 3f7a1c9e08b542d6...c7e1539a04d8b2c6");
+        b.empty_line();
+        b.qr_code(FISCAL_HASH, 4, QrErrorCorrection::M);
+        b.empty_line();
+        b.text_line("Merci pour votre achat !");
+    });
+    let new = synthetic(|b| {
+        b.text_line("Hash: 3f7a1c9e08b542d6...c7e1539a04d8b2c6");
+        b.text_line("Merci pour votre achat !");
+    });
+    assert_eq!(
+        classify_pair(&golden, &new).expect("class 2 must absorb the framing"),
+        vec![WhitelistClass::FiscalHashQrRemoved]
+    );
+}
+
+#[test]
+fn whitelist_rejects_a_blank_line_removed_away_from_the_hash_qr() {
+    // Class 2 absorbs FRAMING, not blank lines in general: a blank dropped
+    // somewhere else is a layout change the reviewer must see.
+    let golden = synthetic(|b| {
+        b.text_line("Hash: 3f7a1c9e08b542d6...c7e1539a04d8b2c6");
+        b.empty_line();
+        b.text_line("Merci pour votre achat !");
+    });
+    let new = synthetic(|b| {
+        b.text_line("Hash: 3f7a1c9e08b542d6...c7e1539a04d8b2c6");
+        b.text_line("Merci pour votre achat !");
+    });
+    classify_pair(&golden, &new)
+        .expect_err("a blank line removed away from the hash QR must NOT be whitelisted");
+}
+
+#[test]
+fn whitelist_rejects_a_blank_line_removed_beside_the_token_qr() {
+    // The workflow QR is not the hash QR: tightening the space around it is a
+    // deliberate layout change and class 2 must not launder it.
+    let golden = synthetic(|b| {
+        b.empty_line();
+        b.qr_code(QR_TOKEN, 4, QrErrorCorrection::M);
+    });
+    let new = synthetic(|b| {
+        b.qr_code(QR_TOKEN, 4, QrErrorCorrection::M);
+    });
+    classify_pair(&golden, &new)
+        .expect_err("a blank beside the TOKEN QR must NOT be absorbed by class 2");
 }
 
 #[test]
