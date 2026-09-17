@@ -156,7 +156,11 @@ TTC (default; today's post-D-1 layout — see the golden-bytes rule in §5): `So
 
 Gates: `pnpm --filter @autoerp/web test|lint|typecheck`, `pnpm --filter @autoerp/pos test|lint|typecheck`, shared package Vitest, `cargo test -p <pos crate> --lib` **once** at the gate under the machine budget (one process, swap < 9000M), `PREFLIGHT_TEST_PATHS='tests/Feature/Company' ./scripts/preflight.sh`, `scripts/run-feature-lane-local.sh` for the Company lane when Docker is up (Fable owns Docker).
 
-## Delivery: two PRs
+## Delivery — RE-SCOPED 2026-09-17 (owner): ship only the four fixes; PR 1 / PR 2 below are DEFERRED (change request)
+
+Owner ruling (Dhouha, relayed by the supervisor session and confirmed directly): "he needs only something that works, don't complicate it". The lane ships **only DEV-QA-092..095 fixed inside the existing Rust template + `buildReceiptData.ts`** on branch `fix/pos-printed-ticket` (golden-bytes whitelist test, existing Rust layout tests kept, no new settings, no preview, no schema, no shared package). The web preview, logo toggle and HT/TTC toggle become a **change request** (`~/pm-kit` template); the two-PR plan below is parked — `docs/superpowers/plans/2026-09-17-pos-receipt-doc-pr1.md` (Tasks 1-2 done on parked branch `feat/pos-receipt-preview` @ b6c6b90b0) and `…-settings-web-pr2.md`.
+
+## Delivery: two PRs (DEFERRED)
 
 | PR | Content | Gate |
 |---|---|---|

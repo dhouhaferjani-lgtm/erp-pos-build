@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Move the customer-ticket layout out of Rust into one pure TypeScript builder in `packages/shared/src/receipt` that emits a `ReceiptDoc` segment model, make Rust a pure encoder, and fix the four printed-ticket defects (DEV-QA-085 tax-id printed twice, DEV-QA-086 meaningless QR, DEV-QA-087 `é`/`ç` mojibake, DEV-QA-088 `TND` glued left of the amount).
+**Goal:** Move the customer-ticket layout out of Rust into one pure TypeScript builder in `packages/shared/src/receipt` that emits a `ReceiptDoc` segment model, make Rust a pure encoder, and fix the four printed-ticket defects (DEV-QA-092 tax-id printed twice, DEV-QA-093 meaningless QR, DEV-QA-094 `é`/`ç` mojibake, DEV-QA-095 `TND` glued left of the amount).
 
 **Architecture:** `apps/pos` builders keep producing `ReceiptData` (moved verbatim into `@autoerp/shared/src/receipt`); `buildReceiptDoc(data, display, print)` ports `format_receipt_with_settings` (`apps/pos/src-tauri/src/printing/receipt_template.rs:302-868`) branch-for-branch into a `ReceiptDoc`; `printReceipt` invokes the new `print_receipt_doc` Tauri command; `apps/pos/src-tauri/src/printing/doc_encoder.rs` maps segments onto the existing `EscPosBuilder` primitives and builds ONE buffer (the Windows transport writes one RAW job, `printing/mod.rs:64-69`). The old `print_receipt` command and `format_receipt_with_settings` are removed so no second print path survives; a **test-only frozen copy** of the old template (`golden_reference.rs`) keeps the golden-bytes regression possible inside a single `cargo test` run.
 
 **Tech Stack:** TypeScript 5.7 (strict), Vitest 3, React 19 (consumer only), Rust 2021 / Tauri 2, `encoding_rs` 0.8, `serde` 1.
 
-**Spec:** [`docs/superpowers/specs/2026-09-17-pos-receipt-preview-design.md`](../specs/2026-09-17-pos-receipt-preview-design.md) — Delivery table, PR 1 row. Phase-1 evidence (every `path:line` below): `docs/sessions/2026-09-17-lane-e/phase1-report.md`. Registry rows: `docs/qa/DEV-QA-registry.md` DEV-QA-085…088 (DEV-QA-089 is out of scope, ticket E-4).
+**Spec:** [`docs/superpowers/specs/2026-09-17-pos-receipt-preview-design.md`](../specs/2026-09-17-pos-receipt-preview-design.md) — Delivery table, PR 1 row. Phase-1 evidence (every `path:line` below): `docs/sessions/2026-09-17-lane-e/phase1-report.md`. Registry rows: `docs/qa/DEV-QA-registry.md` DEV-QA-092…088 (DEV-QA-096 is out of scope, ticket E-4).
 
 ## Amendments (read before any task)
 
@@ -26,7 +26,7 @@
 - **The shared source is typechecked under the strictest consumer flags.** `apps/web` imports the `.ts` source through the `@autoerp/shared` alias, so `apps/web/tsconfig.json` applies to it: `exactOptionalPropertyTypes`, `verbatimModuleSyntax`, `erasableSyntaxOnly`, `noPropertyAccessFromIndexSignature`, `noImplicitReturns`. `apps/pos/tsconfig.json` adds `noUncheckedIndexedAccess`. Therefore, in shared code: use `import type` for type-only imports; never write `{ align: undefined }` (build objects with conditional spreads); never use a TS `enum` or a parameter property; guard every array index.
 - **No `any` (CLAUDE.md rule 3).** Use `unknown` + type guards where a shape is not known.
 - **Every user-facing string goes through `t()` (CLAUDE.md rule 11).** The shared builder never contains French or English copy: all ticket text arrives on `ReceiptData.labels`, filled by `buildReceiptLabels()` (`apps/pos/src/lib/buildReceiptData.ts:557-606`) from `pos:receiptLabel.*`. The English strings in the builder's fallback table are the *existing* Rust defaults being ported (`receipt_template.rs:186-192`), not new copy.
-- **The D-1 era branch and `resolveSellerIdentity` are untouched.** `apps/pos/src/lib/buildReceiptData.ts:169-171` (`isPostRemiseReceipt`) and `:217-235` (era-dependent `subtotal`) keep their exact current code; `apps/pos/src/lib/fiscal/sellerIdentity.ts` is not edited in this PR. The tax-id dedup (DEV-QA-085) is **display-only**, applied inside `buildReceiptDoc`, never on the signed seller block. Guarded by `apps/pos/src/lib/fiscal/__tests__/saleReceiptV5CanonicalParity.test.ts`, `apps/pos/src/lib/fiscal/__tests__/saleReceiptV2CanonicalParity.test.ts` and `apps/pos/src/lib/fiscal/payloads/__tests__/SaleReceiptV1V2ByteStability.test.ts` (+ its snapshot `__snapshots__/SaleReceiptV1V2ByteStability.test.ts.snap`) — all three must stay green and unmodified.
+- **The D-1 era branch and `resolveSellerIdentity` are untouched.** `apps/pos/src/lib/buildReceiptData.ts:169-171` (`isPostRemiseReceipt`) and `:217-235` (era-dependent `subtotal`) keep their exact current code; `apps/pos/src/lib/fiscal/sellerIdentity.ts` is not edited in this PR. The tax-id dedup (DEV-QA-092) is **display-only**, applied inside `buildReceiptDoc`, never on the signed seller block. Guarded by `apps/pos/src/lib/fiscal/__tests__/saleReceiptV5CanonicalParity.test.ts`, `apps/pos/src/lib/fiscal/__tests__/saleReceiptV2CanonicalParity.test.ts` and `apps/pos/src/lib/fiscal/payloads/__tests__/SaleReceiptV1V2ByteStability.test.ts` (+ its snapshot `__snapshots__/SaleReceiptV1V2ByteStability.test.ts.snap`) — all three must stay green and unmodified.
 - **`cargo` is rationed.** Every `cargo` invocation in this plan is marked **"ONE run, after `sysctl vm.swapusage` < 9000M, orchestrator-approved"**. There is exactly ONE such invocation in the whole plan (Task 10). No other task may run `cargo build`, `cargo test`, `cargo check` or `pnpm tauri`. Rust tasks before Task 10 are written, reviewed and committed **unverified by compilation**, and Task 10 is the gate that proves them.
 - **Columns are `32 | 42` only** (`apps/pos/src/lib/printing.ts:436`: `80mm→42`, `58mm→32`).
 - **Currency scale comes from the data, never from a literal.** The fixture is TND (3 decimals, `apps/pos/src/lib/currency.ts:11-14`).
@@ -312,7 +312,7 @@ git commit -m "feat(shared-receipt): receipt segment types + @autoerp/shared wir
 
 ### Task 2: `formatReceiptMoney` and the `padColumns` parity helpers
 
-Fixes **DEV-QA-088**. Today every monetary cell is `format!("{}{}", data.currency_symbol, amount)` at 17 sites (`receipt_template.rs:520, 525, 530, 545, 564, 581, 591, 601, 611, 646, 647, 654, 672, 681, 696, 704, 724`) — code first, no space — and the symbol itself comes from `Intl.NumberFormat('en', …)` hardcoded at `apps/pos/src/lib/buildReceiptData.ts:50-60`. The placement rule already exists in `apps/web/src/lib/format.ts:98-108` (`currencyAppearsBeforeNumber`) and `:134-136`; this task ports it to a helper that operates on an **already-formatted decimal string** and never parses.
+Fixes **DEV-QA-095**. Today every monetary cell is `format!("{}{}", data.currency_symbol, amount)` at 17 sites (`receipt_template.rs:520, 525, 530, 545, 564, 581, 591, 601, 611, 646, 647, 654, 672, 681, 696, 704, 724`) — code first, no space — and the symbol itself comes from `Intl.NumberFormat('en', …)` hardcoded at `apps/pos/src/lib/buildReceiptData.ts:50-60`. The placement rule already exists in `apps/web/src/lib/format.ts:98-108` (`currencyAppearsBeforeNumber`) and `:134-136`; this task ports it to a helper that operates on an **already-formatted decimal string** and never parses.
 
 `padColumns` mirrors `EscPosBuilder::two_column` / `three_column` (`apps/pos/src-tauri/src/printing/escpos.rs:213-244` and `:250-271`) so the web preview pads exactly like the printer. The Rust side keeps its own implementation (the encoded width is what matters — see the doc comment at `escpos.rs:209-212`); this helper is the TS twin, pinned to the Rust behaviour by the parity table copied from `escpos.rs:552-594`.
 
@@ -456,7 +456,7 @@ Expected: FAIL — `Cannot find module '../money'` and `'../padColumns'`.
  * It replaces the `'en'`-hardcoded getCurrencySymbol at
  * apps/pos/src/lib/buildReceiptData.ts:50-60 and the 17
  * `format!("{}{}", currency_symbol, …)` sites in receipt_template.rs
- * (DEV-QA-088).
+ * (DEV-QA-095).
  */
 
 /**
@@ -602,7 +602,7 @@ Expected: PASS — 13 tests, 0 failures.
 
 ```bash
 git add packages/shared/src/receipt
-git commit -m "fix(pos-receipt DEV-QA-088): locale-correct formatReceiptMoney + padColumns parity helpers"
+git commit -m "fix(pos-receipt DEV-QA-095): locale-correct formatReceiptMoney + padColumns parity helpers"
 ```
 
 ---
@@ -612,7 +612,7 @@ git commit -m "fix(pos-receipt DEV-QA-088): locale-correct formatReceiptMoney + 
 `ReceiptData` and its nested shapes live at `apps/pos/src/lib/printing.ts:18-223` today (hand-rolled, mirrored by a second hand-rolled copy in `receipt_template.rs:18-224`). They move into the package **unchanged except for three deliberate edits**, and `printing.ts` re-exports them so all six builders and every call site keep compiling.
 
 The three edits:
-1. `currency_symbol: string` → `currency_code: string` + `locale: string`. The symbol was produced by `getCurrencySymbol` with a hardcoded `'en'` (`buildReceiptData.ts:50-60`) and concatenated by Rust; `buildReceiptDoc` now calls `formatReceiptMoney(amount, currency_code, locale)` instead (DEV-QA-088). **`getCurrencySymbol` is NOT deleted** — `buildVoucherTicketData` (`buildReceiptData.ts:664,679`) still needs it, and the voucher ticket keeps its own Rust layout until ticket E-2 (spec §4.4).
+1. `currency_symbol: string` → `currency_code: string` + `locale: string`. The symbol was produced by `getCurrencySymbol` with a hardcoded `'en'` (`buildReceiptData.ts:50-60`) and concatenated by Rust; `buildReceiptDoc` now calls `formatReceiptMoney(amount, currency_code, locale)` instead (DEV-QA-095). **`getCurrencySymbol` is NOT deleted** — `buildVoucherTicketData` (`buildReceiptData.ts:664,679`) still needs it, and the voucher ticket keeps its own Rust layout until ticket E-2 (spec §4.4).
 2. `ht_totals?: ReceiptHtTotals | null`. HT mode needs `Σ` per-rate **pre-remise** HT bases and `Σ` per-rate HT remise shares. The sealed payload carries only `discount_allocated`, which is the rate group's share of the **TTC** remise (proved by `apps/api/app/Modules/Fiscal/Application/Services/FiscalPayloadConstraintValidator.php:1595-1639`: `Σ discount_allocated == transaction_discount_amount`). Deriving the HT share needs a division, and the shared package does **no** arithmetic (Global Constraints), so the POS boundary precomputes it — the same discipline as `has_tolerance` / `has_cash_rounding` (`printing.ts:158-172`).
 3. Four new optional label fields: `qr_scan_label`, `subtotal_ht`, `discount_ht`, `total_ttc`.
 
@@ -673,7 +673,7 @@ describe('sampleReceipt fixture', () => {
     // 10.092 - 0.917 == 7.647 + 1.528 == 9.175, and 9.175 + 0.825 == 10.000.
   });
 
-  it('has exactly one QR token and a fiscal hash (the two QR sources of DEV-QA-086)', () => {
+  it('has exactly one QR token and a fiscal hash (the two QR sources of DEV-QA-093)', () => {
     expect(sampleReceipt.qr_token).toBe('v1:kid1:0199a0f3-5b1c-7c42-9f0e-2d7a1b3c4d5e:9f3a7c2e');
     expect(sampleReceipt.fiscal_hash).toHaveLength(64);
   });
@@ -765,7 +765,7 @@ export interface CompanyInfo {
    * Establishment VAT number — printed under the tax id when the terminal's
    * location carries a complete fiscal identity (spec 2026-06-11 §4.6).
    * Display-only; never part of the signed seller block. Suppressed by
-   * buildReceiptDoc when it equals `tax_id` (DEV-QA-085).
+   * buildReceiptDoc when it equals `tax_id` (DEV-QA-092).
    */
   vat_number?: string | null;
   /** Pre-formatted legal identifier lines (e.g. "SIRET: 552…"). Display-only. */
@@ -868,7 +868,7 @@ export interface ReceiptLabels {
   training?: string;
   customer_account?: string;
   customer_phone?: string;
-  /** Customer-facing caption above the return/exchange QR (DEV-QA-086). */
+  /** Customer-facing caption above the return/exchange QR (DEV-QA-093). */
   qr_scan_label?: string;
   /** "Sous-total HT" — subtotal line in HT display mode. */
   subtotal_ht?: string;
@@ -902,7 +902,7 @@ export interface ReceiptData {
    * ISO currency code (e.g. `TND`). Empty string on the Z-report header, which
    * prints no money. Replaces the former `currency_symbol`, which was resolved
    * with a hardcoded `'en'` locale and glued to the left of every amount
-   * (DEV-QA-088).
+   * (DEV-QA-095).
    */
   currency_code: string;
   /** UI locale (e.g. `fr`, `fr-TN`) that decides currency placement. */
@@ -1134,8 +1134,8 @@ import type { ReceiptData } from '../receiptData';
 /**
  * The Lane E reference ticket (Phase-1 report §4): a Tunisian café whose
  * `tax_id` and `vat_number` are the SAME value — the fixture that makes the
- * duplicate matricule (DEV-QA-085) observable — with accented product names
- * (DEV-QA-087), a remise, one cash payment and a signed QR token.
+ * duplicate matricule (DEV-QA-092) observable — with accented product names
+ * (DEV-QA-094), a remise, one cash payment and a signed QR token.
  *
  * Consumed by the shared Vitest snapshots, by the cross-language contract
  * JSON, by the Rust golden-bytes regression and by the web receipt preview.
@@ -1257,7 +1257,7 @@ git commit -m "refactor(pos-receipt): move ReceiptData into @autoerp/shared, add
 
 Ports `format_receipt_with_settings` lines `:302-317` (setup), `:318-374` (company header), `:375-434` (receipt meta + customer), `:436-461` (TRAINING + DUPLICATA), `:463-505` (refund banner + original-ticket QR) and `:506` (`separator('=')`).
 
-Fixes **DEV-QA-085**: `receipt_template.rs:347-353` prints `MF : <tax_id>` and `:356-364` prints `N° TVA : <vat_number>` as two unconditional independent lines, while `buildReceiptData.ts:195,197` fills both from the same establishment record — in Tunisia the matricule fiscal *is* the VAT identifier (`apps/api/database/seeders/CountriesSeeder.php:30`). The dedup is **display-only** and lives here; `apps/pos/src/lib/fiscal/sellerIdentity.ts` is not touched.
+Fixes **DEV-QA-092**: `receipt_template.rs:347-353` prints `MF : <tax_id>` and `:356-364` prints `N° TVA : <vat_number>` as two unconditional independent lines, while `buildReceiptData.ts:195,197` fills both from the same establishment record — in Tunisia the matricule fiscal *is* the VAT identifier (`apps/api/database/seeders/CountriesSeeder.php:30`). The dedup is **display-only** and lives here; `apps/pos/src/lib/fiscal/sellerIdentity.ts` is not touched.
 
 **Files:**
 - Create: `packages/shared/src/receipt/buildReceiptDoc.ts`
@@ -1318,14 +1318,14 @@ describe('buildReceiptDoc — company header', () => {
     expect(texts(doc.segments)).not.toContain(' Tunis');
   });
 
-  it('DEV-QA-085: prints the matricule ONCE when vat_number equals tax_id', () => {
+  it('DEV-QA-092: prints the matricule ONCE when vat_number equals tax_id', () => {
     const lines = texts(buildReceiptDoc(sampleReceipt, display, print).segments);
     expect(lines).toContain('MF : 1234567/A/M/000');
     expect(lines.filter((line) => line.includes('1234567/A/M/000'))).toHaveLength(1);
     expect(lines.some((line) => line.startsWith('N° TVA :'))).toBe(false);
   });
 
-  it('DEV-QA-085: still prints both when the establishment VAT number really differs', () => {
+  it('DEV-QA-092: still prints both when the establishment VAT number really differs', () => {
     const doc = buildReceiptDoc(
       { ...sampleReceipt, company: { ...sampleReceipt.company, vat_number: 'FR40303265045' } },
       display,
@@ -1336,7 +1336,7 @@ describe('buildReceiptDoc — company header', () => {
     expect(lines).toContain('N° TVA : FR40303265045');
   });
 
-  it('DEV-QA-085: the dedup ignores case and surrounding or inner whitespace', () => {
+  it('DEV-QA-092: the dedup ignores case and surrounding or inner whitespace', () => {
     const doc = buildReceiptDoc(
       { ...sampleReceipt, company: { ...sampleReceipt.company, vat_number: ' 1234567 / a / m / 000 ' } },
       display,
@@ -1489,7 +1489,7 @@ interface BuildContext {
   print: ReceiptPrintContext;
   /** Localized label with the Rust English default (receipt_template.rs:186-192). */
   label: (pick: (labels: ReceiptLabels) => string | undefined, fallback: string) => string;
-  /** Currency cell, formatted once, here (DEV-QA-088). */
+  /** Currency cell, formatted once, here (DEV-QA-095). */
   money: (amount: string) => string;
 }
 
@@ -1505,7 +1505,7 @@ function nonEmptyTrimmed(value: string | null | undefined): string | null {
 /**
  * Comparison form of a fiscal identifier: trimmed, upper-cased and stripped of
  * every whitespace character, so `" 1234567 / a / m / 000 "` and
- * `"1234567/A/M/000"` are recognised as the same matricule (DEV-QA-085).
+ * `"1234567/A/M/000"` are recognised as the same matricule (DEV-QA-092).
  *
  * Deliberately stronger than the spec's "trim, uppercase": an operator-typed
  * space must not resurrect the duplicate line. Display-only — the value that
@@ -1580,7 +1580,7 @@ function appendHeader(segments: ReceiptSegment[], ctx: BuildContext): void {
     segments.push({ kind: 'text', text: `${label} ${taxId}`, align: 'center' });
   }
 
-  // DEV-QA-085. receipt_template.rs:356-364 printed this line unconditionally
+  // DEV-QA-092. receipt_template.rs:356-364 printed this line unconditionally
   // beside the tax id, and buildReceiptData.ts:195,197 fills both from the SAME
   // establishment record — so in Tunisia the matricule printed twice. Display
   // only: resolveSellerIdentity and the signed seller block are untouched.
@@ -1759,7 +1759,7 @@ Expected: PASS — 13 new tests.
 
 ```bash
 git add packages/shared/src/receipt
-git commit -m "fix(pos-receipt DEV-QA-085): buildReceiptDoc header/meta/banners with display-only tax-id dedup"
+git commit -m "fix(pos-receipt DEV-QA-092): buildReceiptDoc header/meta/banners with display-only tax-id dedup"
 ```
 
 ---
@@ -1769,7 +1769,7 @@ git commit -m "fix(pos-receipt DEV-QA-085): buildReceiptDoc header/meta/banners 
 Ports `format_receipt_with_settings` lines `:507-548` (account-payment layout), `:549-588` (line items + modifiers + line discounts), `:590-700` (totals, VAT ventilation, cash rounding, TOTAL) and `:701-728` (payments, change due, tolerance).
 
 Two behaviour changes, both deliberate:
-- **DEV-QA-088**: every monetary cell is produced by `ctx.money(...)`, so `TND11.000` becomes `11.000 TND`.
+- **DEV-QA-095**: every monetary cell is produced by `ctx.money(...)`, so `TND11.000` becomes `11.000 TND`.
 - **New (owner ruling 7)**: `display.subtotalMode === 'HT'` restates the subtotal block tax-exclusively. The `> 20 chars` branch at `:566-573` is **dropped** — both of its arms were byte-identical, so removing it changes nothing.
 
 **Files:**
@@ -1821,7 +1821,7 @@ describe('buildReceiptDoc — line items', () => {
     expect(rows).toContainEqual(['  1 x 2.000', '2.000 TND']);
   });
 
-  it('DEV-QA-088: every money cell is amount-then-code with a separating space', () => {
+  it('DEV-QA-095: every money cell is amount-then-code with a separating space', () => {
     const json = JSON.stringify(buildReceiptDoc(sampleReceipt, ttc, print).segments);
     expect(json).not.toContain('TND9.000');
     expect(json).not.toContain('TND10.000');
@@ -2346,7 +2346,7 @@ Expected: PASS — 19 new tests, 0 failures.
 
 ```bash
 git add packages/shared/src/receipt
-git commit -m "fix(pos-receipt DEV-QA-088): buildReceiptDoc items, totals, HT/TTC modes and payments"
+git commit -m "fix(pos-receipt DEV-QA-095): buildReceiptDoc items, totals, HT/TTC modes and payments"
 ```
 
 ---
@@ -2355,7 +2355,7 @@ git commit -m "fix(pos-receipt DEV-QA-088): buildReceiptDoc items, totals, HT/TT
 
 Ports `format_receipt_with_settings` lines `:730-736` (notes), `:737-770` (fiscal compliance footer), `:772-790` (receipt QR token), `:792-804` (footer text), `:806-856` (Z cash-count block) and `:858-865` (feed + cut), plus the cash-count formatters `:879-913`.
 
-Fixes **DEV-QA-086**. Today a sale ticket carries up to two unlabelled QRs and a refund up to three: the fiscal-hash QR (`:760-764`) duplicates the `Hash:` text printed two lines above (`:745-757`), and the workflow QR (`:775-788`) has no caption on sales (refunds get one at `:496-497`). Owner ruling 6: **drop the fiscal-hash QR, keep ONE labelled refund-lookup QR**. The hash and signature stay as text — no fiscal information is lost.
+Fixes **DEV-QA-093**. Today a sale ticket carries up to two unlabelled QRs and a refund up to three: the fiscal-hash QR (`:760-764`) duplicates the `Hash:` text printed two lines above (`:745-757`), and the workflow QR (`:775-788`) has no caption on sales (refunds get one at `:496-497`). Owner ruling 6: **drop the fiscal-hash QR, keep ONE labelled refund-lookup QR**. The hash and signature stay as text — no fiscal information is lost.
 
 **Files:**
 - Modify: `packages/shared/src/receipt/buildReceiptDoc.ts` (add `appendFooter` and its call)
@@ -2393,7 +2393,7 @@ function texts(segments: readonly ReceiptSegment[]): string[] {
   return segments.flatMap((segment) => (segment.kind === 'text' ? [segment.text] : []));
 }
 
-describe('buildReceiptDoc — fiscal footer and QR (DEV-QA-086)', () => {
+describe('buildReceiptDoc — fiscal footer and QR (DEV-QA-093)', () => {
   it('prints exactly ONE QR on a sale, and it is the return/exchange token with a caption', () => {
     const doc = buildReceiptDoc(sampleReceipt, display, print);
     expect(qrs(doc.segments)).toEqual([
@@ -2653,7 +2653,7 @@ function appendFooter(segments: ReceiptSegment[], ctx: BuildContext): void {
   // Fiscal compliance footer. The hash and the signature stay as TEXT; the
   // fiscal-hash QR that used to follow them (receipt_template.rs:760-764) is
   // dropped — it encoded data already printed one line above, carried no URL
-  // and meant nothing to a customer (DEV-QA-086, owner ruling 6).
+  // and meant nothing to a customer (DEV-QA-093, owner ruling 6).
   if (ctx.display.showFiscalInfo && (data.fiscal_hash !== null || data.fiscal_signature !== null)) {
     segments.push({ kind: 'separator', char: '-' });
     if (data.fiscal_hash !== null) {
@@ -2756,7 +2756,7 @@ Expected: PASS — 16 footer tests + 8 newly-written snapshots. Read the generat
 
 ```bash
 git add packages/shared/src/receipt
-git commit -m "fix(pos-receipt DEV-QA-086): one labelled return QR, drop the fiscal-hash QR, Z block and tail"
+git commit -m "fix(pos-receipt DEV-QA-093): one labelled return QR, drop the fiscal-hash QR, Z block and tail"
 ```
 
 ---
@@ -3066,7 +3066,7 @@ git commit -m "feat(pos-print): printReceipt sends a ReceiptDoc and resolves dis
 
 ### Task 8: Rust — always emit `ESC t`, make the transcoding match the declared code page, real CP858, test page takes `PrintSettings`
 
-Fixes **DEV-QA-087** (P1). The four root causes, all cited from the Phase-1 trace:
+Fixes **DEV-QA-094** (P1). The four root causes, all cited from the Phase-1 trace:
 1. `receipt_template.rs:312-315` sends `ESC t` only when `code_page() != 0`, so the `cp437` option never selects CP437 and never resets a printer left on another page.
 2. `receipt_template.rs:274-280` returns `WINDOWS_1252` for **all three** options, so the byte stream is always CP1252 while the declared page is one of three values, two of which disagree.
 3. `receipt_template.rs:921-1010` + `commands/printing.rs:107-112`: the operator's alignment/test page takes no `PrintSettings` at all, so the one page used to validate a printer cannot reveal the mismatch.
@@ -3229,7 +3229,7 @@ Insert after the `QrErrorCorrection` impl (~line 84), before `pub struct EscPosB
 /// returned WINDOWS_1252 for all three options while `code_page` returned
 /// 0/16/19, and `ESC t` was suppressed entirely for page 0 — so a terminal set
 /// to `cp437`, or a clone that ignores `ESC t 16`, printed `é` as `Θ` and `ç`
-/// as `τ` (DEV-QA-087).
+/// as `τ` (DEV-QA-094).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextEncoding {
     /// Epson power-on page. ASCII only — accents are NOT representable and
@@ -3329,7 +3329,7 @@ In `apps/pos/src-tauri/src/printing/receipt_template.rs`, replace lines 263-280 
 
 ```rust
     /// Encoding AND code page, resolved together so they can never disagree
-    /// (DEV-QA-087). An unrecognised value is the device default, CP1252 —
+    /// (DEV-QA-094). An unrecognised value is the device default, CP1252 —
     /// the pairing that prints French accents on the terminals in the field.
     pub(crate) fn text_encoding(&self) -> TextEncoding {
         match self.encoding.as_str() {
@@ -3376,7 +3376,7 @@ pub fn format_test_page() -> Vec<u8> {
 ///
 /// The settings matter: before Lane E this page emitted no code page at all,
 /// so the ONE page an operator prints to validate a printer could not reveal
-/// the encoding mismatch behind DEV-QA-087.
+/// the encoding mismatch behind DEV-QA-094.
 pub fn format_test_page_with_columns(
     columns: Option<u8>,
     settings: Option<&PrintSettings>,
@@ -3430,7 +3430,7 @@ pub async fn print_test_page(
  *
  * The print settings are forwarded so the page declares the configured code
  * page and prints the accent probe: this is the page an operator uses to see
- * whether the printer speaks CP1252 (DEV-QA-087).
+ * whether the printer speaks CP1252 (DEV-QA-094).
  */
 export async function printTestPage(
   printer: PrinterConfig,
@@ -3462,7 +3462,7 @@ Run: `pnpm --filter @autoerp/pos test` → PASS.
 ```bash
 git add apps/pos/src-tauri/src/printing/escpos.rs apps/pos/src-tauri/src/printing/receipt_template.rs \
         apps/pos/src-tauri/src/commands/printing.rs apps/pos/src/lib/printing.ts apps/pos/src/pages/SettingsPage.tsx
-git commit -m "fix(pos-escpos DEV-QA-087): always emit ESC t, pair transcoding with the code page, real CP858, test page takes PrintSettings
+git commit -m "fix(pos-escpos DEV-QA-094): always emit ESC t, pair transcoding with the code page, real CP858, test page takes PrintSettings
 
 Rust written, not compiled — proven by the single cargo run in Task 10."
 ```
@@ -3636,7 +3636,7 @@ pub fn encode(doc: &ReceiptDoc, settings: &PrintSettings) -> Vec<u8> {
     let mut b = EscPosBuilder::with_columns(doc.columns);
 
     // Prologue: declare the code page ALWAYS, and transcode to the matching
-    // encoding (DEV-QA-087). `with_columns` has already emitted ESC @.
+    // encoding (DEV-QA-094). `with_columns` has already emitted ESC @.
     let encoding = settings.text_encoding();
     b.set_encoding(encoding);
     b.set_code_page(encoding.code_page());
@@ -3938,11 +3938,11 @@ Whitelisted difference regions — the spec §5 lists four; this plan declares a
 
 | # | Region | Why |
 |---|---|---|
-| 1 | The dropped `N° TVA : …` line | DEV-QA-085, owner-ruled dedup |
-| 2 | The dropped fiscal-hash QR block | DEV-QA-086, owner ruling 6 |
-| 3 | The `ESC t` prologue | DEV-QA-087, `ESC t` is now always emitted |
-| 4 | Currency cells (`TND11.000` → `11.000 TND`, and the padding shift that follows) | DEV-QA-088 |
-| 5 | **The added QR caption line** (`Scanner pour retour / échange`, Font B, above the token QR) | DEV-QA-086: spec §4.1 requires the label but §5's whitelist does not list it. Declared here so it is visible, not absorbed. |
+| 1 | The dropped `N° TVA : …` line | DEV-QA-092, owner-ruled dedup |
+| 2 | The dropped fiscal-hash QR block | DEV-QA-093, owner ruling 6 |
+| 3 | The `ESC t` prologue | DEV-QA-094, `ESC t` is now always emitted |
+| 4 | Currency cells (`TND11.000` → `11.000 TND`, and the padding shift that follows) | DEV-QA-095 |
+| 5 | **The added QR caption line** (`Scanner pour retour / échange`, Font B, above the token QR) | DEV-QA-093: spec §4.1 requires the label but §5's whitelist does not list it. Declared here so it is visible, not absorbed. |
 
 **Files:**
 - Create: `packages/shared/src/receipt/__tests__/contract.test.ts`
@@ -4290,11 +4290,11 @@ mod tests {
         let docs: BTreeMap<String, ReceiptDoc> = serde_json::from_str(DOC_JSON).expect("json");
         let bytes = encode(docs.get("sale-42").expect("sale-42"), &settings(42));
 
-        // ESC @ then ESC t 16 (CP1252) — DEV-QA-087.
+        // ESC @ then ESC t 16 (CP1252) — DEV-QA-094.
         assert_eq!(&bytes[0..2], &[0x1B, 0x40]);
         assert_eq!(&bytes[2..5], &[0x1B, 0x74, 0x10]);
 
-        // "Café crème" in CP1252 — DEV-QA-087.
+        // "Café crème" in CP1252 — DEV-QA-094.
         let probe = [0x43u8, 0x61, 0x66, 0xE9, 0x20, 0x63, 0x72, 0xE8, 0x6D, 0x65];
         assert!(bytes.windows(probe.len()).any(|w| w == probe));
 
@@ -4302,12 +4302,12 @@ mod tests {
         let garcon = [0x47u8, 0x61, 0x72, 0xE7, 0x6F, 0x6E];
         assert!(bytes.windows(garcon.len()).any(|w| w == garcon));
 
-        // "11.000 TND" right-aligned; "TND11.000" gone — DEV-QA-088.
+        // "11.000 TND" right-aligned; "TND11.000" gone — DEV-QA-095.
         let decoded: String = bytes.iter().map(|&b| b as char).collect();
         assert!(decoded.contains("11.000 TND"));
         assert!(!decoded.contains("TND11.000"));
 
-        // The matricule prints once — DEV-QA-085.
+        // The matricule prints once — DEV-QA-092.
         assert_eq!(decoded.matches("1234567/A/M/000").count(), 1);
     }
 
@@ -4317,7 +4317,7 @@ mod tests {
         let bytes = encode(docs.get("sale-42").expect("sale-42"), &settings(42));
         let (_stripped, payloads) = strip_qr_blocks(&bytes);
 
-        assert_eq!(payloads.len(), 1, "DEV-QA-086: one customer-facing QR");
+        assert_eq!(payloads.len(), 1, "DEV-QA-093: one customer-facing QR");
         assert_eq!(
             payloads[0],
             "v1:kid1:0199a0f3-5b1c-7c42-9f0e-2d7a1b3c4d5e:9f3a7c2e"
@@ -4484,8 +4484,8 @@ git add packages/shared/src/receipt apps/pos/src-tauri/tests/golden apps/pos/src
 git commit -m "test(pos-tauri): cross-language ReceiptDoc contract + golden-bytes whitelist regression
 
 Verified by ONE cargo test --lib run (swap checked, orchestrator-approved).
-Whitelisted diff regions: dropped N° TVA line (DEV-QA-085), dropped fiscal-hash
-QR (DEV-QA-086), ESC t prologue (DEV-QA-087), currency cells (DEV-QA-088), and
+Whitelisted diff regions: dropped N° TVA line (DEV-QA-092), dropped fiscal-hash
+QR (DEV-QA-093), ESC t prologue (DEV-QA-094), currency cells (DEV-QA-095), and
 the added QR caption — the fifth region, declared by the plan because spec §5's
 whitelist omits it."
 ```
@@ -4609,7 +4609,7 @@ Convention 11 requires the `Receipt` noun to name its canonical surface in the s
 
 **Files:**
 - Modify: `docs/glossary.md:78` (the **Receipt** row) and add a **Voucher ticket** row beside it
-- Modify: `docs/qa/DEV-QA-registry.md` rows DEV-QA-085…088 (status column)
+- Modify: `docs/qa/DEV-QA-registry.md` rows DEV-QA-092…088 (status column)
 
 **Interfaces:** documentation only.
 
@@ -4631,7 +4631,7 @@ Immediately after the Receipt row:
 
 - [ ] **Step 3: Update the registry**
 
-In `docs/qa/DEV-QA-registry.md`, move rows **DEV-QA-085**, **086**, **087** and **088** from `EN COURS` to `CORRIGÉ (PR 1, en attente de recette)` and append to each row's evidence cell the verification level actually reached — for example, for DEV-QA-087: *"corrigé `escpos.rs` TextEncoding + `receipt_template.rs` text_encoding + page de test; vérifié par tests unitaires Rust (1 exécution cargo) ; **non vérifié sur imprimante physique**"*. **DEV-QA-089 stays `OUVERT`** — it is ticket E-4, out of this lane.
+In `docs/qa/DEV-QA-registry.md`, move rows **DEV-QA-092**, **086**, **087** and **088** from `EN COURS` to `CORRIGÉ (PR 1, en attente de recette)` and append to each row's evidence cell the verification level actually reached — for example, for DEV-QA-094: *"corrigé `escpos.rs` TextEncoding + `receipt_template.rs` text_encoding + page de test; vérifié par tests unitaires Rust (1 exécution cargo) ; **non vérifié sur imprimante physique**"*. **DEV-QA-096 stays `OUVERT`** — it is ticket E-4, out of this lane.
 
 - [ ] **Step 4: Run the full PR gate**
 
@@ -4655,7 +4655,7 @@ It must state, in this order: the four defects fixed with their DEV-QA ids; the 
 
 ```bash
 git add docs/glossary.md docs/qa/DEV-QA-registry.md
-git commit -m "docs(glossary): Receipt row names the ReceiptDoc surfaces; Voucher ticket row added (DEV-QA-085..088)"
+git commit -m "docs(glossary): Receipt row names the ReceiptDoc surfaces; Voucher ticket row added (DEV-QA-092..088)"
 ```
 
 ---

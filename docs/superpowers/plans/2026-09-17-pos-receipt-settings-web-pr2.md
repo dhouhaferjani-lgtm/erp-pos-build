@@ -8,7 +8,7 @@
 
 **Tech Stack:** Laravel 12 / PHP 8.2 strict, `spatie/laravel-data` + `spatie/typescript-transformer`, PostgreSQL 16 (database-per-tenant), React 19 + react-hook-form + zod, TanStack Query 5, Vitest 3, Playwright.
 
-**Spec:** [`docs/superpowers/specs/2026-09-17-pos-receipt-preview-design.md`](../specs/2026-09-17-pos-receipt-preview-design.md) — Delivery table, PR 2 row. Phase-1 evidence: `docs/sessions/2026-09-17-lane-e/phase1-report.md`. Registry: `docs/qa/DEV-QA-registry.md` — **DEV-QA-089 is explicitly NOT fixed here** (ticket E-4, out of brief).
+**Spec:** [`docs/superpowers/specs/2026-09-17-pos-receipt-preview-design.md`](../specs/2026-09-17-pos-receipt-preview-design.md) — Delivery table, PR 2 row. Phase-1 evidence: `docs/sessions/2026-09-17-lane-e/phase1-report.md`. Registry: `docs/qa/DEV-QA-registry.md` — **DEV-QA-096 is explicitly NOT fixed here** (ticket E-4, out of brief).
 
 **Branch:** `feat/pos-receipt-settings-web`, cut **off PR 1's `feat/pos-receipt-preview`** (it imports `buildReceiptDoc`, `sampleReceipt`, `padColumns` and `ReceiptDisplaySettings` from `@autoerp/shared/src/receipt`). PR → `dev` after PR 1 merges; Houssam merges.
 
@@ -25,7 +25,7 @@
 - **Constructor injection only** (rule 13) — never the `app()` helper in module code.
 - **Second-of-everything (rule 22 / convention 09):** the PHPUnit class ships a second-company test, a second-location test and a re-run/idempotency test, asserting on **data meaning** and not on HTTP status.
 - **The full PHPUnit suite is FORBIDDEN on this laptop.** Run scoped only: `./vendor/bin/phpunit tests/Feature/Company/ReceiptSettingsTest.php`, and never two PHPUnit processes at once.
-- **`DEV-QA-089` (ungated `GET companies/{id}/pos-settings`, `apps/api/app/Modules/Company/routes.php:43-44`) is NOT fixed by this PR.** It is ticket E-4. Do not add a `can:` middleware to that route in this lane, and say so in the PR description so a reviewer does not read the cashier-403 test as covering the read path — it covers the **write** path only.
+- **`DEV-QA-096` (ungated `GET companies/{id}/pos-settings`, `apps/api/app/Modules/Company/routes.php:43-44`) is NOT fixed by this PR.** It is ticket E-4. Do not add a `can:` middleware to that route in this lane, and say so in the PR description so a reviewer does not read the cashier-403 test as covering the read path — it covers the **write** path only.
 - **Commit subjects are `type(scope): summary`.** Each task ends with a commit step.
 
 ---
@@ -730,7 +730,7 @@ and add the import:
 use App\Modules\Company\Application\DTOs\ReceiptSettingsData;
 ```
 
-The route itself (`apps/api/app/Modules/Company/routes.php:43-44`) is **not** touched: its missing permission gate is DEV-QA-089 / ticket E-4, out of this lane.
+The route itself (`apps/api/app/Modules/Company/routes.php:43-44`) is **not** touched: its missing permission gate is DEV-QA-096 / ticket E-4, out of this lane.
 
 - [ ] **Step 5: Regenerate the shared types**
 
@@ -1861,7 +1861,7 @@ Both must exit clean.
 
 - [ ] **Step 4: Update the registry and write the PR description**
 
-In `docs/qa/DEV-QA-registry.md`, leave **DEV-QA-085…088** as PR 1 recorded them and leave **DEV-QA-089** `OUVERT` — PR 2 does not gate `GET companies/{id}/pos-settings`; say so explicitly in the PR description so the cashier-403 test is not misread as covering the read path.
+In `docs/qa/DEV-QA-registry.md`, leave **DEV-QA-092…088** as PR 1 recorded them and leave **DEV-QA-096** `OUVERT` — PR 2 does not gate `GET companies/{id}/pos-settings`; say so explicitly in the PR description so the cashier-403 test is not misread as covering the read path.
 
 The PR description must state the verification level actually reached per layer (rule 23 step 2, CLAUDE.md "Verified means end-to-end"): **PHPUnit scoped (SQLite unless the Company PG lane was run — name which)**, **web Vitest**, **Playwright with mocked API routes**, and **no manual recette yet**. Enumerate every changed endpoint and field with `path:line`. Re-check every `t()` key added in Task 5 against the three locale files (rule 23 step 4). Refresh the description after each correction round (rule 23 step 5).
 
@@ -1881,7 +1881,7 @@ git commit -m "test(settings-e2e): receipt preview round-trip, cashier denial, s
 **Gaps and deviations, all deliberate:**
 - **`has_logo` is a field the spec does not name.** Spec §1.5 requires the switch to be disabled "when the company has no `logo_path`", but `logo_path` is not on this endpoint and must not be leaked. Task 3 adds the derived boolean. Flagged rather than silent.
 - **`receipt_logo` keeps its `string(255)` column with a boolean cast**, per ruling 4 (no column change beyond the one new column). A legacy row holding a path reads as `true`, which preserves the PDF's current truthiness semantics (`receipt.blade.php:317-319`); Task 1 pins that with `test_a_legacy_logo_path_still_reads_as_switched_on`. Residual: the column type still permits a path, so a future direct-SQL write could put one there. Narrowing it to `boolean` is a separate migration, out of this lane's ruling.
-- **DEV-QA-089 is not fixed.** `GET companies/{id}/pos-settings` stays ungated (ticket E-4). The cashier test covers the **write** path only, and the PR description must say so — otherwise the row reads as closed when it is not.
+- **DEV-QA-096 is not fixed.** `GET companies/{id}/pos-settings` stays ungated (ticket E-4). The cashier test covers the **write** path only, and the PR description must say so — otherwise the row reads as closed when it is not.
 - **PR 2 does not touch the server PDF.** The logo toggle now has a writer, so `receipt.blade.php:317-319` starts honouring it — that is the intended effect, but it also means the PDF and the thermal ticket diverge further on the logo until ticket E-1 lands the raster. Declared in the glossary row PR 1 Task 12 adds.
 - **The Playwright spec mocks the API**, matching the existing suite's style. It proves the UI round trip and the permission gating, not the server persistence — the PHPUnit class proves that. Neither is a manual recette; the PR says so.
 - **Preview double-width/height rendering is an approximation.** A thermal printer doubles the glyph cell; the preview approximates with `text-[15px]` and letter-spacing. Column *padding* is exact (the shared `padColumns`), which is the fidelity that matters for layout; the emphasised rows are visually indicative. Stated so no one reads the preview as pixel-exact.
