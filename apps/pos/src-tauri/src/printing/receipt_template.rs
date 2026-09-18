@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::escpos::{Alignment, CutMode, EscPosBuilder, FontSize, QrErrorCorrection};
+use super::escpos::{Alignment, CutMode, EscPosBuilder, FontSize, QrErrorCorrection, TextEncoding};
 
 /// Per-tender cash count row for Z-report printing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,6 +169,16 @@ pub struct ReceiptLabels {
     pub original_ticket: Option<String>,
     /// "Scan original ticket:" label above the original-receipt QR re-print.
     pub original_qr_label: Option<String>,
+    /// Caption printed immediately above the refund-lookup QR on every ticket
+    /// that carries one (e.g. "Scanner pour retour / échange"). Optional so an
+    /// older device build that does not send it still deserialises.
+    #[serde(default)]
+    pub qr_scan_label: Option<String>,
+    /// Caption printed above the FALLBACK fiscal-hash QR — the one that prints
+    /// only when the server issued no refund-lookup token (e.g. « Vérification
+    /// du ticket »). Optional for the same reason.
+    #[serde(default)]
+    pub qr_verify_label: Option<String>,
     pub account_payment_header: Option<String>,
     pub balance_before: Option<String>,
     pub balance_after: Option<String>,
@@ -262,20 +272,17 @@ pub struct DrawerKickSettings {
 }
 
 impl PrintSettings {
-    pub(crate) fn code_page(&self) -> u8 {
+    /// Resolve the stored `encoding` string to the ONE type that owns both the
+    /// declared code page (`ESC t n`) and the transcoding (DEV-QA-094).
+    ///
+    /// Anything unrecognised falls back to CP1252 — the device default
+    /// (`printerStore.ts`) and the only one of the three that can print the
+    /// French accents this market needs.
+    pub(crate) fn text_encoding(&self) -> TextEncoding {
         match self.encoding.as_str() {
-            "cp858" => 19,
-            "cp1252" => 16,
-            _ => 0, // cp437
-        }
-    }
-
-    /// Return the `encoding_rs` encoding matching the configured code page.
-    pub(crate) fn encoding_rs(&self) -> &'static encoding_rs::Encoding {
-        match self.encoding.as_str() {
-            "cp1252" => encoding_rs::WINDOWS_1252,
-            "cp858" => encoding_rs::WINDOWS_1252, // CP858 ≈ CP850 + euro; 1252 covers French needs
-            _ => encoding_rs::WINDOWS_1252,       // default to 1252 instead of cp437
+            "cp437" => TextEncoding::Cp437,
+            "cp858" => TextEncoding::Cp858,
+            _ => TextEncoding::Cp1252,
         }
     }
 
@@ -298,22 +305,26 @@ pub fn format_receipt(data: &ReceiptData) -> Vec<u8> {
     format_receipt_with_settings(data, None)
 }
 
+/// Whether the ticket already prints a QR a customer or an operator can
+/// actually DO something with: the refund-lookup token, or a refund's
+/// original-ticket QR. Drives the fiscal-hash QR fallback (r2 device recette
+/// 2026-09-18) — a compliance-only QR is worth printing only when it is the
+/// last one standing.
+fn has_scannable_qr(data: &ReceiptData) -> bool {
+    let present = |token: &Option<String>| token.as_deref().is_some_and(|t| !t.is_empty());
+    present(&data.qr_token) || present(&data.original_receipt_qr_token)
+}
+
 /// Format receipt with optional print settings.
 pub fn format_receipt_with_settings(
     data: &ReceiptData,
     settings: Option<&PrintSettings>,
 ) -> Vec<u8> {
     let columns = settings.map_or(42, |s| s.columns);
-    let mut b = EscPosBuilder::with_columns(columns);
-
-    // Set encoding and code page if specified (after initialize, which is called in with_columns)
-    if let Some(s) = settings {
-        b.set_encoding(s.encoding_rs());
-        let page = s.code_page();
-        if page != 0 {
-            b.set_code_page(page);
-        }
-    }
+    let encoding = settings.map_or(TextEncoding::Cp1252, |s| s.text_encoding());
+    // The builder emits `ESC @` + `ESC t <code page>` and transcodes to that
+    // same page — the two can no longer disagree (DEV-QA-094).
+    let mut b = EscPosBuilder::with_columns_and_encoding(columns, encoding);
 
     // ── Company Header ──
     b.align(Alignment::Center);
@@ -517,17 +528,17 @@ pub fn format_receipt_with_settings(
         if let Some(ref before) = data.account_balance_before {
             b.two_column(
                 &data.label(|l| &l.balance_before, "Balance before:"),
-                &format!("{}{}", data.currency_symbol, before),
+                &money(before, &data.currency_symbol),
             );
         }
         b.two_column(
             &data.label(|l| &l.amount, "Amount"),
-            &format!("{}{}", data.currency_symbol, data.total),
+            &money(&data.total, &data.currency_symbol),
         );
         if let Some(ref after) = data.account_balance_after {
             b.two_column(
                 &data.label(|l| &l.balance_after, "Balance after:"),
-                &format!("{}{}", data.currency_symbol, after),
+                &money(after, &data.currency_symbol),
             );
         }
         if data.account_snapshot_stale {
@@ -542,7 +553,7 @@ pub fn format_receipt_with_settings(
             for payment in &data.payments {
                 b.two_column(
                     &format!("  {}", payment.method),
-                    &format!("{}{}", data.currency_symbol, payment.amount),
+                    &money(&payment.amount, &data.currency_symbol),
                 );
             }
         }
@@ -561,7 +572,7 @@ pub fn format_receipt_with_settings(
         for line in &data.lines {
             // Product name on its own line if long
             let qty_price = format!("{} x {}", line.quantity, line.unit_price);
-            let total_str = format!("{}{}", data.currency_symbol, line.line_total);
+            let total_str = money(&line.line_total, &data.currency_symbol);
 
             if line.name.len() > 20 {
                 // Long name: print name on first line, details on second
@@ -578,7 +589,7 @@ pub fn format_receipt_with_settings(
                     let mod_price = if modifier.price == "0.00" || modifier.price == "0" {
                         String::new()
                     } else {
-                        format!("+{}{}", data.currency_symbol, modifier.price)
+                        money(&format!("+{}", modifier.price), &data.currency_symbol)
                     };
                     b.two_column(&format!("  + {}", modifier.name), &mod_price);
                 }
@@ -588,7 +599,7 @@ pub fn format_receipt_with_settings(
             if let Some(ref discount) = line.discount {
                 b.two_column(
                     &format!("  {}", data.label(|l| &l.discount, "Discount")),
-                    &format!("-{}{}", data.currency_symbol, discount),
+                    &money(&format!("-{}", discount), &data.currency_symbol),
                 );
             }
         }
@@ -598,7 +609,7 @@ pub fn format_receipt_with_settings(
         // ── Totals ──
         b.two_column(
             &data.label(|l| &l.subtotal, "Subtotal:"),
-            &format!("{}{}", data.currency_symbol, data.subtotal),
+            &money(&data.subtotal, &data.currency_symbol),
         );
 
         if data.discount_amount != "0.00" && data.discount_amount != "0" {
@@ -608,7 +619,7 @@ pub fn format_receipt_with_settings(
                     data.label(|l| &l.discount, "Discount")
                         .trim_end_matches(':')
                 ),
-                &format!("-{}{}", data.currency_symbol, data.discount_amount),
+                &money(&format!("-{}", data.discount_amount), &data.currency_symbol),
             );
         }
 
@@ -643,15 +654,15 @@ pub fn format_receipt_with_settings(
             for vat in &data.vat_breakdown {
                 b.three_column(
                     &format!("{}%", vat.rate),
-                    &format!("{}{}", data.currency_symbol, vat.taxable),
-                    &format!("{}{}", data.currency_symbol, vat.tax),
+                    &money(&vat.taxable, &data.currency_symbol),
+                    &money(&vat.tax, &data.currency_symbol),
                 );
             }
             b.separator('-');
         } else {
             b.two_column(
                 &data.label(|l| &l.tax, "Tax:"),
-                &format!("{}{}", data.currency_symbol, data.tax_amount),
+                &money(&data.tax_amount, &data.currency_symbol),
             );
         }
 
@@ -669,7 +680,7 @@ pub fn format_receipt_with_settings(
             if let Some(ref adjustment) = data.cash_rounding_adjustment {
                 b.two_column(
                     &data.label(|l| &l.rounding, "Rounding"),
-                    &format!("{}{}", data.currency_symbol, adjustment),
+                    &money(adjustment, &data.currency_symbol),
                 );
             }
         }
@@ -678,7 +689,7 @@ pub fn format_receipt_with_settings(
         b.font_size(FontSize::DoubleHeight);
         b.two_column(
             &data.label(|l| &l.total, "TOTAL:"),
-            &format!("{}{}", data.currency_symbol, data.total),
+            &money(&data.total, &data.currency_symbol),
         );
         b.font_size(FontSize::Normal);
         b.bold(false);
@@ -693,7 +704,7 @@ pub fn format_receipt_with_settings(
             for payment in &data.payments {
                 b.two_column(
                     &format!("  {}", payment.method),
-                    &format!("{}{}", data.currency_symbol, payment.amount),
+                    &money(&payment.amount, &data.currency_symbol),
                 );
             }
 
@@ -701,7 +712,7 @@ pub fn format_receipt_with_settings(
                 b.bold(true);
                 b.two_column(
                     &data.label(|l| &l.change_due, "Change Due:"),
-                    &format!("{}{}", data.currency_symbol, data.change_due),
+                    &money(&data.change_due, &data.currency_symbol),
                 );
                 b.bold(false);
             }
@@ -721,7 +732,7 @@ pub fn format_receipt_with_settings(
                 if let Some(ref tolerance) = data.tolerance_writeoff {
                     b.two_column(
                         &data.label(|l| &l.tolerance, "Tolerance"),
-                        &format!("-{}{}", data.currency_symbol, tolerance),
+                        &money(&format!("-{}", tolerance), &data.currency_symbol),
                     );
                 }
             }
@@ -756,11 +767,27 @@ pub fn format_receipt_with_settings(
             b.text_line(&format!("Sig: {}", sig));
         }
 
-        // QR code with full hash for verification
-        if let Some(ref hash) = data.fiscal_hash {
-            b.empty_line();
-            b.qr_code(hash, 4, QrErrorCorrection::M);
-            b.empty_line();
+        // DEV-QA-093 removed the fiscal-hash QR outright, on the premise that
+        // the captioned refund-lookup token QR below took its place. Device
+        // recette 2026-09-18 disproved the premise: this tenant has no active
+        // `receipt_qr` signing key, so `ReceiptQrTokenIssuanceService::
+        // issueTokenFor` returns null, `qr_token` is null and the customer got
+        // a ticket with NO QR at all — strictly worse than before.
+        //
+        // So the hash QR is back as a FALLBACK ONLY: it prints when, and only
+        // when, no other scannable QR will (no refund-lookup token, no
+        // original-ticket QR on a refund). The ticket therefore carries
+        // exactly one QR whenever a hash or a token exists. Same `GS ( k` call
+        // as before — module size 4, EC level M — now captioned, and without
+        // its own `ESC M` sandwich because this block is already Font B and
+        // centred.
+        if !has_scannable_qr(data) {
+            if let Some(ref hash) = data.fiscal_hash {
+                b.empty_line();
+                b.text_line(&data.label(|l| &l.qr_verify_label, "Receipt verification"));
+                b.qr_code(hash, 4, QrErrorCorrection::M);
+                b.empty_line();
+            }
         }
 
         b.select_font(false); // Back to Font A
@@ -777,6 +804,13 @@ pub fn format_receipt_with_settings(
             b.separator('-');
             b.align(Alignment::Center);
             b.empty_line();
+            // Caption FIRST, so the customer knows what the one remaining QR
+            // is for before they look at it (DEV-QA-093). Same idiom as the
+            // refund path's original-ticket caption above (`:490-494`):
+            // Font B for the label, back to Font A for everything after.
+            b.select_font(true);
+            b.text_line(&data.label(|l| &l.qr_scan_label, "Scan for return / exchange"));
+            b.select_font(false);
             b.qr_code(token, 4, QrErrorCorrection::M);
             b.empty_line();
             // Human-readable token below the QR (small font) so it can be
@@ -867,6 +901,37 @@ pub fn format_receipt_with_settings(
     b.build()
 }
 
+/// Render one monetary cell, placing the currency by the SHAPE of the symbol
+/// (DEV-QA-095, controller ruling 2026-09-17).
+///
+/// Every printed amount goes through this ONE helper. The original
+/// `format!("{}{}", currency_symbol, amount)` glued the symbol to the left of
+/// the digits unconditionally, which prints `TND10.000` — wrong for `fr-TN`
+/// and for every locale that suffixes an ISO code. Placing it on the right
+/// unconditionally would have been just as wrong the other way: `10.00 £` and
+/// `10.00 $` regress a UK or US terminal. So:
+///
+/// - **empty symbol** -> the amount alone. A Z ticket really does arrive with
+///   `currency_symbol: ""` (`Header.tsx:653` -> `buildZReceiptData`), and a
+///   trailing space would print on every Z row.
+/// - **alphabetic symbol** (`TND`, `EUR`, `MAD`, …) **or `€`** -> `amount symbol`.
+/// - **anything else** (`£`, `$`, `¥`, …) -> `symbolamount`, exactly as before
+///   this lane touched it.
+///
+/// `amount` is already formatted at currency scale by the TS boundary
+/// (rule 19) and is never parsed here; a sign, when the caller needs one, is
+/// part of `amount` (`money("-1.000", "TND")` -> `-1.000 TND`).
+pub(crate) fn money(amount: &str, symbol: &str) -> String {
+    if symbol.is_empty() {
+        return amount.to_string();
+    }
+    if symbol.chars().all(char::is_alphabetic) || symbol == "€" {
+        format!("{amount} {symbol}")
+    } else {
+        format!("{symbol}{amount}")
+    }
+}
+
 fn non_empty_trimmed(value: &str) -> Option<&str> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -914,13 +979,25 @@ fn format_cash_count_row(row: &ZReceiptCashCountRow, cols: usize) -> String {
 
 /// Format a test page for printer alignment verification.
 pub fn format_test_page() -> Vec<u8> {
-    format_test_page_with_columns(None)
+    format_test_page_with_columns(None, None)
 }
 
-/// Format a test page with optional column width.
-pub fn format_test_page_with_columns(columns: Option<u8>) -> Vec<u8> {
-    let cols = columns.unwrap_or(42);
-    let mut b = EscPosBuilder::with_columns(cols);
+/// Format a test page with optional column width and print settings.
+///
+/// The settings matter here more than anywhere else: this is the page the
+/// operator prints to validate a printer, so it must go out under the SAME
+/// code page and transcoding as a real receipt (DEV-QA-094). Before the fix it
+/// took only `columns` and emitted no `ESC t` at all, which is precisely why a
+/// green test page never revealed the mojibake on the ticket.
+pub fn format_test_page_with_columns(
+    columns: Option<u8>,
+    settings: Option<&PrintSettings>,
+) -> Vec<u8> {
+    let cols = columns
+        .or_else(|| settings.map(|s| s.columns))
+        .unwrap_or(42);
+    let encoding = settings.map_or(TextEncoding::Cp1252, |s| s.text_encoding());
+    let mut b = EscPosBuilder::with_columns_and_encoding(cols, encoding);
 
     b.align(Alignment::Center);
     b.font_size(FontSize::DoubleWidthHeight);
@@ -942,6 +1019,17 @@ pub fn format_test_page_with_columns(columns: Option<u8>) -> Vec<u8> {
     b.text_line("Right aligned text");
 
     b.align(Alignment::Left);
+    b.separator('-');
+
+    // Code-page / accent check (DEV-QA-094). The operator validates a printer
+    // with THIS page, so it has to show what the ticket will show: the page
+    // that was declared, and the accents that page is supposed to carry. If
+    // these print as `Θ` / `τ`, the printer ignored `ESC t` — switch the
+    // encoding setting until they are right.
+    b.text_line(&format!("Code page: ESC t {}", encoding.code_page()));
+    b.text_line("Accents: Café crème, Garçon");
+    b.text_line("àâäéèêëîïôöùûüç");
+
     b.separator('-');
 
     // Test two-column
@@ -1154,9 +1242,9 @@ mod tests_z_cash_counts {
 
         assert!(text.contains("ACCOUNT PAYMENT RECEIPT"));
         assert!(text.contains("Balance before:"));
-        assert!(text.contains("TND300.000"));
+        assert!(text.contains("300.000 TND"));
         assert!(text.contains("Balance after:"));
-        assert!(text.contains("TND200.000"));
+        assert!(text.contains("200.000 TND"));
         assert!(text.contains("Balance snapshot stale"));
         assert!(text.contains("Business date:"));
         assert!(text.contains("2026-05-21"));
@@ -1444,6 +1532,339 @@ mod tests_z_cash_counts {
         }
     }
 
+    /// DEV-QA-095 placement contract, one case per symbol shape.
+    #[test]
+    fn money_places_the_currency_by_the_shape_of_the_symbol() {
+        // No symbol at all (the real Z path) — the amount alone, no trailing space.
+        assert_eq!(money("0.00", ""), "0.00");
+        // ISO codes and the euro sign trail the amount.
+        assert_eq!(money("10.000", "TND"), "10.000 TND");
+        assert_eq!(money("10.00", "EUR"), "10.00 EUR");
+        assert_eq!(money("10.00", "€"), "10.00 €");
+        // Glyph currencies keep the pre-lane prefix placement — a UK or US
+        // terminal must not regress into `10.00 £`.
+        assert_eq!(money("10.00", "£"), "£10.00");
+        assert_eq!(money("10.00", "$"), "$10.00");
+        // The sign travels with the amount, on either placement.
+        assert_eq!(money("-1.000", "TND"), "-1.000 TND");
+        assert_eq!(money("-1.00", "£"), "£-1.00");
+    }
+
+    /// The Z ticket sends `currency_symbol: ""`. Every money row must come out
+    /// right-aligned against the column edge with NO trailing space — a
+    /// trailing space would shift the whole column left by one on every row.
+    #[test]
+    fn an_empty_currency_symbol_prints_no_trailing_space_on_money_rows() {
+        let mut data = make_rounded_sale();
+        data.currency_symbol = String::new();
+        data.has_cash_rounding = Some(false);
+        data.cash_rounding_adjustment = None;
+        data.subtotal = "0.00".to_string();
+        data.tax_amount = "0.00".to_string();
+        data.total = "0.00".to_string();
+        data.payments = vec![];
+        data.show_payment_details = Some(false);
+
+        let bytes = format_receipt_with_settings(&data, None);
+        let text = String::from_utf8_lossy(&bytes);
+
+        for label in ["Subtotal:", "TOTAL:"] {
+            let line = text
+                .lines()
+                .find(|l| l.contains(label))
+                .unwrap_or_else(|| panic!("no printed line contains {label:?}\n---\n{text}\n---"));
+            assert!(
+                line.ends_with("0.00"),
+                "{label} row must end on the amount, not a trailing space: {line:?}"
+            );
+            assert!(
+                !line.ends_with("0.00 "),
+                "{label} row must not carry a trailing separator: {line:?}"
+            );
+        }
+    }
+
+    /// DEV-QA-092, Rust side: no `vat_number` means no VAT-number line at all —
+    /// not a bare label. Same fixture as the positive test above, French labels
+    /// so the assertion is on the bytes the tester actually saw.
+    #[test]
+    fn receipt_header_omits_the_vat_number_line_when_the_company_has_none() {
+        let mut company = make_company();
+        company.tax_id = "BRANCH-FR-TAX".to_string();
+        company.vat_number = None;
+        company.legal_identifier_lines = Some(vec!["SIRET: 55210055400014".to_string()]);
+
+        let mut data = make_rounded_sale();
+        data.company = company;
+        data.labels = Some(
+            serde_json::from_str::<ReceiptLabels>(r#"{"tax_id":"MF :","vat_number":"N° TVA :"}"#)
+                .expect("labels JSON"),
+        );
+
+        let bytes = format_receipt_with_settings(&data, None);
+        // Decoded as CP1252, not `from_utf8_lossy`: `°` is the single byte 0xB0
+        // in the emitted stream, which a lossy UTF-8 read turns into U+FFFD —
+        // the needle "N° TVA" could then never match and the negative
+        // assertion would be dead. Same idiom as the voucher balance test.
+        let (text, _, _) = encoding_rs::WINDOWS_1252.decode(&bytes);
+
+        assert!(
+            text.contains("MF : BRANCH-FR-TAX"),
+            "the matricule must still print\n{text}"
+        );
+        assert!(
+            !text.contains("N° TVA"),
+            "no vat_number means the label must not print at all\n{text}"
+        );
+        // Belt and braces: an ASCII-only needle that survives ANY decoding, so
+        // this half of the assertion cannot be silently disarmed by a future
+        // change to how the test reads the stream.
+        assert!(
+            !text.contains("TVA :"),
+            "no vat_number means no VAT label fragment at all\n{text}"
+        );
+        assert!(text.contains("SIRET: 55210055400014"), "{text}");
+    }
+
+    /// A 64-hex fiscal hash, the shape `FiscalHashService` produces.
+    const FISCAL_HASH: &str = "3f7a1c9e08b542d6a15c7e93b0d4f28671ac35e9d8420fb6c7e1539a04d8b2c6";
+    /// The canonical `v:kid:receipt_uuid:mac` refund-lookup token.
+    const QR_TOKEN: &str = "1:kid:uuid:mac";
+
+    /// Every `GS ( k` function-180 ("store QR data") payload, in stream order —
+    /// i.e. what each QR printed on the ticket actually encodes.
+    fn qr_payloads(bytes: &[u8]) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut i = 0usize;
+        while i + 8 <= bytes.len() {
+            if bytes[i..i + 3] == [0x1D, 0x28, 0x6B] && bytes[i + 5..i + 8] == [0x31, 0x50, 0x30] {
+                let block_len = u16::from(bytes[i + 3]) | (u16::from(bytes[i + 4]) << 8);
+                let start = i + 8;
+                let end = (start + block_len.saturating_sub(3) as usize).min(bytes.len());
+                out.push(String::from_utf8_lossy(&bytes[start..end]).into_owned());
+                i = end;
+                continue;
+            }
+            i += 1;
+        }
+        out
+    }
+
+    /// The exact byte run a captioned QR must produce: Font B, the caption and
+    /// its LF, back to Font A, then the first byte of the `GS ( k` sequence.
+    /// Anything between the caption and the QR would break this window, which
+    /// is the point — the caption has to be adjacent to what it captions.
+    fn captioned_qr_window(caption: &str) -> Vec<u8> {
+        let (encoded, _, _) = encoding_rs::WINDOWS_1252.encode(caption);
+        let mut expected = vec![0x1B, 0x4D, 0x01]; // ESC M 1 — Font B
+        expected.extend_from_slice(&encoded);
+        expected.push(0x0A); // text_line's LF
+        expected.extend_from_slice(&[0x1B, 0x4D, 0x00]); // ESC M 0 — back to Font A
+        expected.extend_from_slice(&[0x1D, 0x28, 0x6B]); // GS ( k — the QR starts here
+        expected
+    }
+
+    /// A fiscal sale that carries BOTH a fiscal hash and a refund-lookup token
+    /// — the DEV-QA-093 condition. `labels_json` is deserialised the way the
+    /// device sends it, so a fixture can omit a key entirely.
+    fn make_fiscal_sale_with_token(labels_json: &str) -> ReceiptData {
+        let mut data = make_rounded_sale();
+        data.fiscal_hash = Some(FISCAL_HASH.to_string());
+        data.fiscal_signature = Some("SIG-2026-09-17-AB12CD34EF56".to_string());
+        data.show_fiscal_info = Some(true);
+        data.qr_token = Some(QR_TOKEN.to_string());
+        data.labels =
+            Some(serde_json::from_str::<ReceiptLabels>(labels_json).expect("labels JSON"));
+        data
+    }
+
+    /// DEV-QA-093: the ticket carries exactly ONE QR — the refund-lookup token
+    /// — and it is captioned. The fiscal hash stays as readable text and is
+    /// gone from every QR payload.
+    ///
+    /// The labels payload here has NO `qr_scan_label` key at all, which
+    /// exercises the `#[serde(default)]` on that field AND the English
+    /// fallback in the same fixture.
+    #[test]
+    fn the_only_qr_is_the_captioned_refund_lookup_token() {
+        let labels: ReceiptLabels =
+            serde_json::from_str(r#"{"receipt":"Receipt:","total":"TOTAL:"}"#)
+                .expect("labels without qr_scan_label must still deserialise");
+        assert!(
+            labels.qr_scan_label.is_none(),
+            "the key is absent from the payload, so the field must default to None"
+        );
+
+        let data = make_fiscal_sale_with_token(r#"{"receipt":"Receipt:","total":"TOTAL:"}"#);
+        let bytes = format_receipt_with_settings(&data, None);
+
+        // Exactly one QR, and it is the workflow token — not the fiscal hash.
+        assert_eq!(
+            qr_payloads(&bytes),
+            vec![QR_TOKEN.to_string()],
+            "a sale ticket must print exactly one QR, the refund-lookup token"
+        );
+
+        // The hash and signature are still PRINTED, abbreviated, as text.
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(
+            text.contains(&format!(
+                "Hash: {}...{}",
+                &FISCAL_HASH[..16],
+                &FISCAL_HASH[FISCAL_HASH.len() - 16..]
+            )),
+            "the fiscal hash line must survive\n{text}"
+        );
+        assert!(text.contains("Sig: SIG-2026-09-17-AB12CD34EF56"), "{text}");
+
+        // ... but the full hash is nowhere in the stream any more: the QR was
+        // the only place it appeared in full.
+        assert!(
+            !bytes
+                .windows(FISCAL_HASH.len())
+                .any(|w| w == FISCAL_HASH.as_bytes()),
+            "the full fiscal hash must not survive anywhere in the byte stream"
+        );
+
+        // The English default caption, in the Font-B sandwich, immediately
+        // before the QR.
+        let expected = captioned_qr_window("Scan for return / exchange");
+        assert!(
+            bytes.windows(expected.len()).any(|w| w == expected),
+            "the English default caption must sit immediately before the token QR"
+        );
+    }
+
+    /// A supplied `qr_scan_label` replaces the English default, still adjacent
+    /// to the QR and still inside the Font-B sandwich.
+    #[test]
+    fn a_supplied_qr_scan_label_replaces_the_english_caption() {
+        let data = make_fiscal_sale_with_token(
+            r#"{"receipt":"Reçu :","qr_scan_label":"Scanner pour retour / échange"}"#,
+        );
+        let bytes = format_receipt_with_settings(&data, None);
+
+        assert_eq!(qr_payloads(&bytes), vec![QR_TOKEN.to_string()]);
+
+        let expected = captioned_qr_window("Scanner pour retour / échange");
+        assert!(
+            bytes.windows(expected.len()).any(|w| w == expected),
+            "the supplied caption must sit immediately before the token QR"
+        );
+        assert!(
+            !String::from_utf8_lossy(&bytes).contains("Scan for return / exchange"),
+            "the English default must not also be printed"
+        );
+    }
+
+    /// The byte run a caption must produce INSIDE the fiscal footer, which has
+    /// already selected Font B and centred: the caption, its LF, then the first
+    /// byte of the `GS ( k` sequence. No font sandwich of its own — one would
+    /// be a second, redundant `ESC M`.
+    fn inline_captioned_qr_window(caption: &str) -> Vec<u8> {
+        let (encoded, _, _) = encoding_rs::WINDOWS_1252.encode(caption);
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&encoded);
+        expected.push(0x0A); // text_line's LF
+        expected.extend_from_slice(&[0x1D, 0x28, 0x6B]); // GS ( k — the QR starts here
+        expected
+    }
+
+    // ── r2 device recette 2026-09-18 — the ticket had NO QR at all ───────────
+    //
+    // DEV-QA-093 removed the fiscal-hash QR on the premise that the captioned
+    // refund-lookup token QR would take its place. On the client's tenant the
+    // server issues `qr_token = null` (`ReceiptQrTokenIssuanceService::
+    // issueTokenFor` returns null when the tenant has no active `receipt_qr`
+    // signing key), so the customer was left with zero QRs — strictly worse
+    // than before. The hash QR comes back as the FALLBACK only, captioned, so
+    // the ticket still carries exactly ONE QR.
+
+    /// No workflow token → the fiscal-hash QR prints, captioned.
+    #[test]
+    fn the_fiscal_hash_qr_is_the_fallback_when_the_server_issued_no_token() {
+        let mut data = make_fiscal_sale_with_token(
+            r#"{"receipt":"Reçu :","qr_verify_label":"Vérification du ticket"}"#,
+        );
+        data.qr_token = None;
+        let bytes = format_receipt_with_settings(&data, None);
+
+        assert_eq!(
+            qr_payloads(&bytes),
+            vec![FISCAL_HASH.to_string()],
+            "with no token the ticket must still carry exactly one QR, the fiscal hash"
+        );
+
+        let expected = inline_captioned_qr_window("Vérification du ticket");
+        assert!(
+            bytes.windows(expected.len()).any(|w| w == expected),
+            "the caption must sit immediately before the fiscal-hash QR"
+        );
+    }
+
+    /// An EMPTY token is the same "no token" case as a missing one.
+    #[test]
+    fn an_empty_workflow_token_also_falls_back_to_the_fiscal_hash_qr() {
+        let mut data = make_fiscal_sale_with_token(r#"{"receipt":"Reçu :"}"#);
+        data.qr_token = Some(String::new());
+        let bytes = format_receipt_with_settings(&data, None);
+
+        assert_eq!(qr_payloads(&bytes), vec![FISCAL_HASH.to_string()]);
+        // No `qr_verify_label` in the payload → the English default.
+        let expected = inline_captioned_qr_window("Receipt verification");
+        assert!(
+            bytes.windows(expected.len()).any(|w| w == expected),
+            "the English default caption must sit immediately before the QR"
+        );
+    }
+
+    /// A token IS issued → the fallback stays off; the workflow QR is the only
+    /// one, and the full hash is still absent from the stream.
+    #[test]
+    fn the_hash_qr_stays_off_when_a_workflow_token_exists() {
+        let data = make_fiscal_sale_with_token(
+            r#"{"receipt":"Reçu :","qr_scan_label":"Scanner pour retour / échange","qr_verify_label":"Vérification du ticket"}"#,
+        );
+        let bytes = format_receipt_with_settings(&data, None);
+
+        assert_eq!(qr_payloads(&bytes), vec![QR_TOKEN.to_string()]);
+        assert!(
+            !String::from_utf8_lossy(&bytes).contains("Vérification du ticket"),
+            "the verification caption must not print when there is no hash QR"
+        );
+    }
+
+    /// A refund with no workflow token still has its ORIGINAL-ticket QR, which
+    /// is scannable and labelled — the fallback must not add a second one.
+    #[test]
+    fn a_refund_original_ticket_qr_suppresses_the_hash_fallback() {
+        let mut data = make_fiscal_sale_with_token(r#"{"receipt":"Reçu :"}"#);
+        data.qr_token = None;
+        data.receipt_kind = Some("refund".to_string());
+        data.original_receipt_number = Some("L01-T01-00042".to_string());
+        data.original_receipt_qr_token = Some("1:kid:uuid-original:mac".to_string());
+        let bytes = format_receipt_with_settings(&data, None);
+
+        assert_eq!(
+            qr_payloads(&bytes),
+            vec!["1:kid:uuid-original:mac".to_string()],
+            "a refund ticket must carry exactly one QR"
+        );
+    }
+
+    /// Neither a hash nor a token → no QR at all, and no orphan caption.
+    #[test]
+    fn a_ticket_with_neither_hash_nor_token_prints_no_qr() {
+        let mut data = make_fiscal_sale_with_token(r#"{"receipt":"Reçu :"}"#);
+        data.qr_token = None;
+        data.fiscal_hash = None;
+        data.fiscal_signature = None;
+        let bytes = format_receipt_with_settings(&data, None);
+
+        assert!(qr_payloads(&bytes).is_empty());
+        assert!(!String::from_utf8_lossy(&bytes).contains("Receipt verification"));
+    }
+
     /// The rendered amount on the first line whose text starts with `label`,
     /// as signed millimes. Test-only parsing — the formatter itself never
     /// parses a monetary string.
@@ -1454,12 +1875,15 @@ mod tests_z_cash_counts {
             .lines()
             .find(|l| l.contains(label))
             .unwrap_or_else(|| panic!("no printed line contains {label:?}\n---\n{text}\n---"));
+        // DEV-QA-095: the currency code now TRAILS the amount (`10.000 TND`),
+        // so the last whitespace-separated token is the symbol, not the money.
+        // Take the last token that actually carries digits.
         let token = line
             .split_whitespace()
+            .filter(|t| t.chars().any(|c| c.is_ascii_digit()))
             .next_back()
             .unwrap_or_else(|| panic!("no amount token on {line:?}"));
-        // The sign sits either side of the currency symbol depending on the
-        // line ("TND-0.020" vs "-TND0.050"), so read it from the whole token.
+        // The sign is always part of the amount token now ("-0.020").
         let negative = token.contains('-');
         let digits: String = token
             .chars()
@@ -1552,7 +1976,7 @@ mod tests_z_cash_counts {
         );
 
         // The ticket's own arithmetic. `printed_millimes` reads the printed
-        // sign, and the Remise line prints as `-TND50.000`, so the discount
+        // sign, and the Remise line prints as `-50.000 TND`, so the discount
         // comes back NEGATIVE and is ADDED here.
         assert_eq!(
             printed_millimes(&text, "Subtotal:") + printed_millimes(&text, "Discount"),
@@ -1606,7 +2030,7 @@ mod tests_z_cash_counts {
         let text = String::from_utf8_lossy(&bytes);
 
         assert_eq!(printed_millimes(&text, "Rounding"), 30);
-        assert!(!text.contains("TND-0.030"));
+        assert!(!text.contains("-0.030 TND"));
     }
 
     #[test]
@@ -1682,6 +2106,8 @@ mod tests_z_cash_counts {
             refund_header: None,
             original_ticket: None,
             original_qr_label: None,
+            qr_scan_label: None,
+            qr_verify_label: None,
             account_payment_header: None,
             balance_before: None,
             balance_after: None,

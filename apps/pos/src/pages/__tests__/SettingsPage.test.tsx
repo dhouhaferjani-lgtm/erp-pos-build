@@ -42,11 +42,16 @@ vi.mock('@/lib/api', () => ({
   },
 }));
 vi.mock('@/lib/fullscreen', () => ({ applyFullscreen: vi.fn() }));
+// DEV-QA-094: the test page must be rendered with the SAME settings as a
+// receipt, so `printTestPage` has to RECEIVE them. Spy on the call, and have
+// `getPrintSettingsFromStore` return a realistic PrintSettings (the device
+// defaults from printerStore) instead of `{}`.
 vi.mock('@/lib/printing', () => ({
   discoverPrinters: vi.fn().mockResolvedValue([]),
-  printTestPage: vi.fn(),
-  getPrintSettingsFromStore: vi.fn().mockReturnValue({}),
-  isTauriEnvironment: vi.fn().mockReturnValue(false),
+  printTestPage: (...args: unknown[]) => printTestPageSpy(...args),
+  getPrintSettingsFromStore: () => getPrintSettingsFromStoreSpy(),
+  // The printer section renders its actions only on the desktop build.
+  isTauriEnvironment: () => isTauriEnvironmentSpy(),
 }));
 vi.mock('@/lib/scan/scanResolutionCache', () => ({ clearScanCache: vi.fn() }));
 
@@ -137,10 +142,27 @@ vi.mock('@/stores/settingsStore', () => ({
   SUPPORTED_LANGUAGES: [{ code: 'en', label: 'English' }, { code: 'fr', label: 'Français' }],
 }));
 
+const isTauriEnvironmentSpy = vi.fn(() => false);
+const printTestPageSpy = vi.fn();
+const DEVICE_PRINT_SETTINGS = {
+  columns: 42,
+  cut_mode: 'partial',
+  encoding: 'cp1252',
+  footer_text: '',
+  copies: 1,
+};
+const getPrintSettingsFromStoreSpy = vi.fn(() => DEVICE_PRINT_SETTINGS);
+
+const TEST_PRINTER = { connection_type: 'network', address: '192.168.1.50:9100' };
+const mockPrinterState = {
+  printerConfig: null as unknown,
+  autoPrint: false,
+  setPrinterConfig: vi.fn(),
+  setAutoPrint: vi.fn(),
+  clearPrinterConfig: vi.fn(),
+};
 vi.mock('@/stores/printerStore', () => ({
-  usePrinterStore: <T,>(selector: (s: unknown) => T): T => {
-    return selector({ printerConfig: null, autoPrint: false, setPrinterConfig: vi.fn(), setAutoPrint: vi.fn(), clearPrinterConfig: vi.fn() });
-  },
+  usePrinterStore: <T,>(selector: (s: unknown) => T): T => selector(mockPrinterState),
 }));
 
 const mockTerminalStoreState = { terminal: null as unknown, shift: null as unknown, reset: vi.fn() };
@@ -170,6 +192,51 @@ describe('SettingsPage – Device & Security (Sub-Spec B)', () => {
     teardownSpy.mockReset();
     unbindSpy.mockReset();
     unbindSpy.mockResolvedValue(undefined);
+    printTestPageSpy.mockReset();
+    isTauriEnvironmentSpy.mockReturnValue(false);
+    getPrintSettingsFromStoreSpy.mockClear();
+    mockPrinterState.printerConfig = null;
+  });
+
+  // --- DEV-QA-094: the test page is the operator's printer-validation tool ---
+  it('passes the device print settings to printTestPage when the test print is triggered', async () => {
+    isTauriEnvironmentSpy.mockReturnValue(true);
+    mockPrinterState.printerConfig = TEST_PRINTER;
+    render(<SettingsPage />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('settings.testPrint'));
+    });
+
+    expect(getPrintSettingsFromStoreSpy).toHaveBeenCalled();
+    expect(printTestPageSpy).toHaveBeenCalledTimes(1);
+    // Before the fix this was `printTestPage(printerConfig, ps.columns)` — a
+    // bare number — so the Rust side never learned the code page and the test
+    // page could not reveal the mojibake it exists to catch.
+    expect(printTestPageSpy).toHaveBeenCalledWith(
+      TEST_PRINTER,
+      expect.objectContaining({ encoding: 'cp1252', columns: 42 }),
+    );
+  });
+
+  it('passes a 58mm column count through to printTestPage unchanged', async () => {
+    isTauriEnvironmentSpy.mockReturnValue(true);
+    mockPrinterState.printerConfig = TEST_PRINTER;
+    getPrintSettingsFromStoreSpy.mockReturnValueOnce({
+      ...DEVICE_PRINT_SETTINGS,
+      columns: 32,
+      encoding: 'cp858',
+    });
+    render(<SettingsPage />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('settings.testPrint'));
+    });
+
+    expect(printTestPageSpy).toHaveBeenCalledWith(
+      TEST_PRINTER,
+      expect.objectContaining({ encoding: 'cp858', columns: 32 }),
+    );
   });
 
   // --- FIX 3: fail-closed for operator === null ---

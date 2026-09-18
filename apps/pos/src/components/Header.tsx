@@ -28,7 +28,8 @@ import type { CashCountCommitPayload } from '@/components/pos/EndOfDayPreviewMod
 import type { EndOfDayPreview } from '@/lib/offline/endOfDayPreview';
 import { printReceipt, getPrintSettingsFromStore, isTauriEnvironment, buildZReceiptData } from '@/lib/printing';
 import type { ZReceiptCashCountRow } from '@/lib/printing';
-import { buildReceiptLabels } from '@/lib/buildReceiptData';
+import { buildReceiptLabels, legalIdentifierLabel } from '@/lib/buildReceiptData';
+import { dedupeVatNumber } from '@/lib/receiptTaxIdentity';
 import {
   formatLegalIdentifierLines,
   resolveSellerIdentityWithSource,
@@ -687,9 +688,19 @@ export function Header() {
     const receiptData = buildZReceiptData({
       companyName: company?.name ?? '',
       taxId: zIdentity.taxNumber,
-      vatNumber: zLocationComplete ? zLocation?.vat_number ?? null : null,
+      // DEV-QA-092: display-only dedup at the call site too, so the Z header
+      // input never carries a VAT number that merely repeats the tax id.
+      vatNumber: dedupeVatNumber(
+        zIdentity.taxNumber,
+        zLocationComplete ? zLocation?.vat_number ?? null : null,
+      ),
+      // r2 device recette 2026-09-18: same three-surface dedup + i18n labels
+      // as the sale ticket (`buildReceiptData.ts:208-217`).
       legalIdentifierLines: zLocationComplete
-        ? formatLegalIdentifierLines(zLocation?.legal_identifiers)
+        ? formatLegalIdentifierLines(zLocation?.legal_identifiers, {
+            taxNumber: zIdentity.taxNumber,
+            labelFor: legalIdentifierLabel,
+          })
         : null,
       formattedZNumber: result.formattedZNumber,
       dateTime: new Date().toISOString(),

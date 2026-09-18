@@ -21,6 +21,7 @@ import {
   resolveSellerIdentityWithSource,
   type LocationFiscalFields,
 } from '@/lib/fiscal/sellerIdentity';
+import { dedupeVatNumber } from '@/lib/receiptTaxIdentity';
 
 function formatReceiptDateTime(date: Date, locale: string): string {
   try {
@@ -194,9 +195,24 @@ export function buildEscPosReceiptData(
       country: identity.countryCode ?? receipt.company.country_code,
       tax_id: identity.taxNumber ?? '',
       phone: receipt.company.phone ?? null,
-      vat_number: locationComplete ? sellerLocation?.vat_number ?? null : null,
+      // DEV-QA-092: the template prints tax_id and vat_number as two
+      // unconditional lines, and both come from the SAME establishment record.
+      // In TN the matricule fiscal IS the VAT id, so it printed twice — the
+      // dedup is display-only and never reaches the signed seller block.
+      vat_number: dedupeVatNumber(
+        identity.taxNumber,
+        locationComplete ? sellerLocation?.vat_number ?? null : null,
+      ),
+      // r2 device recette 2026-09-18: `legal_identifiers` is a THIRD surface
+      // for the matricule (the ticket printed `MF : …` AND
+      // `MATRICULE FISCAL: …`), and its keys printed as raw uppercase English
+      // on a French ticket. Dedup against the printed tax number, label
+      // through i18n.
       legal_identifier_lines: locationComplete
-        ? formatLegalIdentifierLines(sellerLocation?.legal_identifiers)
+        ? formatLegalIdentifierLines(sellerLocation?.legal_identifiers, {
+            taxNumber: identity.taxNumber,
+            labelFor: legalIdentifierLabel,
+          })
         : null,
     },
     receipt_number: receipt.receipt_number,
@@ -553,6 +569,25 @@ export function buildEscPosAccountChargeReceiptData(
   };
 }
 
+/**
+ * Printed label for one `legal_identifiers` key, colon included
+ * (« Code établissement : »). Rule 11 — no hardcoded French in the builders:
+ * the copy lives in `locales/{fr,en}/pos.json` under
+ * `receiptLabel.legalIdentifier.*`. An untranslated key returns `undefined`
+ * so `formatLegalIdentifierLines` keeps its legacy `KEY:` shape.
+ */
+export function legalIdentifierLabel(key: string): string | undefined {
+  const i18nKey = `pos:receiptLabel.legalIdentifier.${key}`;
+  const translated = i18next.t(i18nKey, { defaultValue: '' });
+  if (typeof translated !== 'string') return undefined;
+  const label = translated.trim();
+  // A blank resolution (the `defaultValue`) and a key echoed back both mean
+  // "this identifier type has no translated label" — the caller then keeps the
+  // legacy `KEY:` shape rather than printing an i18n path onto the ticket.
+  if (label === '' || label === i18nKey || i18nKey.endsWith(label)) return undefined;
+  return label;
+}
+
 /** Build localized receipt labels from i18n. */
 export function buildReceiptLabels(): ReceiptLabels {
   const t = (key: string) => i18next.t(`pos:receiptLabel.${key}`);
@@ -592,6 +627,8 @@ export function buildReceiptLabels(): ReceiptLabels {
     refund_header: t('refundHeader'),
     original_ticket: t('originalTicket'),
     original_qr_label: t('originalQrLabel'),
+    qr_scan_label: t('qrScanLabel'),
+    qr_verify_label: t('qrVerifyLabel'),
     account_payment_header: t('accountPaymentHeader'),
     balance_before: t('balanceBefore'),
     balance_after: t('balanceAfter'),
