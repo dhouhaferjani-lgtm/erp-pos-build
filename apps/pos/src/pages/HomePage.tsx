@@ -346,6 +346,29 @@ export function HomePage() {
   // Barcode scanner
   const [scanMessage, setScanMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
+  // React Doctor `effect-needs-cleanup`: a transient scan message armed from an
+  // effect must not outlive the page. The timer id lives in a ref (so a re-run
+  // of the arming effect does NOT cancel a message that is still on screen) and
+  // is released on unmount. Same 4 s visibility, same delivery moment.
+  const scanMessageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showTransientScanMessage = useCallback(
+    (message: { text: string; type: 'success' | 'error' | 'info' }, ttlMs: number): void => {
+      if (scanMessageTimerRef.current !== null) clearTimeout(scanMessageTimerRef.current);
+      setScanMessage(message);
+      scanMessageTimerRef.current = setTimeout(() => {
+        scanMessageTimerRef.current = null;
+        setScanMessage(null);
+      }, ttlMs);
+    },
+    [],
+  );
+  useEffect(
+    () => () => {
+      if (scanMessageTimerRef.current !== null) clearTimeout(scanMessageTimerRef.current);
+    },
+    [],
+  );
+
   // T2.1 Step B — chooser modal state for collision UX (>1 product matches a code).
   const [chooserState, setChooserState] = useState<{
     scannedCode: string;
@@ -701,8 +724,10 @@ export function HomePage() {
     // return lines) while the refund checkout flow is mid-settlement. The
     // event is consumed and dropped; the cashier rescans after the flow ends.
     if (useRefundCheckoutStore.getState().step !== 'idle') {
-      setScanMessage({ text: t('pos:refundFlow.checkout.scanBlockedDuringCheckout'), type: 'error' });
-      setTimeout(() => setScanMessage(null), 4000);
+      showTransientScanMessage(
+        { text: t('pos:refundFlow.checkout.scanBlockedDuringCheckout'), type: 'error' },
+        4000,
+      );
       return;
     }
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useScannerStore } from '@/stores/scannerStore';
 import { decodeUsKey } from '@/lib/scan/usKeyboardLayout';
 
@@ -36,7 +36,13 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScannerO
   const lastKeystrokeRef = useRef<number>(0);
   const onScanRef = useRef(onScan);
 
-  onScanRef.current = onScan;
+  // "Latest ref" — synced from a layout effect, never written during render
+  // (React Doctor `no-ref-current-in-render`). The keydown listener reads
+  // `onScanRef.current` at event time, so every burst still reaches the
+  // callback from the most recent render.
+  useLayoutEffect(() => {
+    onScanRef.current = onScan;
+  });
 
   const resetBuffer = useCallback(() => {
     rawRef.current = '';

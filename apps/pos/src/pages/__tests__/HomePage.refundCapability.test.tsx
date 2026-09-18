@@ -493,3 +493,52 @@ describe('HomePage — v3-refund-chain-integration §9.2/§9.3 dispatch-seam cap
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// React Doctor `effect-needs-cleanup` — the accepted-token effect arms a 4 s
+// timer to clear the "scan blocked during checkout" message. Unmounting the
+// page (shift close, route change) must clear that timer instead of leaving it
+// to fire against a dead component.
+// ---------------------------------------------------------------------------
+describe('HomePage — accepted-token effect timer cleanup', () => {
+  beforeEach(() => {
+    seedStores();
+    getV4RefundAuthoringEnabledMock.mockResolvedValue(false);
+    useRefundFlowStore.setState({ acceptedReceiptToken: null } as never);
+  });
+
+  it('clears the scan-blocked message timer when the page unmounts', () => {
+    vi.useFakeTimers();
+    try {
+      // A refund checkout already mid-settlement: a newly accepted token is
+      // consumed, dropped, and surfaced as a transient error message.
+      useRefundCheckoutStore.setState({ step: 'confirm' } as never);
+      const { unmount } = render(<HomePage />);
+      const timersBefore = vi.getTimerCount();
+
+      act(() => {
+        useRefundFlowStore.setState({
+          acceptedReceiptToken: {
+            receiptUuid: 'receipt-uuid-1',
+            receiptNumber: 'MAIN-T01-2026-00000001',
+            receiptToken: null,
+            postedAt: '2026-09-18T08:00:00Z',
+            total: '10.000',
+            currency: 'EUR',
+          },
+        } as never);
+      });
+
+      // The message timer is armed by the effect...
+      expect(vi.getTimerCount()).toBe(timersBefore + 1);
+
+      unmount();
+
+      // ...and released on unmount.
+      expect(vi.getTimerCount()).toBeLessThanOrEqual(timersBefore);
+    } finally {
+      useRefundCheckoutStore.setState({ step: 'idle' } as never);
+      vi.useRealTimers();
+    }
+  });
+});

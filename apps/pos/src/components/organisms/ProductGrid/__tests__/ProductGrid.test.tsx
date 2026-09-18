@@ -1276,6 +1276,51 @@ describe('ProductGrid — Task 27 Skin-advice bar', () => {
     );
   });
 
+  // (b) React Doctor `no-ref-current-in-render`: `filters` / `onFiltersChange`
+  // are read through refs synced from a layout effect (never written during
+  // render). When they change in the SAME commit as `customerSkinType`, the
+  // auto-default must still use the latest pair, not the previous one.
+  it('(b) uses the LATEST filters/onFiltersChange when they change in the same commit as customerSkinType', () => {
+    const staleOnFiltersChange = vi.fn();
+    const latestOnFiltersChange = vi.fn();
+    const staleFilters: FiltresFilters = {
+      brands: ['stale-brand'], categories: [], skinTypes: [], routines: [],
+    };
+    const latestFilters: FiltresFilters = {
+      brands: ['latest-brand'], categories: [], skinTypes: [], routines: [],
+    };
+
+    const { rerender } = render(
+      <ProductGrid
+        products={skinProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+        filters={staleFilters}
+        onFiltersChange={staleOnFiltersChange}
+        customerSkinType={null}
+      />,
+    );
+    expect(staleOnFiltersChange).not.toHaveBeenCalled();
+
+    rerender(
+      <ProductGrid
+        products={skinProducts}
+        categories={[]}
+        onAddToCart={vi.fn()}
+        cartProductIds={[]}
+        filters={latestFilters}
+        onFiltersChange={latestOnFiltersChange}
+        customerSkinType="dry"
+      />,
+    );
+
+    expect(staleOnFiltersChange).not.toHaveBeenCalled();
+    expect(latestOnFiltersChange).toHaveBeenCalledWith(
+      expect.objectContaining({ brands: ['latest-brand'], skinTypes: ['dry'] }),
+    );
+  });
+
   // (b) no auto-default when customerSkinType is already in the active filter
   it('(b) does NOT call onFiltersChange when customerSkinType is already active', () => {
     const onFiltersChange = vi.fn();

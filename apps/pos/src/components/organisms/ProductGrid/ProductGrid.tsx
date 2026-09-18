@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -177,9 +177,15 @@ export function ProductGrid({
   // updates filtresFilters on every render).
   // ---------------------------------------------------------------------------
   const _filtersRef = useRef(filters);
-  _filtersRef.current = filters;
   const _onFiltersChangeRef = useRef(onFiltersChange);
-  _onFiltersChangeRef.current = onFiltersChange;
+  // React Doctor `no-ref-current-in-render`: the refs are synced from a layout
+  // effect, never during render. Layout effects flush before passive ones, so
+  // the auto-default effect below still reads the latest pair on the very same
+  // commit — identical behaviour, no render-phase mutation.
+  useLayoutEffect(() => {
+    _filtersRef.current = filters;
+    _onFiltersChangeRef.current = onFiltersChange;
+  });
 
   useEffect(() => {
     if (!isMerchandisingEnabled || !showParapharmacyFilters) return;

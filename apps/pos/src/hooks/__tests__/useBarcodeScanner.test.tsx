@@ -277,6 +277,24 @@ describe('useBarcodeScanner', () => {
     expect(onScan.mock.calls.map(([barcode]) => barcode)).toEqual(['001234']);
   });
 
+  // React Doctor `no-ref-current-in-render`: the onScan callback is held in a
+  // "latest ref" synced from an effect, never written during render. A burst
+  // completed after a re-render must reach the CURRENT callback, not the one
+  // captured when the listener was attached.
+  it('given a new onScan after a re-render, delivers the burst to the latest callback', () => {
+    const firstOnScan = vi.fn();
+    const latestOnScan = vi.fn();
+    const { rerender } = renderHook(({ onScan }) => useBarcodeScanner({ onScan }), {
+      initialProps: { onScan: firstOnScan },
+    });
+
+    rerender({ onScan: latestOnScan });
+    scan(window, keysFor('001234'));
+
+    expect(firstOnScan).not.toHaveBeenCalled();
+    expect(latestOnScan.mock.calls.map(([barcode]) => barcode)).toEqual(['001234']);
+  });
+
   it('given a too-short fragment, clears it before the next complete scan', () => {
     const onScan = vi.fn();
     renderHook(() => useBarcodeScanner({ onScan }));
