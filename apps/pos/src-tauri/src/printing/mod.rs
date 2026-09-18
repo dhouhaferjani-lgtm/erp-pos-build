@@ -1,4 +1,9 @@
 pub mod escpos;
+/// Golden-bytes regression harness for the printed ticket (Lane E, DEV-QA-092..095).
+/// Test-only: it captures and compares committed ESC/POS baselines, and ships no
+/// production code.
+#[cfg(test)]
+mod golden;
 pub mod network;
 pub mod receipt_template;
 pub mod usb;

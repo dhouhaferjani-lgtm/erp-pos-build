@@ -3,6 +3,7 @@ import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { useAuthStore } from '@/stores/authStore';
 import { usePrinterStore } from '@/stores/printerStore';
 import { useCashDrawerStore } from '@/stores/cashDrawerStore';
+import { dedupeVatNumber } from '@/lib/receiptTaxIdentity';
 
 // ── Types ──
 
@@ -103,6 +104,12 @@ export interface ReceiptLabels {
   original_ticket?: string;
   /** "Scan original ticket:" label printed above the original-receipt QR re-print. */
   original_qr_label?: string;
+  /**
+   * Caption printed above the refund-lookup QR on sale receipts (DEV-QA-093).
+   * Tells the customer what the code is for — scanning it in-store pulls the
+   * ticket up for a return / exchange.
+   */
+  qr_scan_label?: string;
   account_payment_header?: string;
   balance_before?: string;
   balance_after?: string;
@@ -259,7 +266,10 @@ export function buildZReceiptData(input: BuildZReceiptDataInput): ReceiptData {
       country: '',
       tax_id: input.taxId ?? '',
       phone: null,
-      vat_number: input.vatNumber ?? null,
+      // DEV-QA-092: display-only dedup — the Z header prints tax_id and
+      // vat_number as two unconditional lines, and in TN they are the same
+      // identifier (the matricule fiscal IS the VAT id).
+      vat_number: dedupeVatNumber(input.taxId, input.vatNumber),
       legal_identifier_lines: input.legalIdentifierLines ?? null,
     },
     receipt_number: input.formattedZNumber,
@@ -406,12 +416,16 @@ export async function printVoucherTicket(
  */
 export async function printTestPage(
   printer: PrinterConfig,
-  columns?: number,
+  printSettings?: PrintSettings,
 ): Promise<void> {
+  // DEV-QA-094: the test page must be rendered with the SAME settings as a
+  // receipt (code page + transcoding), otherwise a clean test page proves
+  // nothing about the ticket the customer gets.
   return invoke<void>('print_test_page', {
     connectionType: printer.connection_type,
     address: printer.address,
-    columns: columns ?? null,
+    columns: printSettings?.columns ?? null,
+    printSettings: printSettings ?? null,
   });
 }
 

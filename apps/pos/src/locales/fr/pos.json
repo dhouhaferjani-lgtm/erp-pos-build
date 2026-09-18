@@ -895,6 +895,7 @@
     "refundHeader": "REMBOURSEMENT",
     "originalTicket": "Ticket original :",
     "originalQrLabel": "Scanner le ticket original :",
+    "qrScanLabel": "Scanner pour retour / échange",
     "accountPaymentHeader": "RECU D'ENCAISSEMENT",
     "balanceBefore": "Solde avant :",
     "balanceAfter": "Solde apres :",

@@ -19,8 +19,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::escpos::{Alignment, CutMode, EscPosBuilder, FontSize, QrErrorCorrection};
-use super::receipt_template::{CompanyInfo, PrintSettings};
+use super::escpos::{Alignment, CutMode, EscPosBuilder, FontSize, QrErrorCorrection, TextEncoding};
+use super::receipt_template::{money, CompanyInfo, PrintSettings};
 
 /// Localized voucher-ticket labels. All optional with English defaults.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,16 +103,10 @@ pub fn format_voucher_ticket_with_settings(
     settings: Option<&PrintSettings>,
 ) -> Vec<u8> {
     let columns = settings.map_or(42, |s| s.columns);
-    let mut b = EscPosBuilder::with_columns(columns);
-
-    // Encoding / code page (same convention as receipt_template).
-    if let Some(s) = settings {
-        b.set_encoding(s.encoding_rs());
-        let page = s.code_page();
-        if page != 0 {
-            b.set_code_page(page);
-        }
-    }
+    let encoding = settings.map_or(TextEncoding::Cp1252, |s| s.text_encoding());
+    // Encoding / code page (same convention as receipt_template): the builder
+    // declares `ESC t n` and transcodes to that same page (DEV-QA-094).
+    let mut b = EscPosBuilder::with_columns_and_encoding(columns, encoding);
 
     // ── Company Header ──
     b.align(Alignment::Center);
@@ -169,7 +163,7 @@ pub fn format_voucher_ticket_with_settings(
     b.align(Alignment::Left);
     b.two_column(
         &data.label(|l| &l.balance, "Balance:"),
-        &format!("{}{}", data.currency_symbol, data.initial_balance),
+        &money(&data.initial_balance, &data.currency_symbol),
     );
 
     let expires_value = match data.expires_at.as_ref() {
@@ -248,7 +242,15 @@ mod tests {
         let bytes = format_voucher_ticket(&ticket);
         let text = String::from_utf8_lossy(&bytes);
         assert!(text.contains("VCH-ABC-123"), "should include voucher code");
-        assert!(text.contains("25.00"), "should include balance");
+        // DEV-QA-095: the fixture symbol is `€`, so the balance cell must read
+        // `25.00 €` — the placement, not just the digits. Decoded as CP1252,
+        // because that is what the builder emitted: `€` is the single byte
+        // 0x80 there, which is not valid UTF-8 on its own.
+        let (decoded, _, _) = encoding_rs::WINDOWS_1252.decode(&bytes);
+        assert!(
+            decoded.contains("25.00 €"),
+            "balance must print as `<amount> <symbol>`\n{decoded}"
+        );
         assert!(text.contains("Test Shop"), "should include company name");
     }
 

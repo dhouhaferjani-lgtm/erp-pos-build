@@ -21,6 +21,7 @@ import {
   resolveSellerIdentityWithSource,
   type LocationFiscalFields,
 } from '@/lib/fiscal/sellerIdentity';
+import { dedupeVatNumber } from '@/lib/receiptTaxIdentity';
 
 function formatReceiptDateTime(date: Date, locale: string): string {
   try {
@@ -194,7 +195,14 @@ export function buildEscPosReceiptData(
       country: identity.countryCode ?? receipt.company.country_code,
       tax_id: identity.taxNumber ?? '',
       phone: receipt.company.phone ?? null,
-      vat_number: locationComplete ? sellerLocation?.vat_number ?? null : null,
+      // DEV-QA-092: the template prints tax_id and vat_number as two
+      // unconditional lines, and both come from the SAME establishment record.
+      // In TN the matricule fiscal IS the VAT id, so it printed twice — the
+      // dedup is display-only and never reaches the signed seller block.
+      vat_number: dedupeVatNumber(
+        identity.taxNumber,
+        locationComplete ? sellerLocation?.vat_number ?? null : null,
+      ),
       legal_identifier_lines: locationComplete
         ? formatLegalIdentifierLines(sellerLocation?.legal_identifiers)
         : null,
@@ -592,6 +600,7 @@ export function buildReceiptLabels(): ReceiptLabels {
     refund_header: t('refundHeader'),
     original_ticket: t('originalTicket'),
     original_qr_label: t('originalQrLabel'),
+    qr_scan_label: t('qrScanLabel'),
     account_payment_header: t('accountPaymentHeader'),
     balance_before: t('balanceBefore'),
     balance_after: t('balanceAfter'),

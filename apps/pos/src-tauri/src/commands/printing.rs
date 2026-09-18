@@ -108,13 +108,19 @@ pub async fn print_test_page(
     connection_type: PrinterConnectionType,
     address: String,
     columns: Option<u8>,
+    print_settings: Option<PrintSettings>,
 ) -> Result<(), PrintError> {
-    let data = receipt_template::format_test_page_with_columns(columns);
+    // The test page is the operator's printer-validation tool: it must go out
+    // under the same code page and transcoding as a real receipt, otherwise a
+    // clean test page proves nothing about the ticket (DEV-QA-094).
+    let data = receipt_template::format_test_page_with_columns(columns, print_settings.as_ref());
 
     log::info!(
         "Printing test page ({} bytes, {} cols) to {:?}:{}",
         data.len(),
-        columns.unwrap_or(42),
+        columns
+            .or_else(|| print_settings.as_ref().map(|s| s.columns))
+            .unwrap_or(42),
         connection_type,
         address,
     );

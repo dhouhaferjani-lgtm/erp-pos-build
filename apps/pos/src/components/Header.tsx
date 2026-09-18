@@ -29,6 +29,7 @@ import type { EndOfDayPreview } from '@/lib/offline/endOfDayPreview';
 import { printReceipt, getPrintSettingsFromStore, isTauriEnvironment, buildZReceiptData } from '@/lib/printing';
 import type { ZReceiptCashCountRow } from '@/lib/printing';
 import { buildReceiptLabels } from '@/lib/buildReceiptData';
+import { dedupeVatNumber } from '@/lib/receiptTaxIdentity';
 import {
   formatLegalIdentifierLines,
   resolveSellerIdentityWithSource,
@@ -687,7 +688,12 @@ export function Header() {
     const receiptData = buildZReceiptData({
       companyName: company?.name ?? '',
       taxId: zIdentity.taxNumber,
-      vatNumber: zLocationComplete ? zLocation?.vat_number ?? null : null,
+      // DEV-QA-092: display-only dedup at the call site too, so the Z header
+      // input never carries a VAT number that merely repeats the tax id.
+      vatNumber: dedupeVatNumber(
+        zIdentity.taxNumber,
+        zLocationComplete ? zLocation?.vat_number ?? null : null,
+      ),
       legalIdentifierLines: zLocationComplete
         ? formatLegalIdentifierLines(zLocation?.legal_identifiers)
         : null,
