@@ -1,6 +1,7 @@
 import type Database from '@tauri-apps/plugin-sql';
 import { queryAll, queryOne, execute } from '@/lib/db';
 import type { POSProduct, ParapharmacyMeta } from '@/types/product';
+import { cachedProductCategoryLabel, productCategoryLabel, type POSProductPayload } from '@/lib/productCategory';
 
 interface ProductRow {
   id: string;
@@ -41,7 +42,7 @@ interface ProductRow {
  * `??` on the write path so existing call-sites (which send flat fields or
  * omit brand entirely) stay backwards-compatible.
  */
-export type ProductPayload = POSProduct & {
+export type ProductPayload = POSProductPayload & {
   brand?: { id: string; name: string } | null;
 };
 
@@ -53,7 +54,7 @@ function rowToProduct(row: ProductRow): POSProduct {
     barcode: row.barcode,
     sale_price: row.sale_price,
     stock_quantity: row.stock_quantity,
-    category: row.category ?? undefined,
+    category: cachedProductCategoryLabel(row.category),
     image_url: row.image_url ?? undefined,
     tax_rate: row.tax_rate ?? undefined,
     sellableType: (row.sellable_type as POSProduct['sellableType']) ?? undefined,
@@ -178,7 +179,7 @@ export async function upsertProducts(db: Database, products: ProductPayload[]): 
         // Default the legacy NOT NULL column to 0 rather than violate the constraint
         // and drop the entire catalog. See productRepository.stockQuantity.test.ts.
         p.stock_quantity ?? 0,
-        p.category ?? null,
+        productCategoryLabel(p.category) ?? null,
         p.image_url ?? null,
         p.tax_rate ?? null,
         p.sellableType ?? 'product',

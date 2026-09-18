@@ -5,6 +5,7 @@ import {
   upsertProducts,
   deleteProducts,
   reconcileMenuProducts,
+  type ProductPayload,
 } from '@/lib/db/repositories/productRepository';
 import {
   deleteForProducts as deleteLocationStockForProducts,
@@ -113,7 +114,6 @@ import {
   type LocalReceiptQrIndexEntry,
 } from '@/lib/offline/voucherRepository';
 import type { LocalZReport } from '@/lib/offline/types';
-import type { POSProduct } from '@/types/product';
 import type { PaymentMethod, PaymentRepository } from '@/types/payment';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 import { serializeErrorForLog } from '@/lib/errorLogging';
@@ -729,10 +729,10 @@ export async function pullProductsCore(
   const deletedIdsAccumulator: string[] = [];
 
   while (hasMore) {
-    let result: POSProduct[] | { data: POSProduct[]; deleted_ids?: string[] };
+    let result: ProductPayload[] | { data: ProductPayload[]; deleted_ids?: string[] };
     try {
       result = await apiGet<
-        POSProduct[] | { data: POSProduct[]; deleted_ids?: string[] }
+        ProductPayload[] | { data: ProductPayload[]; deleted_ids?: string[] }
       >('/products', { ...params, page: String(page) }, opts);
     } catch (err) {
       // FetchTimeoutError propagates verbatim — callers already
