@@ -12,6 +12,24 @@
 //! | DEV-QA-094 | `ESC t` is never emitted for `cp437`, and the declared code page and the transcoding disagree | the `ESC t n` prologue token appears / changes |
 //! | DEV-QA-095 | `TND` is concatenated LEFT of the amount with no separator | money lines are re-laid-out, same content |
 //!
+//! # r2 — device recette 2026-09-18
+//!
+//! Three further fixes landed on top (cp437 → transliteration, the legal
+//! identifier lines, the fiscal-hash QR restored as a FALLBACK). None of them
+//! widens the whitelist, and that is asserted rather than assumed — each case
+//! now pins the EXACT multiset of classes it may produce:
+//!
+//! * transliteration only fires for a character the selected page cannot
+//!   print, and every fixture is CP1252, which carries every French accent;
+//! * the legal identifier dedup/labels are a TypeScript concern — these
+//!   fixtures set `legal_identifier_lines` directly as already-formatted
+//!   strings;
+//! * the restored hash QR prints only when there is no workflow token, and
+//!   every fixture carrying a hash also carries `QR_TOKEN`.
+//!
+//! So the r2 diff against the `origin/dev` baseline must still be exactly the
+//! r1 one: 11 whitelisted items for sale/refund, 3 for Z.
+//!
 //! Every OTHER byte of the ticket must stay identical. This harness captures the
 //! CURRENT (unmodified) output into committed goldens and, once the fixes land,
 //! fails on any diff that is not one of the five declared whitelist classes in
@@ -136,6 +154,7 @@ fn fr_labels() -> ReceiptLabels {
         original_ticket: Some("Ticket original :".to_string()),
         original_qr_label: Some("Scanner le ticket original :".to_string()),
         qr_scan_label: Some("Scanner pour retour / échange".to_string()),
+        qr_verify_label: Some("Vérification du ticket".to_string()),
         account_payment_header: Some("RECU D'ENCAISSEMENT".to_string()),
         balance_before: Some("Solde avant :".to_string()),
         balance_after: Some("Solde apres :".to_string()),
@@ -1039,7 +1058,27 @@ fn golden_path(name: &str) -> PathBuf {
         .join(format!("{name}.bin"))
 }
 
-fn run_case(name: &str, data: &ReceiptData, settings: &PrintSettings) {
+/// Count each whitelist class in a compare result, sorted, so an expectation
+/// can be written as an exact multiset.
+fn class_counts(classes: &[WhitelistClass]) -> Vec<(String, usize)> {
+    let mut out: Vec<(String, usize)> = Vec::new();
+    for class in classes {
+        let key = format!("{class:?}");
+        match out.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, n)) => *n += 1,
+            None => out.push((key, 1)),
+        }
+    }
+    out.sort();
+    out
+}
+
+fn run_case(
+    name: &str,
+    data: &ReceiptData,
+    settings: &PrintSettings,
+    expected: &[(&str, usize)],
+) {
     let bytes = format_receipt_with_settings(data, Some(settings));
     let path = golden_path(name);
 
@@ -1067,45 +1106,75 @@ fn run_case(name: &str, data: &ReceiptData, settings: &PrintSettings) {
     assert_cut_structure(name, &golden_items, &new_items);
 
     match classify(&golden_items, &new_items, &whitelist()) {
-        Ok(classes) => println!(
-            "{name}: {} golden bytes, {} items, {} whitelisted diff(s) {:?}",
-            golden.len(),
-            new_items.len(),
-            classes.len(),
-            classes
-        ),
+        Ok(classes) => {
+            println!(
+                "{name}: {} golden bytes, {} items, {} whitelisted diff(s) {:?}",
+                golden.len(),
+                new_items.len(),
+                classes.len(),
+                classes
+            );
+            // The exact multiset, not merely "every diff is explainable": a
+            // change that produced ONE MORE whitelisted diff — a second VAT
+            // line removed, a tenth money row re-laid out — would otherwise
+            // pass silently. This is what pins the r2 changes to zero new
+            // variance (see the r2 note in the module docblock).
+            let want: Vec<(String, usize)> = expected
+                .iter()
+                .map(|(k, n)| ((*k).to_string(), *n))
+                .collect();
+            assert_eq!(
+                class_counts(&classes),
+                want,
+                "{name}: the whitelisted diff is no longer exactly the declared region set"
+            );
+        }
         Err(message) => panic!("{name}: {message}"),
     }
 }
 
+/// The diff every SALE and REFUND fixture must produce against its
+/// `origin/dev` baseline, and nothing more: nine money rows re-laid out
+/// (DEV-QA-095), the fiscal-hash QR gone (DEV-QA-093 — these fixtures DO carry
+/// a workflow token, so the r2 fallback stays off) and the caption added
+/// before the token QR.
+const SALE_REFUND_REGIONS: &[(&str, usize)] = &[
+    ("CurrencyPlacement", 9),
+    ("FiscalHashQrRemoved", 1),
+    ("QrCaptionAdded", 1),
+];
+
+/// The Z ticket carries no QR and no VAT header line: three money rows only.
+const Z_REGIONS: &[(&str, usize)] = &[("CurrencyPlacement", 3)];
+
 #[test]
 fn golden_sale_42() {
-    run_case("sale-42", &sale_fixture(), &settings(42));
+    run_case("sale-42", &sale_fixture(), &settings(42), SALE_REFUND_REGIONS);
 }
 
 #[test]
 fn golden_sale_32() {
-    run_case("sale-32", &sale_fixture(), &settings(32));
+    run_case("sale-32", &sale_fixture(), &settings(32), SALE_REFUND_REGIONS);
 }
 
 #[test]
 fn golden_refund_42() {
-    run_case("refund-42", &refund_fixture(), &settings(42));
+    run_case("refund-42", &refund_fixture(), &settings(42), SALE_REFUND_REGIONS);
 }
 
 #[test]
 fn golden_refund_32() {
-    run_case("refund-32", &refund_fixture(), &settings(32));
+    run_case("refund-32", &refund_fixture(), &settings(32), SALE_REFUND_REGIONS);
 }
 
 #[test]
 fn golden_z_42() {
-    run_case("z-42", &z_fixture(), &settings(42));
+    run_case("z-42", &z_fixture(), &settings(42), Z_REGIONS);
 }
 
 #[test]
 fn golden_z_32() {
-    run_case("z-32", &z_fixture(), &settings(32));
+    run_case("z-32", &z_fixture(), &settings(32), Z_REGIONS);
 }
 
 // ───────────────── tamper tests for the harness itself (conv. 08) ────────────

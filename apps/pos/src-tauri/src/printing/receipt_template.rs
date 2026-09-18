@@ -174,6 +174,11 @@ pub struct ReceiptLabels {
     /// older device build that does not send it still deserialises.
     #[serde(default)]
     pub qr_scan_label: Option<String>,
+    /// Caption printed above the FALLBACK fiscal-hash QR — the one that prints
+    /// only when the server issued no refund-lookup token (e.g. « Vérification
+    /// du ticket »). Optional for the same reason.
+    #[serde(default)]
+    pub qr_verify_label: Option<String>,
     pub account_payment_header: Option<String>,
     pub balance_before: Option<String>,
     pub balance_after: Option<String>,
@@ -298,6 +303,16 @@ impl PrintSettings {
 /// Format receipt data into ESC/POS commands ready to send to a printer.
 pub fn format_receipt(data: &ReceiptData) -> Vec<u8> {
     format_receipt_with_settings(data, None)
+}
+
+/// Whether the ticket already prints a QR a customer or an operator can
+/// actually DO something with: the refund-lookup token, or a refund's
+/// original-ticket QR. Drives the fiscal-hash QR fallback (r2 device recette
+/// 2026-09-18) — a compliance-only QR is worth printing only when it is the
+/// last one standing.
+fn has_scannable_qr(data: &ReceiptData) -> bool {
+    let present = |token: &Option<String>| token.as_deref().is_some_and(|t| !t.is_empty());
+    present(&data.qr_token) || present(&data.original_receipt_qr_token)
 }
 
 /// Format receipt with optional print settings.
@@ -752,10 +767,28 @@ pub fn format_receipt_with_settings(
             b.text_line(&format!("Sig: {}", sig));
         }
 
-        // DEV-QA-093: no fiscal-hash QR. It encoded the raw hash hex — not a
-        // URL, no scheme, nothing a customer's camera can resolve — and it
-        // duplicated the `Hash:` line printed two lines above. The ticket now
-        // carries exactly ONE QR, the labelled refund-lookup token below.
+        // DEV-QA-093 removed the fiscal-hash QR outright, on the premise that
+        // the captioned refund-lookup token QR below took its place. Device
+        // recette 2026-09-18 disproved the premise: this tenant has no active
+        // `receipt_qr` signing key, so `ReceiptQrTokenIssuanceService::
+        // issueTokenFor` returns null, `qr_token` is null and the customer got
+        // a ticket with NO QR at all — strictly worse than before.
+        //
+        // So the hash QR is back as a FALLBACK ONLY: it prints when, and only
+        // when, no other scannable QR will (no refund-lookup token, no
+        // original-ticket QR on a refund). The ticket therefore carries
+        // exactly one QR whenever a hash or a token exists. Same `GS ( k` call
+        // as before — module size 4, EC level M — now captioned, and without
+        // its own `ESC M` sandwich because this block is already Font B and
+        // centred.
+        if !has_scannable_qr(data) {
+            if let Some(ref hash) = data.fiscal_hash {
+                b.empty_line();
+                b.text_line(&data.label(|l| &l.qr_verify_label, "Receipt verification"));
+                b.qr_code(hash, 4, QrErrorCorrection::M);
+                b.empty_line();
+            }
+        }
 
         b.select_font(false); // Back to Font A
     }
@@ -1724,6 +1757,114 @@ mod tests_z_cash_counts {
         );
     }
 
+    /// The byte run a caption must produce INSIDE the fiscal footer, which has
+    /// already selected Font B and centred: the caption, its LF, then the first
+    /// byte of the `GS ( k` sequence. No font sandwich of its own — one would
+    /// be a second, redundant `ESC M`.
+    fn inline_captioned_qr_window(caption: &str) -> Vec<u8> {
+        let (encoded, _, _) = encoding_rs::WINDOWS_1252.encode(caption);
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&encoded);
+        expected.push(0x0A); // text_line's LF
+        expected.extend_from_slice(&[0x1D, 0x28, 0x6B]); // GS ( k — the QR starts here
+        expected
+    }
+
+    // ── r2 device recette 2026-09-18 — the ticket had NO QR at all ───────────
+    //
+    // DEV-QA-093 removed the fiscal-hash QR on the premise that the captioned
+    // refund-lookup token QR would take its place. On the client's tenant the
+    // server issues `qr_token = null` (`ReceiptQrTokenIssuanceService::
+    // issueTokenFor` returns null when the tenant has no active `receipt_qr`
+    // signing key), so the customer was left with zero QRs — strictly worse
+    // than before. The hash QR comes back as the FALLBACK only, captioned, so
+    // the ticket still carries exactly ONE QR.
+
+    /// No workflow token → the fiscal-hash QR prints, captioned.
+    #[test]
+    fn the_fiscal_hash_qr_is_the_fallback_when_the_server_issued_no_token() {
+        let mut data = make_fiscal_sale_with_token(
+            r#"{"receipt":"Reçu :","qr_verify_label":"Vérification du ticket"}"#,
+        );
+        data.qr_token = None;
+        let bytes = format_receipt_with_settings(&data, None);
+
+        assert_eq!(
+            qr_payloads(&bytes),
+            vec![FISCAL_HASH.to_string()],
+            "with no token the ticket must still carry exactly one QR, the fiscal hash"
+        );
+
+        let expected = inline_captioned_qr_window("Vérification du ticket");
+        assert!(
+            bytes.windows(expected.len()).any(|w| w == expected),
+            "the caption must sit immediately before the fiscal-hash QR"
+        );
+    }
+
+    /// An EMPTY token is the same "no token" case as a missing one.
+    #[test]
+    fn an_empty_workflow_token_also_falls_back_to_the_fiscal_hash_qr() {
+        let mut data = make_fiscal_sale_with_token(r#"{"receipt":"Reçu :"}"#);
+        data.qr_token = Some(String::new());
+        let bytes = format_receipt_with_settings(&data, None);
+
+        assert_eq!(qr_payloads(&bytes), vec![FISCAL_HASH.to_string()]);
+        // No `qr_verify_label` in the payload → the English default.
+        let expected = inline_captioned_qr_window("Receipt verification");
+        assert!(
+            bytes.windows(expected.len()).any(|w| w == expected),
+            "the English default caption must sit immediately before the QR"
+        );
+    }
+
+    /// A token IS issued → the fallback stays off; the workflow QR is the only
+    /// one, and the full hash is still absent from the stream.
+    #[test]
+    fn the_hash_qr_stays_off_when_a_workflow_token_exists() {
+        let data = make_fiscal_sale_with_token(
+            r#"{"receipt":"Reçu :","qr_scan_label":"Scanner pour retour / échange","qr_verify_label":"Vérification du ticket"}"#,
+        );
+        let bytes = format_receipt_with_settings(&data, None);
+
+        assert_eq!(qr_payloads(&bytes), vec![QR_TOKEN.to_string()]);
+        assert!(
+            !String::from_utf8_lossy(&bytes).contains("Vérification du ticket"),
+            "the verification caption must not print when there is no hash QR"
+        );
+    }
+
+    /// A refund with no workflow token still has its ORIGINAL-ticket QR, which
+    /// is scannable and labelled — the fallback must not add a second one.
+    #[test]
+    fn a_refund_original_ticket_qr_suppresses_the_hash_fallback() {
+        let mut data = make_fiscal_sale_with_token(r#"{"receipt":"Reçu :"}"#);
+        data.qr_token = None;
+        data.receipt_kind = Some("refund".to_string());
+        data.original_receipt_number = Some("L01-T01-00042".to_string());
+        data.original_receipt_qr_token = Some("1:kid:uuid-original:mac".to_string());
+        let bytes = format_receipt_with_settings(&data, None);
+
+        assert_eq!(
+            qr_payloads(&bytes),
+            vec!["1:kid:uuid-original:mac".to_string()],
+            "a refund ticket must carry exactly one QR"
+        );
+    }
+
+    /// Neither a hash nor a token → no QR at all, and no orphan caption.
+    #[test]
+    fn a_ticket_with_neither_hash_nor_token_prints_no_qr() {
+        let mut data = make_fiscal_sale_with_token(r#"{"receipt":"Reçu :"}"#);
+        data.qr_token = None;
+        data.fiscal_hash = None;
+        data.fiscal_signature = None;
+        let bytes = format_receipt_with_settings(&data, None);
+
+        assert!(qr_payloads(&bytes).is_empty());
+        assert!(!String::from_utf8_lossy(&bytes).contains("Receipt verification"));
+    }
+
     /// The rendered amount on the first line whose text starts with `label`,
     /// as signed millimes. Test-only parsing — the formatter itself never
     /// parses a monetary string.
@@ -1966,6 +2107,7 @@ mod tests_z_cash_counts {
             original_ticket: None,
             original_qr_label: None,
             qr_scan_label: None,
+            qr_verify_label: None,
             account_payment_header: None,
             balance_before: None,
             balance_after: None,

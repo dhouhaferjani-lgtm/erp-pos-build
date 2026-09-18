@@ -110,6 +110,14 @@ export interface ReceiptLabels {
    * ticket up for a return / exchange.
    */
   qr_scan_label?: string;
+  /**
+   * Caption printed above the FALLBACK fiscal-hash QR — the one the template
+   * prints only when the server issued no refund-lookup token (r2 device
+   * recette 2026-09-18: `ReceiptQrTokenIssuanceService::issueTokenFor` returns
+   * null for a tenant with no active `receipt_qr` key, and the ticket then had
+   * no QR at all).
+   */
+  qr_verify_label?: string;
   account_payment_header?: string;
   balance_before?: string;
   balance_after?: string;

@@ -892,6 +892,7 @@
     "originalTicket": "Ticket original :",
     "originalQrLabel": "Scanner le ticket original :",
     "qrScanLabel": "Scanner pour retour / échange",
+    "qrVerifyLabel": "Vérification du ticket",
     "legalIdentifier": {
       "matricule_fiscal": "Matricule fiscal :",
       "establishment_code": "Code établissement :",

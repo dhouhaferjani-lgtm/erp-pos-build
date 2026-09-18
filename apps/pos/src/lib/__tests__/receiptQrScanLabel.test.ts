@@ -66,3 +66,29 @@ describe('buildReceiptLabels — qr_scan_label (DEV-QA-093)', () => {
     expect(labels.qr_scan_label).not.toContain('receiptLabel.');
   });
 });
+
+/**
+ * r2 device recette 2026-09-18 — the printed ticket carried NO QR: this
+ * tenant has no active `receipt_qr` signing key, so the server issued
+ * `qr_token = null` and DEV-QA-093 had already removed the fiscal-hash QR.
+ * The hash QR is back as a captioned fallback, so the caption ships too.
+ */
+describe('buildReceiptLabels — qr_verify_label (r2)', () => {
+  it('carries the fallback-QR caption from the fr locale bundle', () => {
+    localeState.locale = 'fr';
+
+    expect(buildReceiptLabels().qr_verify_label).toBe('Vérification du ticket');
+  });
+
+  it('carries the English caption from the en locale bundle', () => {
+    localeState.locale = 'en';
+
+    expect(buildReceiptLabels().qr_verify_label).toBe('Receipt verification');
+  });
+
+  it('never leaves the caption as the raw translation key', () => {
+    localeState.locale = 'fr';
+
+    expect(buildReceiptLabels().qr_verify_label).not.toContain('receiptLabel.');
+  });
+});

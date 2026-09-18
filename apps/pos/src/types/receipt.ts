@@ -23,6 +23,8 @@ export interface ReceiptLabels {
   notes?: string
   /** Caption printed above the refund-lookup QR (DEV-QA-093). */
   qr_scan_label?: string
+  /** Caption printed above the fallback fiscal-hash QR (r2 device recette). */
+  qr_verify_label?: string
 }
 
 export interface CreateReceiptRequest {
