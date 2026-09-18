@@ -1,17 +1,16 @@
 /**
- * v3-refund-chain-integration spec §9.2 — the real dispatch seam.
+ * Lane C 2026-09-17 — HomePage must thread the `(barcode, target)` pair
+ * reported by `useBarcodeScanner` into ProductGrid's `completedScan` prop,
+ * otherwise the scan-replaces-search behaviour never reaches the cashier.
  *
- * `startRefundCheckout()` (triggered from `handlePayCash`/
- * `handleAdvancedPayments`'s `'start-refund'` classification) must read the
- * local `terminal_state.v4_refund_authoring_enabled` capability flag BEFORE
- * calling `useRefundCheckoutStore.getState().begin(...)` — i.e. before the
- * refund flow proceeds to draft a `refund_intents` row. When the capability
- * is not (yet) locally known to be enabled, the typed §9.4 refusal copy is
- * shown and `begin()` is never invoked.
+ * Mock scaffold copied from `HomePage.refundCapability.test.tsx` (the lightest
+ * sibling that renders <HomePage /> with an open shift), with two mocks
+ * changed: ProductGrid captures its props, useBarcodeScanner captures onScan.
  */
 import type { ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, act } from '@testing-library/react';
+import type { ProductGridProps } from '@/components/organisms/ProductGrid/ProductGrid';
 
 // ---------------------------------------------------------------------------
 // Module mocks — must appear before any component import
@@ -70,8 +69,12 @@ vi.mock('@/lib/db/repositories/refundDraftRepository', () => ({
   getLatestRefundDraft: vi.fn().mockResolvedValue(null),
 }));
 
+const { dispatchScanMock } = vi.hoisted(() => ({
+  dispatchScanMock: vi.fn().mockResolvedValue({ kind: 'fallthrough' }),
+}));
+
 vi.mock('@/lib/scan/dispatcher', () => ({
-  dispatchScan: vi.fn(),
+  dispatchScan: dispatchScanMock,
 }));
 
 vi.mock('@/lib/scan/resolveScannedCode', () => ({
@@ -119,16 +122,23 @@ vi.mock('@/api/receiptApi', () => ({
   fetchReceipt: vi.fn().mockResolvedValue(null),
 }));
 
+let capturedOnScan: ((barcode: string, target: EventTarget | null) => void) | null = null;
 vi.mock('@/hooks/useBarcodeScanner', () => ({
-  useBarcodeScanner: vi.fn(),
+  useBarcodeScanner: ({ onScan }: { onScan: (barcode: string, target: EventTarget | null) => void }) => {
+    capturedOnScan = onScan;
+  },
 }));
 
 // ---------------------------------------------------------------------------
 // Heavy component mocks — render as minimal placeholders
 // ---------------------------------------------------------------------------
 
+const gridProps: ProductGridProps[] = [];
 vi.mock('@/components/organisms/ProductGrid', () => ({
-  ProductGrid: () => <div data-testid="product-grid" />,
+  ProductGrid: (props: ProductGridProps) => {
+    gridProps.push(props);
+    return <div data-testid="product-grid" />;
+  },
 }));
 
 vi.mock('@/components/organisms/TransactionCart', () => ({
@@ -405,140 +415,47 @@ function seedStores() {
 
 import { HomePage } from '../HomePage';
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-describe('HomePage — v3-refund-chain-integration §9.2/§9.3 dispatch-seam capability routing', () => {
-  beforeEach(() => {
-    seedStores();
-    decidePayInterceptionMock.mockReturnValue('start-refund');
-    getV4RefundAuthoringEnabledMock.mockReset();
-    beginMock.mockClear();
-  });
-
-  // ⚖️ orchestrator ruling (settle-seam extension): the capability gate
-  // ROUTES between the legacy and v4 flows, it does NOT refuse — the two
-  // flows coexist behind the flag exactly as §9.3's two-phase rollout
-  // intends. A non-acknowledged terminal keeps using the legacy `/return`
-  // path (v4CapabilityEnabled: false), unchanged.
-  it('§9.3: routes to the LEGACY flow (v4CapabilityEnabled: false) when the capability is disabled', async () => {
-    getV4RefundAuthoringEnabledMock.mockResolvedValue(false);
-    render(<HomePage />);
-
-    // Resume the draft so activeRefundReceiptNumber is populated (the
-    // dispatch seam's own pre-condition, unrelated to the capability check).
-    const resumeButton = screen.getByRole('button', { name: 'refundFlow.resumeBanner.resume' });
-    await act(async () => {
-      fireEvent.click(resumeButton);
-    });
-
-    const payTrigger = screen.getByTestId('pay-cash-trigger');
-    await act(async () => {
-      fireEvent.click(payTrigger);
-    });
-
-    await waitFor(() => {
-      expect(beginMock).toHaveBeenCalledOnce();
-    });
-    expect(beginMock).toHaveBeenCalledWith(
-      expect.objectContaining({ v4CapabilityEnabled: false }),
-    );
-    // The refusal copy is NOT shown — a disabled capability is a routing
-    // decision, not a refusal.
-    expect(screen.queryByText('pos:refundFlow.capabilityUnavailable')).not.toBeInTheDocument();
-  });
-
-  it('§9.2: routes to the v4 flow (v4CapabilityEnabled: true) with the original receipt id when enabled', async () => {
-    getV4RefundAuthoringEnabledMock.mockResolvedValue(true);
-    render(<HomePage />);
-
-    const resumeButton = screen.getByRole('button', { name: 'refundFlow.resumeBanner.resume' });
-    await act(async () => {
-      fireEvent.click(resumeButton);
-    });
-
-    const payTrigger = screen.getByTestId('pay-cash-trigger');
-    await act(async () => {
-      fireEvent.click(payTrigger);
-    });
-
-    await waitFor(() => {
-      expect(beginMock).toHaveBeenCalledOnce();
-    });
-    expect(beginMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        v4CapabilityEnabled: true,
-        originalLocalReceiptId: activeDraft.receiptUuid,
-      }),
-    );
-    expect(screen.queryByText('pos:refundFlow.capabilityUnavailable')).not.toBeInTheDocument();
-  });
-
-  it('reads the capability by the ACTIVE terminal id (never a hardcoded/omitted id)', async () => {
-    getV4RefundAuthoringEnabledMock.mockResolvedValue(true);
-    render(<HomePage />);
-
-    const resumeButton = screen.getByRole('button', { name: 'refundFlow.resumeBanner.resume' });
-    await act(async () => {
-      fireEvent.click(resumeButton);
-    });
-    const payTrigger = screen.getByTestId('pay-cash-trigger');
-    await act(async () => {
-      fireEvent.click(payTrigger);
-    });
-
-    await waitFor(() => {
-      expect(getV4RefundAuthoringEnabledMock).toHaveBeenCalledWith(expect.anything(), 'term-1');
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// React Doctor `effect-needs-cleanup` — the accepted-token effect arms a 4 s
-// timer to clear the "scan blocked during checkout" message. Unmounting the
-// page (shift close, route change) must clear that timer instead of leaving it
-// to fire against a dead component.
-// ---------------------------------------------------------------------------
-describe('HomePage — accepted-token effect timer cleanup', () => {
+describe('HomePage — completed scan threading', () => {
   beforeEach(() => {
     seedStores();
     getV4RefundAuthoringEnabledMock.mockResolvedValue(false);
-    useRefundFlowStore.setState({ acceptedReceiptToken: null } as never);
+    gridProps.length = 0;
+    capturedOnScan = null;
   });
 
-  it('clears the scan-blocked message timer when the page unmounts', () => {
-    vi.useFakeTimers();
-    try {
-      // A refund checkout already mid-settlement: a newly accepted token is
-      // consumed, dropped, and surfaced as a transient error message.
-      useRefundCheckoutStore.setState({ step: 'confirm' } as never);
-      const { unmount } = render(<HomePage />);
-      const timersBefore = vi.getTimerCount();
+  it('passes the completed scan and its target to ProductGrid', async () => {
+    await act(async () => {
+      render(<HomePage />);
+    });
 
-      act(() => {
-        useRefundFlowStore.setState({
-          acceptedReceiptToken: {
-            receiptUuid: 'receipt-uuid-1',
-            receiptNumber: 'MAIN-T01-2026-00000001',
-            receiptToken: null,
-            postedAt: '2026-09-18T08:00:00Z',
-            total: '10.000',
-            currency: 'EUR',
-          },
-        } as never);
-      });
+    expect(capturedOnScan).not.toBeNull();
 
-      // The message timer is armed by the effect...
-      expect(vi.getTimerCount()).toBe(timersBefore + 1);
+    const target = document.createElement('input');
+    await act(async () => {
+      capturedOnScan?.('0012345678905', target);
+    });
 
-      unmount();
+    const last = gridProps[gridProps.length - 1];
+    expect(last?.completedScan).toEqual({ barcode: '0012345678905', target });
+  });
 
-      // ...and released on unmount.
-      expect(vi.getTimerCount()).toBeLessThanOrEqual(timersBefore);
-    } finally {
-      useRefundCheckoutStore.setState({ step: 'idle' } as never);
-      vi.useRealTimers();
-    }
+  it('reports a fresh object per scan so an identical barcode is never treated as already consumed', async () => {
+    await act(async () => {
+      render(<HomePage />);
+    });
+
+    const target = document.createElement('input');
+    await act(async () => {
+      capturedOnScan?.('0012345678905', target);
+    });
+    const first = gridProps[gridProps.length - 1]?.completedScan;
+
+    await act(async () => {
+      capturedOnScan?.('0012345678905', target);
+    });
+    const second = gridProps[gridProps.length - 1]?.completedScan;
+
+    expect(second).toEqual({ barcode: '0012345678905', target });
+    expect(second).not.toBe(first);
   });
 });

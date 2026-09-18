@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -58,12 +58,26 @@ const LIST_ROW_ESTIMATE = 52;
  */
 const EMPTY_LOCATION_STOCK: GridLocationStockMap = {};
 
+export interface CompletedScan {
+  barcode: string;
+  target: EventTarget | null;
+}
+
 export interface ProductGridProps {
   products: POSProduct[];
   categories: string[];
   onAddToCart: (product: POSProduct) => void;
   onCustomize?: (product: POSProduct) => void;
   cartProductIds: string[];
+  /**
+   * Lane C 2026-09-17 — the last completed scanner burst, as reported by
+   * `useBarcodeScanner` on HomePage. When its `target` is this grid's search
+   * input and that input is still focused, the search value is replaced by the
+   * decoded barcode and fully selected so the next scan overwrites it instead
+   * of appending. Identity-based: pass a fresh object per scan; the same object
+   * is never applied twice (re-render, refocus, loading round-trip, remount).
+   */
+  completedScan?: CompletedScan | null;
   /**
    * Owner polish 2026-07-09 (sub-task a): per-product cart quantity, shown in
    * the in-cart count chip on vitrine/compact cards. Optional — when absent
@@ -108,6 +122,7 @@ export function ProductGrid({
   onCustomize,
   cartProductIds,
   cartQuantities,
+  completedScan,
   isLoading = false,
   consumptionModeToggle,
   locationStock = EMPTY_LOCATION_STOCK,
@@ -130,6 +145,22 @@ export function ProductGrid({
   const setDisplayMode = useSettingsStore((s) => s.setDisplayMode);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const consumedScanRef = useRef<CompletedScan | null>(null);
+
+  // Apply a completed scan exactly once, and only when it targeted our
+  // focused search input. Write the DOM value BEFORE the state update so
+  // React's commit is a no-op on the node and the selection survives (jsdom
+  // and browsers reset selection to the end whenever `value` is assigned).
+  useEffect(() => {
+    if (!completedScan || consumedScanRef.current === completedScan) return;
+    consumedScanRef.current = completedScan;
+    const input = searchInputRef.current;
+    if (!input || completedScan.target !== input || document.activeElement !== input) return;
+    input.value = completedScan.barcode;
+    input.setSelectionRange(0, completedScan.barcode.length);
+    setSearchQuery(completedScan.barcode);
+  }, [completedScan]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [inStockOnly, setInStockOnly] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('default');
@@ -146,9 +177,15 @@ export function ProductGrid({
   // updates filtresFilters on every render).
   // ---------------------------------------------------------------------------
   const _filtersRef = useRef(filters);
-  _filtersRef.current = filters;
   const _onFiltersChangeRef = useRef(onFiltersChange);
-  _onFiltersChangeRef.current = onFiltersChange;
+  // React Doctor `no-ref-current-in-render`: the refs are synced from a layout
+  // effect, never during render. Layout effects flush before passive ones, so
+  // the auto-default effect below still reads the latest pair on the very same
+  // commit — identical behaviour, no render-phase mutation.
+  useLayoutEffect(() => {
+    _filtersRef.current = filters;
+    _onFiltersChangeRef.current = onFiltersChange;
+  });
 
   useEffect(() => {
     if (!isMerchandisingEnabled || !showParapharmacyFilters) return;
@@ -481,6 +518,7 @@ export function ProductGrid({
         <div className="relative min-w-0 flex-1">
           <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-faint" />
           <input
+            ref={searchInputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
