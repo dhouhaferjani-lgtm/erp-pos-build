@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useCallback } from 'react';
-import { useScannerStore } from '@/stores/scannerStore';
+import { useScannerStore, type ScannerKeyboardLayout } from '@/stores/scannerStore';
 import { decodeUsKey } from '@/lib/scan/usKeyboardLayout';
 
 interface UseBarcodeScannerOptions {
@@ -26,6 +26,10 @@ interface UseBarcodeScannerOptions {
  * event in a burst has no US mapping, the whole token falls back to `raw` so
  * a scan is never a mixed-layout hybrid. Character keydowns are never
  * intercepted — only the Enter terminator of a qualifying burst is.
+ *
+ * `'auto'` (the default) picks between the two buffers per scan — see
+ * `pickAutoBarcode` — so a US-programmed scanner on an FR-AZERTY host works
+ * with no setting to discover. `'system'` and `'us'` stay explicit overrides.
  */
 export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScannerOptions): void {
   const rawRef = useRef<string>('');
@@ -73,8 +77,12 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScannerO
       }
 
       if (e.key === 'Enter') {
-        const barcode =
-          keyboardLayout === 'us' && !decodeFailedRef.current ? decodedRef.current : rawRef.current;
+        const barcode = pickBarcode(
+          keyboardLayout,
+          rawRef.current,
+          decodedRef.current,
+          decodeFailedRef.current,
+        );
         const target = targetMixedRef.current ? null : targetRef.current;
         resetBuffer();
 
@@ -89,9 +97,10 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScannerO
         return;
       }
 
+      const decodes = keyboardLayout === 'us' || keyboardLayout === 'auto';
       const isPrintable = e.key.length === 1;
       const isDeadKey = e.key === 'Dead';
-      if (!isPrintable && !(isDeadKey && keyboardLayout === 'us')) return;
+      if (!isPrintable && !(isDeadKey && decodes)) return;
 
       const burstWasEmpty = !(
         rawRef.current.length > 0 ||
@@ -104,7 +113,7 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScannerO
         // A Dead key is not printable, so it falls through here and contributes nothing to the raw token.
         rawRef.current += e.key;
       }
-      if (keyboardLayout === 'us') {
+      if (decodes) {
         const decoded = decodeUsKey(e.code, e.shiftKey);
         if (decoded === null) {
           decodeFailedRef.current = true;
@@ -129,6 +138,41 @@ export function useBarcodeScanner({ onScan, enabled = true }: UseBarcodeScannerO
       resetBuffer();
     };
   }, [enabled, resetBuffer]);
+}
+
+/**
+ * Characters a real barcode is made of. A token outside this class on an
+ * AZERTY/QWERTZ host is the signature of a US-programmed scanner whose digits
+ * and symbols were re-mapped by the host layout (`0012345678905` → `àà&é"'(-è_çà(`).
+ */
+const BARCODE_TOKEN = /^[0-9A-Za-z][0-9A-Za-z._\-/+ ]*$/;
+const BARCODE_CHAR = /[0-9A-Za-z._\-/+ ]/;
+
+/**
+ * `'auto'`: take the decoded token only when the evidence of a layout mismatch
+ * is unambiguous — the decode is complete, it looks like a barcode, it differs
+ * from what the host produced, and the host token contains a character no
+ * barcode would carry. Anything less (a plausible raw token, a partial decode,
+ * an identical decode) keeps the received text, so a correctly configured
+ * terminal is never second-guessed.
+ */
+function pickAutoBarcode(raw: string, decoded: string, decodeFailed: boolean): string {
+  if (decodeFailed) return raw;
+  if (!BARCODE_TOKEN.test(decoded)) return raw;
+  if (raw === decoded) return raw;
+  if (![...raw].some((char) => !BARCODE_CHAR.test(char))) return raw;
+  return decoded;
+}
+
+function pickBarcode(
+  layout: ScannerKeyboardLayout,
+  raw: string,
+  decoded: string,
+  decodeFailed: boolean,
+): string {
+  if (layout === 'us') return decodeFailed ? raw : decoded;
+  if (layout === 'auto') return pickAutoBarcode(raw, decoded, decodeFailed);
+  return raw;
 }
 
 /** Play a short beep (~100ms, 1000Hz) via the Web Audio API. */

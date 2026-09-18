@@ -5,7 +5,8 @@
  * translates them through ITS layout before the browser sees `e.key`, so on an
  * FR-AZERTY host `0` arrives as `à`. `KeyboardEvent.code` is the layout-independent
  * physical position, so decoding `code` + `shiftKey` through this table recovers
- * what the scanner meant. Only used when `scannerStore.keyboardLayout === 'us'`.
+ * what the scanner meant. Used by `scannerStore.keyboardLayout` `'us'` (always) and
+ * `'auto'` (only when the received text proves the host layout re-mapped the scan).
  */
 type Pair = readonly [unshifted: string, shifted: string];
 

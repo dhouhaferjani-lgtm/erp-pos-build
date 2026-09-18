@@ -2,8 +2,14 @@ import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Barcode } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useScannerStore } from '@/stores/scannerStore';
+import { useScannerStore, type ScannerKeyboardLayout } from '@/stores/scannerStore';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
+
+function parseKeyboardLayout(value: string): ScannerKeyboardLayout {
+  if (value === 'us') return 'us';
+  if (value === 'system') return 'system';
+  return 'auto';
+}
 
 export function ScannerSettings() {
   const { t } = useTranslation('pos');
@@ -49,10 +55,11 @@ export function ScannerSettings() {
           <select
             id={layoutId}
             value={keyboardLayout}
-            onChange={(e) => setKeyboardLayout(e.target.value === 'us' ? 'us' : 'system')}
+            onChange={(e) => setKeyboardLayout(parseKeyboardLayout(e.target.value))}
             aria-describedby={`${layoutId}-help`}
             className="min-h-[44px] w-full rounded-ctl border border-border-subtle bg-surface-raised px-3 text-sm text-ink focus:border-action focus:outline-none focus:ring-2 focus:ring-action"
           >
+            <option value="auto">{t('settings.scannerKeyboardAuto')}</option>
             <option value="system">{t('settings.scannerKeyboardSystem')}</option>
             <option value="us">{t('settings.scannerKeyboardUS')}</option>
           </select>

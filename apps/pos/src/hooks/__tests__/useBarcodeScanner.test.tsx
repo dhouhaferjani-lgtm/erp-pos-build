@@ -295,6 +295,108 @@ describe('useBarcodeScanner', () => {
     expect(latestOnScan.mock.calls.map(([barcode]) => barcode)).toEqual(['001234']);
   });
 
+  // --- 'auto' mode (the default): decode only when the raw token is provably
+  // the wrong layout, so a cashier never has to touch Paramètres › Scanner.
+  it('given automatic mode and a layout mismatch, delivers the decoded barcode', () => {
+    useScannerStore.setState({ keyboardLayout: 'auto' });
+    const onScan = vi.fn();
+    renderHook(() => useBarcodeScanner({ onScan }));
+
+    const terminator = scan(window, frenchBarcodeKeys);
+
+    expect(onScan.mock.calls.map(([barcode]) => barcode)).toEqual(['0012345678905']);
+    expect(terminator.defaultPrevented).toBe(true);
+  });
+
+  it('given automatic mode and a matching layout, delivers the received characters untouched', () => {
+    useScannerStore.setState({ keyboardLayout: 'auto' });
+    const onScan = vi.fn();
+    renderHook(() => useBarcodeScanner({ onScan }));
+
+    scan(window, [
+      { key: '0', code: 'Digit0' },
+      { key: '0', code: 'Digit0' },
+      { key: '1', code: 'Digit1' },
+      { key: '2', code: 'Digit2' },
+      { key: '3', code: 'Digit3' },
+      { key: '4', code: 'Digit4' },
+    ]);
+
+    expect(onScan.mock.calls.map(([barcode]) => barcode)).toEqual(['001234']);
+  });
+
+  it('given automatic mode and a barcode with a legitimate symbol on a matching layout, leaves it unchanged', () => {
+    useScannerStore.setState({ keyboardLayout: 'auto' });
+    const onScan = vi.fn();
+    renderHook(() => useBarcodeScanner({ onScan }));
+
+    scan(window, [
+      { key: 'A', code: 'KeyA', shiftKey: true },
+      { key: 'B', code: 'KeyB', shiftKey: true },
+      { key: '-', code: 'Minus' },
+      { key: '1', code: 'Digit1' },
+      { key: '2', code: 'Digit2' },
+    ]);
+
+    expect(onScan.mock.calls.map(([barcode]) => barcode)).toEqual(['AB-12']);
+  });
+
+  it('given automatic mode and manual typing at human speed, does not intercept the Enter', () => {
+    useScannerStore.setState({ keyboardLayout: 'auto' });
+    const onScan = vi.fn();
+    renderHook(() => useBarcodeScanner({ onScan }));
+
+    const terminator = scan(window, frenchBarcodeKeys, 120);
+
+    expect(onScan).not.toHaveBeenCalled();
+    expect(terminator.defaultPrevented).toBe(false);
+  });
+
+  it('given automatic mode and an unmapped physical code, keeps the received characters', () => {
+    useScannerStore.setState({ keyboardLayout: 'auto' });
+    const onScan = vi.fn();
+    renderHook(() => useBarcodeScanner({ onScan }));
+
+    scan(window, [
+      { key: 'à', code: 'Digit0' },
+      { key: 'λ', code: 'Unidentified' },
+      { key: 'é', code: 'Digit2' },
+    ]);
+
+    expect(onScan.mock.calls.map(([barcode]) => barcode)).toEqual(['àλé']);
+  });
+
+  it('given automatic mode and a plausible raw token, prefers the received text over a decoded alternative', () => {
+    useScannerStore.setState({ keyboardLayout: 'auto' });
+    const onScan = vi.fn();
+    renderHook(() => useBarcodeScanner({ onScan }));
+
+    // AZERTY host, US scanner sending "qbc": raw and decoded differ, but every raw
+    // character is barcode-plausible, so automatic mode must not guess.
+    scan(window, [
+      { key: 'a', code: 'KeyQ' },
+      { key: 'b', code: 'KeyB' },
+      { key: 'c', code: 'KeyC' },
+    ]);
+
+    expect(onScan.mock.calls.map(([barcode]) => barcode)).toEqual(['abc']);
+  });
+
+  it('given automatic mode and a dead key on the host layout, decodes its US scanner position', () => {
+    useScannerStore.setState({ keyboardLayout: 'auto' });
+    const onScan = vi.fn();
+    renderHook(() => useBarcodeScanner({ onScan }));
+
+    scan(window, [
+      { key: 'Dead', code: 'Digit2' },
+      { key: 'à', code: 'Digit0' },
+      { key: 'ç', code: 'Digit9' },
+      { key: '&', code: 'Digit1' },
+    ]);
+
+    expect(onScan.mock.calls.map(([barcode]) => barcode)).toEqual(['2091']);
+  });
+
   it('given a too-short fragment, clears it before the next complete scan', () => {
     const onScan = vi.fn();
     renderHook(() => useBarcodeScanner({ onScan }));
