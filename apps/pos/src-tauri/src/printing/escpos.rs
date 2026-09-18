@@ -121,19 +121,95 @@ impl TextEncoding {
     /// `encoding_rs`, so CP437 is ASCII-only (its accented range is Greek /
     /// box-drawing glyphs, not Latin accents) and CP858 uses the static
     /// table below.
+    ///
+    /// A character the page cannot represent is TRANSLITERATED to its ASCII
+    /// shape when one exists (`é` → `e`, `€` → `EUR`) and only otherwise
+    /// becomes `?` — device recette 2026-09-18: a terminal persisted on
+    /// `cp437` printed `Re?u` / `Op?rateur` / `Qt?` / `Esp?ces`, which is
+    /// honest but unreadable. CP1252 and CP858 carry every French accent
+    /// natively, so this path never fires for them and their bytes are
+    /// unchanged.
     pub fn encode(self, s: &str) -> Vec<u8> {
-        match self {
-            TextEncoding::Cp1252 => {
-                let (cow, _encoding_used, _had_errors) = encoding_rs::WINDOWS_1252.encode(s);
-                cow.into_owned()
+        let mut out = Vec::with_capacity(s.len());
+        for c in s.chars() {
+            match self.encode_char(c) {
+                Some(byte) => out.push(byte),
+                None => match transliterate(c) {
+                    Some(ascii) => out.extend_from_slice(ascii.as_bytes()),
+                    None => out.push(b'?'),
+                },
             }
-            TextEncoding::Cp437 => s
-                .chars()
-                .map(|c| if c.is_ascii() { c as u8 } else { b'?' })
-                .collect(),
-            TextEncoding::Cp858 => s.chars().map(cp858_byte).collect(),
+        }
+        out
+    }
+
+    /// The single byte this page uses for `c`, or `None` when the page cannot
+    /// represent it at all.
+    fn encode_char(self, c: char) -> Option<u8> {
+        match self {
+            // Per-character round trip through `encoding_rs`: WINDOWS_1252 is
+            // a stateless single-byte charset, so this yields exactly the
+            // bytes the previous whole-string call produced for every
+            // representable character. `had_errors` is how encoding_rs
+            // reports "not in this page" (it would otherwise emit an HTML
+            // numeric character reference, which would print literally).
+            TextEncoding::Cp1252 => {
+                let mut buf = [0u8; 4];
+                let one = c.encode_utf8(&mut buf);
+                let (cow, _encoding_used, had_errors) = encoding_rs::WINDOWS_1252.encode(one);
+                if had_errors || cow.len() != 1 {
+                    None
+                } else {
+                    Some(cow[0])
+                }
+            }
+            TextEncoding::Cp437 => c.is_ascii().then_some(c as u8),
+            TextEncoding::Cp858 => cp858_byte(c),
         }
     }
+}
+
+/// ASCII shape for a character no selected code page can print.
+///
+/// Letters map 1:1 so the column arithmetic is unaffected; the handful of
+/// multi-character entries (`€` → `EUR`, `œ` → `oe`, `…` → `...`) widen the
+/// text, which is why every column computation measures ENCODED bytes (see
+/// [`EscPosBuilder::printed_width`]).
+fn transliterate(c: char) -> Option<&'static str> {
+    Some(match c {
+        'À' | 'Á' | 'Â' | 'Ã' | 'Ä' | 'Å' => "A",
+        'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => "a",
+        'Æ' => "AE",
+        'æ' => "ae",
+        'Ç' => "C",
+        'ç' => "c",
+        'È' | 'É' | 'Ê' | 'Ë' => "E",
+        'è' | 'é' | 'ê' | 'ë' => "e",
+        'Ì' | 'Í' | 'Î' | 'Ï' => "I",
+        'ì' | 'í' | 'î' | 'ï' => "i",
+        'Ñ' => "N",
+        'ñ' => "n",
+        'Ò' | 'Ó' | 'Ô' | 'Õ' | 'Ö' | 'Ø' => "O",
+        'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' => "o",
+        'Ù' | 'Ú' | 'Û' | 'Ü' => "U",
+        'ù' | 'ú' | 'û' | 'ü' => "u",
+        'Ý' | 'Ÿ' => "Y",
+        'ý' | 'ÿ' => "y",
+        'ß' => "ss",
+        'Œ' => "OE",
+        'œ' => "oe",
+        'Š' => "S",
+        'š' => "s",
+        'Ž' => "Z",
+        'ž' => "z",
+        '€' => "EUR",
+        '\u{00A0}' | '\u{202F}' => " ",
+        '\u{2018}' | '\u{2019}' | '\u{2032}' => "'",
+        '\u{201C}' | '\u{201D}' => "\"",
+        '\u{2013}' | '\u{2014}' => "-",
+        '\u{2026}' => "...",
+        _ => return None,
+    })
 }
 
 /// CP858 bytes for U+00A0..=U+00FF, indexed by `code point - 0xA0`.
@@ -154,19 +230,20 @@ const CP858_LATIN1_SUPPLEMENT: [u8; 96] = [
     0x9B, 0x97, 0xA3, 0x96, 0x81, 0xEC, 0xE7, 0x98, // F8 ø ù ú û ü ý þ ÿ
 ];
 
-/// Map one character to its CP858 byte, `?` when the page cannot print it.
-fn cp858_byte(c: char) -> u8 {
+/// Map one character to its CP858 byte, `None` when the page cannot print it
+/// (the caller then transliterates, and only then falls back to `?`).
+fn cp858_byte(c: char) -> Option<u8> {
     let cp = c as u32;
     if c.is_ascii() {
-        return c as u8;
+        return Some(c as u8);
     }
     if (0xA0..=0xFF).contains(&cp) {
-        return CP858_LATIN1_SUPPLEMENT[(cp - 0xA0) as usize];
+        return Some(CP858_LATIN1_SUPPLEMENT[(cp - 0xA0) as usize]);
     }
     if c == '€' {
-        return 0xD5; // the one cell where CP858 departs from CP850
+        return Some(0xD5); // the one cell where CP858 departs from CP850
     }
-    b'?'
+    None
 }
 
 /// Builder that accumulates ESC/POS commands into a byte buffer.
@@ -280,17 +357,26 @@ impl EscPosBuilder {
         self.text_line(&line)
     }
 
+    /// Printed width of `s` in columns: the number of BYTES the selected code
+    /// page produces, since ESC/POS Font A prints one column per byte.
+    ///
+    /// Not `.chars().count()`: `.len()` would overcount `ç` (2 UTF-8 bytes, 1
+    /// CP1252 column) and a char count would UNDERcount a transliterated `€`
+    /// (1 char, 3 printed columns). For CP1252 — every tenant after the store
+    /// migration, and every golden fixture — the two are identical, because a
+    /// representable character is exactly one byte there.
+    fn printed_width(&self, s: &str) -> usize {
+        self.encoding.encode(s).len()
+    }
+
     /// Print a line with left-aligned and right-aligned text on the same row.
     /// If the combined text exceeds column width, right text is truncated.
     ///
-    /// Uses `.chars().count()` for width measurement because the printer receives
-    /// single-byte encoded text (CP1252/CP437), where each character = 1 column.
-    /// Using `.len()` would overcount non-ASCII chars (e.g., 'ç' is 2 bytes in
-    /// UTF-8 but 1 byte/column in CP1252).
+    /// Widths come from [`Self::printed_width`] (encoded bytes = columns).
     pub fn two_column(&mut self, left: &str, right: &str) -> &mut Self {
         let cols = self.columns as usize;
-        let left_len = left.chars().count();
-        let right_len = right.chars().count();
+        let left_len = self.printed_width(left);
+        let right_len = self.printed_width(right);
 
         if left_len + right_len >= cols {
             // Truncate: show as much as fits
@@ -299,14 +385,13 @@ impl EscPosBuilder {
             } else {
                 cols
             };
-            let truncated_chars = left.chars().take(left_len.min(max_left));
-            let truncated_left: String = truncated_chars.collect();
-            let truncated_left_len = truncated_left.chars().count();
+            let truncated_left = self.truncate_to_width(left, max_left);
+            let truncated_left_len = self.printed_width(&truncated_left);
             let remaining = cols.saturating_sub(truncated_left_len);
             let padded_right = if remaining >= right_len {
-                format!("{:>width$}", right, width = remaining)
+                format!("{}{}", " ".repeat(remaining - right_len), right)
             } else {
-                right.chars().take(remaining).collect::<String>()
+                self.truncate_to_width(right, remaining)
             };
             self.text(&truncated_left);
             self.text_line(&padded_right);
@@ -320,12 +405,29 @@ impl EscPosBuilder {
         self
     }
 
+    /// Longest prefix of `s` whose printed width is at most `max_width`.
+    fn truncate_to_width(&self, s: &str, max_width: usize) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut width = 0usize;
+        for c in s.chars() {
+            let mut one = [0u8; 4];
+            let w = self.printed_width(c.encode_utf8(&mut one));
+            if width + w > max_width {
+                break;
+            }
+            out.push(c);
+            width += w;
+        }
+        out
+    }
+
     /// Print a three-column line (left, center, right).
     ///
-    /// Uses `.chars().count()` for width measurement (see `two_column` doc).
+    /// Widths come from [`Self::printed_width`] (see `two_column` doc).
     pub fn three_column(&mut self, left: &str, center: &str, right: &str) -> &mut Self {
         let cols = self.columns as usize;
-        let total_content = left.chars().count() + center.chars().count() + right.chars().count();
+        let total_content =
+            self.printed_width(left) + self.printed_width(center) + self.printed_width(right);
 
         if total_content >= cols {
             // Fall back to two-column with center+right merged
@@ -623,14 +725,74 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_cp437_replaces_unprintable_accents() {
-        // CP437 genuinely cannot print é/è/ç — 0xE9 there is `Θ`. `?` is the
-        // honest output; the fix is for the operator to pick CP1252/CP858.
+    fn test_encode_cp437_transliterates_unprintable_accents() {
+        // CP437 genuinely cannot print é/è/ç — 0xE9 there is `Θ`. Device
+        // recette 2026-09-18: the honest `?` is still unreadable French
+        // ("Re?u", "Op?rateur"), so an unrepresentable Latin-1 LETTER is
+        // transliterated to its ASCII shape instead.
         let mut builder = EscPosBuilder::with_columns_and_encoding(42, TextEncoding::Cp437);
         builder.text("Cafe é");
         let data = builder.build();
         assert_eq!(&data[..PROLOGUE_LEN], &[0x1B, 0x40, 0x1B, 0x74, 0x00]);
-        assert_eq!(&data[PROLOGUE_LEN..], b"Cafe ?");
+        assert_eq!(&data[PROLOGUE_LEN..], b"Cafe e");
+    }
+
+    #[test]
+    fn test_encode_cp437_transliterates_the_whole_french_sample() {
+        // The four words from the terminal photo, plus the euro sign.
+        let mut builder = EscPosBuilder::with_columns_and_encoding(42, TextEncoding::Cp437);
+        builder.text("Café crème Reçu Opérateur Qté Espèces €");
+        let data = builder.build();
+        assert_eq!(
+            &data[PROLOGUE_LEN..],
+            b"Cafe creme Recu Operateur Qte Especes EUR"
+        );
+    }
+
+    #[test]
+    fn test_encode_cp1252_is_unchanged_by_transliteration() {
+        // CP1252 CAN represent every French accent, so transliteration must
+        // never fire there: the bytes stay the ones DEV-QA-094 asserted.
+        let mut builder = EscPosBuilder::with_columns_and_encoding(42, TextEncoding::Cp1252);
+        builder.text("Café crème");
+        let data = builder.build();
+        assert_eq!(&data[..PROLOGUE_LEN], &[0x1B, 0x40, 0x1B, 0x74, 0x10]);
+        assert_eq!(
+            &data[PROLOGUE_LEN..],
+            &[0x43, 0x61, 0x66, 0xE9, 0x20, 0x63, 0x72, 0xE8, 0x6D, 0x65]
+        );
+    }
+
+    #[test]
+    fn test_encode_cp858_is_unchanged_by_transliteration() {
+        // Same guarantee for CP858, which has its own accent slots.
+        let mut builder = EscPosBuilder::with_columns_and_encoding(42, TextEncoding::Cp858);
+        builder.text("éçè€");
+        let data = builder.build();
+        assert_eq!(&data[PROLOGUE_LEN..], &[0x82, 0x87, 0x8A, 0xD5]);
+    }
+
+    #[test]
+    fn test_encode_keeps_question_mark_for_untransliterable_chars() {
+        // No ASCII shape exists for a CJK ideograph: `?` stays the fallback.
+        let mut builder = EscPosBuilder::with_columns_and_encoding(42, TextEncoding::Cp437);
+        builder.text("价格");
+        let data = builder.build();
+        assert_eq!(&data[PROLOGUE_LEN..], b"??");
+    }
+
+    #[test]
+    fn test_two_column_width_counts_encoded_bytes_not_source_chars() {
+        // Transliteration can turn one source char into several printed
+        // columns (€ → EUR). The padding must be computed on what the printer
+        // receives, or the row overflows its column count.
+        let mut builder = EscPosBuilder::with_columns_and_encoding(42, TextEncoding::Cp437);
+        builder.two_column("Total", "11.000 €");
+        let data = builder.build();
+        let line = &data[PROLOGUE_LEN..];
+        let lf_pos = line.iter().position(|&b| b == 0x0A).unwrap();
+        assert_eq!(lf_pos, 42, "row must be exactly 42 printed columns");
+        assert!(line[..lf_pos].ends_with(b"11.000 EUR"));
     }
 
     #[test]
