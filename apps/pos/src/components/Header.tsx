@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight, BarChart3, Lock, Minimize2, RotateCw, Settings } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
-import { useTerminalStore, fiscalShiftIdForReceipt } from '@/stores/terminalStore';
+import { useTerminalStore, fiscalShiftIdForReceipt, type Shift } from '@/stores/terminalStore';
 import { useShiftActionsStore } from '@/stores/shiftActionsStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { applyFullscreen } from '@/lib/fullscreen';
@@ -76,7 +76,24 @@ export function Header() {
   const isSyncing = useSyncStore((s) => s.isSyncing);
   const triggerSync = useSyncStore((s) => s.triggerSync);
 
-  const [showEndOfDay, setShowEndOfDay] = useState(false);
+  // The live shift is cleared by closeShift before the modal renders its Z
+  // result. Keep the shift selected for this closure until Done, scoped to the
+  // operator and terminal that opened it.
+  const [endOfDaySession, setEndOfDaySession] = useState<{
+    shift: NonNullable<typeof shift>;
+    companyId: typeof companyId;
+    terminalId: string;
+    operatorId: string | null;
+  } | null>(null);
+  const endOfDayScopeMatches = endOfDaySession !== null
+    && endOfDaySession.companyId === companyId
+    && endOfDaySession.terminalId === terminal?.id
+    && endOfDaySession.operatorId === (operator?.id ?? null)
+    && (shift === null || endOfDaySession.shift.id === shift.id);
+  if (endOfDaySession !== null && !endOfDayScopeMatches) {
+    setEndOfDaySession(null);
+  }
+  const showEndOfDay = endOfDayScopeMatches;
 
   // Cash-count fraud settings state (loaded when EOD modal opens)
   const [fraudSettingsValue, setFraudSettingsValue] = useState<CompanyFraudSettings | null>(null);
@@ -100,6 +117,7 @@ export function Header() {
   const lastCashCountPayloadRef = useRef<CashCountCommitPayload | null>(null);
   const lastZReportCashCountsRef = useRef<ZReportCountEntry[] | null>(null);
   const lastPreviewPaymentMethodsRef = useRef<PaymentMethodItem[] | null>(null);
+  const lastManagerNameRef = useRef<string | null>(null);
 
   const approvalContext = useMemo(() => {
     if (!tenantId || !companyId || !terminal) return undefined;
@@ -290,6 +308,7 @@ export function Header() {
   }, [showEndOfDay, terminal, companyId]);
 
   const handleOpenEndOfDay = useCallback(() => {
+    if (!shift || !terminal) return;
     // Fail closed on every open. This prevents a first-load null or a stale
     // false policy from mounting a disclosure path while the refresh is in flight.
     setFraudSettingsValue(null);
@@ -297,8 +316,13 @@ export function Header() {
     setAuthorizedManagersValue([]);
     setAuthorizedManagersTerminal(null);
     setCashCountPolicyTerminal(null);
-    setShowEndOfDay(true);
-  }, []);
+    setEndOfDaySession({
+      shift,
+      companyId,
+      terminalId: terminal.id,
+      operatorId: operator?.id ?? null,
+    });
+  }, [shift, terminal, companyId, operator?.id]);
 
   // Other screens (e.g. the `/shift` service reading) ask for the ONE real
   // closure flow rather than standing up a second cash-count path. The request
@@ -309,12 +333,15 @@ export function Header() {
   useEffect(() => {
     if (endOfDayRequestId === lastEndOfDayRequestRef.current) return;
     // Consume the request ONLY once it is actually served. Advancing the ref
-    // before the `shift` guard would swallow a request that arrived while the
-    // shift was still loading — it would never replay once the shift landed.
-    if (!shift) return;
+    // before the guard would swallow a request that arrived while the shift or
+    // the terminal was still loading — it would never replay once they landed.
+    // This guard is the SAME one `handleOpenEndOfDay` applies (fiscal m-1): two
+    // different conditions here and there is how a request gets consumed by a
+    // handler that then returns early.
+    if (!shift || !terminal) return;
     lastEndOfDayRequestRef.current = endOfDayRequestId;
     handleOpenEndOfDay();
-  }, [endOfDayRequestId, shift, handleOpenEndOfDay]);
+  }, [endOfDayRequestId, shift, terminal, handleOpenEndOfDay]);
 
   // B7: above-hard-variance close manager approval is now OFFLINE-CAPABLE,
   // reusing the audited operator-approval verifier (online-first → anti-downgrade
@@ -464,11 +491,28 @@ export function Header() {
    * closes shift → returns result.
    */
   const handleEndOfDayConfirm = async (
+    // The shift being closed is the SNAPSHOT the modal is built from
+    // (`endOfDaySession.shift`), not the live store shift: `closeShift()` nulls
+    // the store one mid-flow and the modal's preview was computed from the
+    // snapshot, so reading the store here would let the preview and the Z
+    // describe two different shifts (fiscal m-5).
+    closingShift: Shift,
     preview: EndOfDayPreview,
     cashCountPayload: CashCountCommitPayload | null,
   ): Promise<EndOfDayConfirmResult> => {
-    if (!terminal || !shift || !companyId || !tenantId) {
-      throw new Error('Missing terminal, shift, company, or tenant context');
+    if (!terminal || !companyId || !tenantId) {
+      throw new Error('Missing terminal, company, or tenant context');
+    }
+
+    // Fail closed if the live shift moved on while this close was in flight.
+    // `shift === null` is the normal mid-close state (closeShift nulls it), so
+    // only a DIFFERENT open shift is a mismatch. Defense in depth: the scope
+    // check above (`endOfDayScopeMatches`) already drops the session — and
+    // unmounts the modal — the moment another shift becomes active, so this
+    // should be unreachable from the UI; it exists so a future caller cannot
+    // silently close shift A and stamp the Z on shift B.
+    if (shift !== null && shift.id !== closingShift.id) {
+      throw new Error('Active shift changed during close');
     }
 
     // F-1/F-2 (B7, fail-closed): a v3 device-authoritative close needs the
@@ -499,11 +543,11 @@ export function Header() {
     const isDeviceAuthoritative = terminal.fiscal_schema_version === 3;
     const fiscalZOpts: GenerateZReportOpts = {
       tenantId,
-      fiscalShiftId: isDeviceAuthoritative ? fiscalShiftIdForReceipt(shift) : undefined,
-      fiscalSessionId: isDeviceAuthoritative ? fiscalShiftIdForReceipt(shift) : undefined,
+      fiscalShiftId: isDeviceAuthoritative ? fiscalShiftIdForReceipt(closingShift) : undefined,
+      fiscalSessionId: isDeviceAuthoritative ? fiscalShiftIdForReceipt(closingShift) : undefined,
       terminalLabel: terminal.code,
-      operatorId: shift.user.id,
-      operatorName: shift.user.name,
+      operatorId: closingShift.user.id,
+      operatorName: closingShift.user.name,
       isTraining: terminal.is_training_mode === true,
       requireFiscalEvents: isDeviceAuthoritative,
     };
@@ -521,14 +565,22 @@ export function Header() {
     // Store refs so handlePrintZReport can access them after confirmation
     lastCashCountPayloadRef.current = cashCountPayload;
     lastPreviewPaymentMethodsRef.current = preview.payment_methods;
+    // Capture the approving manager's display name NOW: `authorizedManagers` is
+    // keyed on terminal OBJECT identity and collapses to [] across a sync
+    // refresh (refreshTerminalRecord replaces the object), and the print button
+    // is reachable after the close — so resolving the name at print time prints
+    // manager_name: null for an above-hard-variance Z (fiscal I-3).
+    lastManagerNameRef.current = cashCountPayload?.managerUserId
+      ? (authorizedManagers.find((m) => m.id === cashCountPayload.managerUserId)?.name ?? null)
+      : null;
 
     // 1. Generate Z report (offline-first, idempotent)
     const zReport = await generateZReport(
       terminal.id,
       companyId,
-      shift.id,
-      shift.opened_at,
-      shift.opening_cash,
+      closingShift.id,
+      closingShift.opened_at,
+      closingShift.opening_cash,
       zOpts,
     );
 
@@ -557,13 +609,13 @@ export function Header() {
    * (`CashReconciliationSection` / `EndOfDayPreviewModal`), not by withholding
    * the close.
    */
-  const handlePrintZReport = (result: EndOfDayConfirmResult) => {
-    if (!isTauriEnvironment()) return;
+  const handlePrintZReport = (result: EndOfDayConfirmResult): boolean => {
+    if (!isTauriEnvironment()) return false;
 
     const { printerConfig } = usePrinterStore.getState();
     if (!printerConfig) {
       toast.error(t('settings.noPrinterConfigured'));
-      return;
+      return false;
     }
 
     const { companies } = useAuthStore.getState();
@@ -613,11 +665,10 @@ export function Header() {
           }, bcformat('0', scale))
         : null;
 
-    // Resolve manager name from authorizedManagers list
-    const managerName =
-      payload?.managerUserId
-        ? (authorizedManagers.find((m) => m.id === payload.managerUserId)?.name ?? null)
-        : null;
+    // Resolved at confirm time (see handleEndOfDayConfirm): re-deriving it here
+    // from `authorizedManagers` loses the name whenever the terminal record was
+    // refreshed between the close and the print.
+    const managerName = lastManagerNameRef.current;
 
     // Atomic header identity (spec 2026-06-11 §4.6): the Z header prints the
     // terminal location's tax id (+ vat number / legal identifiers) when the
@@ -659,6 +710,12 @@ export function Header() {
         toast.error(err instanceof Error ? err.message : t('reports.endOfDay.printError', 'Failed to send receipt to printer.'));
       },
     );
+
+    // The receipt WAS handed to the printer: a later async failure (paper out,
+    // socket refused) is a failed dispatch of a print that already happened, so
+    // the next press must still be marked DUPLICATA — the ticket may well have
+    // come out. Only the early returns above are "never dispatched".
+    return true;
   };
 
   const handleExitFullscreen = async () => {
@@ -842,13 +899,15 @@ export function Header() {
       </header>
 
       {/* End of Day Preview Modal (replaces CloseShiftModal) */}
-      {shift && (
+      {showEndOfDay && endOfDaySession && (
         <EndOfDayPreviewModal
           isOpen={showEndOfDay}
-          onClose={() => setShowEndOfDay(false)}
-          shift={shift}
+          onClose={() => setEndOfDaySession(null)}
+          shift={endOfDaySession.shift}
           terminalId={terminal?.id ?? ''}
-          onConfirmAndClose={handleEndOfDayConfirm}
+          onConfirmAndClose={(preview, cashCountPayload) =>
+            handleEndOfDayConfirm(endOfDaySession.shift, preview, cashCountPayload)
+          }
           onPrintReceipt={isTauriEnvironment() ? handlePrintZReport : undefined}
           fraudSettings={fraudSettings}
           cashCountPolicyResolved={cashCountPolicyResolved}

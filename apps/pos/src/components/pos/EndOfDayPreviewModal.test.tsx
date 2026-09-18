@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { EndOfDayPreviewModal, type CompanyFraudSettings } from './EndOfDayPreviewModal';
+import {
+  EndOfDayPreviewModal,
+  type CompanyFraudSettings,
+  type EndOfDayConfirmResult,
+} from './EndOfDayPreviewModal';
 import { TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT } from '@/lib/payment/cashRounding';
 import enPos from '@/locales/en/pos.json';
 import frPos from '@/locales/fr/pos.json';
@@ -151,7 +155,7 @@ const baseFraudSettings: CompanyFraudSettings = {
 function renderModal(
   onConfirmAndClose = vi.fn().mockResolvedValue(confirmResult),
   onClose = vi.fn(),
-  onPrintReceipt?: () => void,
+  onPrintReceipt?: (result: EndOfDayConfirmResult) => boolean,
 ) {
   return render(
     <MemoryRouter>
@@ -360,6 +364,50 @@ describe('EndOfDayPreviewModal', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Already had a Z report.')).toBeInTheDocument();
+    });
+  });
+
+  it('counts only the presses the handler reports as dispatched to the printer', async () => {
+    // The handler returns false when the press never reached a printer (no
+    // printer configured / not in Tauri). Such a press must NOT consume the
+    // "first print", otherwise the first physical ticket prints as DUPLICATA.
+    const onPrintReceipt = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
+    const onConfirmAndClose = vi
+      .fn()
+      .mockResolvedValue({ formattedZNumber: 'Z0001', wasReused: false });
+    renderModal(onConfirmAndClose, undefined, onPrintReceipt);
+    expect(await screen.findByText('Confirm and Close Day')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByText('Confirm and Close Day'));
+    });
+    await waitFor(() => expect(screen.getByText('Print Receipt')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Print Receipt'));
+    fireEvent.click(screen.getByText('Print Receipt'));
+    fireEvent.click(screen.getByText('Print Receipt'));
+
+    expect(onPrintReceipt.mock.calls.map(([r]) => r)).toEqual([
+      { formattedZNumber: 'Z0001', wasReused: false },
+      { formattedZNumber: 'Z0001', wasReused: false },
+      { formattedZNumber: 'Z0001', wasReused: true },
+    ]);
+  });
+
+  it('a Z that was already reused prints as a reprint from the first press', async () => {
+    const onPrintReceipt = vi.fn().mockReturnValue(true);
+    const onConfirmAndClose = vi
+      .fn()
+      .mockResolvedValue({ formattedZNumber: 'Z0002', wasReused: true });
+    renderModal(onConfirmAndClose, undefined, onPrintReceipt);
+    expect(await screen.findByText('Confirm and Close Day')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByText('Confirm and Close Day'));
+    });
+    await waitFor(() => expect(screen.getByText('Print Receipt')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Print Receipt'));
+    expect(onPrintReceipt).toHaveBeenCalledWith({
+      formattedZNumber: 'Z0002',
+      wasReused: true,
     });
   });
 

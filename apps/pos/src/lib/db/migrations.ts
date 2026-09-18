@@ -2180,4 +2180,22 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 68,
+    name: 'normalize_legacy_json_product_categories',
+    // Pre-fix builds bound the /products CategoryData object and SQLx stored it
+    // as JSON text in products.category; incremental sync (updated_since) never
+    // re-pulls untouched products, so rewrite once. Only the CategoryData
+    // discriminator (numeric id + text name + text slug — the same one
+    // `isCachedCategoryData` uses in lib/productCategory.ts) is rewritten;
+    // operator labels that merely look like JSON are left untouched. Rerunning
+    // is a no-op: a rewritten row no longer starts with '{'.
+    sql: `UPDATE products
+             SET category = json_extract(category, '$.name')
+           WHERE category LIKE '{%'
+             AND json_valid(category)
+             AND json_type(category, '$.id') IN ('integer', 'real')
+             AND json_type(category, '$.name') = 'text'
+             AND json_type(category, '$.slug') = 'text'`,
+  },
 ];
