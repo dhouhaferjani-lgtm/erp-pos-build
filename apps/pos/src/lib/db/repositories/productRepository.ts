@@ -238,6 +238,32 @@ export async function getProductCount(db: Database): Promise<number> {
   return result?.count ?? 0;
 }
 
+/**
+ * DEV-QA-111 — id-only projection of the standard-retail catalogue, for the
+ * full-pull reconciliation in `pullProductsCore`.
+ *
+ * Deliberately NOT `getAllProducts`: the reconcile needs nothing but the id
+ * set, and `getAllProducts` parses `modifier_groups` /
+ * `parapharmacy_metadata` JSON for every row — wasted work on a catalogue of
+ * thousands, on a device, on every cursor-less pull.
+ *
+ * Scoped to BARE rows (`menu_category_id IS NULL`). Menu-tenant composite
+ * rows are owned by the `/active-menu` reconcile path
+ * (`reconcileMenuProducts`, `pruneStaleCompositeRows`) and must never be
+ * reconciled away by the flat `/products` pull — which, for a Menu tenant, is
+ * gated off entirely at `pullProducts`. The POS `products` table carries no
+ * `company_id` (a device DB is single-company by construction), so this
+ * bare/composite split is the only scoping dimension that exists on this
+ * layer.
+ */
+export async function getBareProductIds(db: Database): Promise<string[]> {
+  const rows = await queryAll<{ id: string }>(
+    db,
+    'SELECT id FROM products WHERE menu_category_id IS NULL ORDER BY id',
+  );
+  return rows.map((r) => r.id);
+}
+
 const DELETE_BATCH_SIZE = 200;
 
 export async function deleteProducts(db: Database, ids: string[]): Promise<void> {

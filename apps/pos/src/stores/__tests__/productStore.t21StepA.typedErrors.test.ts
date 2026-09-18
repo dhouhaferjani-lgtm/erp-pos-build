@@ -35,6 +35,14 @@ vi.mock('@/lib/db/repositories/productRepository', () => ({
     }
     fakeSqlite.products = Array.from(indexed.values());
   }),
+  // DEV-QA-111 — the full-pull reconcile reads the cached bare-row ids.
+  // Backed by the SAME fake SQLite as the upsert above (not a `[]` stub) so
+  // A.4's retry genuinely exercises the reconcile: the 1000 rows committed by
+  // the failed call-1 pull are all present in call 2's returned set, so
+  // nothing is stale and `deleteProducts` must stay untouched.
+  getBareProductIds: vi.fn(async () =>
+    fakeSqlite.products.map((p) => (p as { id: string }).id),
+  ),
   deleteProducts: vi.fn(async () => undefined),
 }));
 
@@ -171,6 +179,12 @@ describe('productStore — T2.1 Step A typed-error contract (real wrapper, mocke
     expect(state.isLoading).toBe(false);
     // Cursor finally advanced.
     expect(fakeMetadata['products_last_sync']).toBeDefined();
+    // DEV-QA-111 — the successful retry is a cursor-less FULL pull, so the
+    // reconcile ran; every cached row was in the returned set, so it purged
+    // nothing. A reconcile that keyed off the wrong page would have wiped the
+    // 1000 rows committed by the failed call-1 pull.
+    const { deleteProducts } = await import('@/lib/db/repositories/productRepository');
+    expect(deleteProducts).not.toHaveBeenCalled();
   });
 
   it('A.5: HTTP 5xx error surfaces as PullProductsError(http_5xx) to fetchProducts.error state', async () => {

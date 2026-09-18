@@ -75,6 +75,10 @@ vi.mock('@/lib/db/repositories/syncLogRepository', () => ({
 vi.mock('@/lib/db/repositories/productRepository', () => ({
   upsertProducts: vi.fn().mockResolvedValue(undefined),
   deleteProducts: vi.fn().mockResolvedValue(undefined),
+  // DEV-QA-111 — pullProductsCore reads the cached bare-row ids to reconcile
+  // absences on a cursor-less full pull. Default [] = empty device cache, so
+  // the reconcile finds nothing stale and every pre-existing test is unaffected.
+  getBareProductIds: vi.fn().mockResolvedValue([]),
   // C2 Day 1 — pullActiveMenu now calls reconcileMenuProducts to flatten
   // the just-pulled menu into the products table; mock returns void so
   // the existing sync tests stay green.
@@ -252,7 +256,7 @@ import {
   updateFiscalEventSyncStatus,
   type LocalFiscalEvent,
 } from '@/lib/db/repositories/fiscalEventRepository';
-import { upsertProducts, deleteProducts } from '@/lib/db/repositories/productRepository';
+import { upsertProducts, deleteProducts, getBareProductIds } from '@/lib/db/repositories/productRepository';
 import {
   upsertTerminalState,
   setShiftNumberSeed,
@@ -644,10 +648,21 @@ describe('syncService', () => {
       expect(deleteProducts).toHaveBeenCalledWith(db, ['gone-1', 'gone-2']);
     });
 
-    it('does not call deleteProducts when deleted_ids is absent', async () => {
+    // DEV-QA-111 — AMENDED. This test used to read "does not call
+    // deleteProducts when deleted_ids is absent" and pinned the BUG: on a
+    // cursor-less pull (getSyncMetadata is mocked to null here, so every test
+    // in this describe is a full pull) the server never sends `deleted_ids`
+    // at all (`ProductController.php:186-203` gates them on `updated_since`),
+    // so "absent deleted_ids ⇒ delete nothing" meant a product soft-deleted
+    // on the web stayed on the device forever as a greyed « Rupture » tile.
+    // The contract is now: no deleted_ids AND nothing stale in the local
+    // cache ⇒ no delete. The purge-on-absence half is pinned in
+    // `pullProductsFullPullReconcile.test.ts`.
+    it('does not call deleteProducts when deleted_ids is absent and the device cache holds nothing the server dropped', async () => {
       vi.mocked(apiGet).mockResolvedValue({
         data: [{ id: 'p1', name: 'Widget', sku: 'W-001', sale_price: '10.00', stock_quantity: 50 }],
       });
+      vi.mocked(getBareProductIds).mockResolvedValue(['p1']);
 
       await pullProducts(db);
 
