@@ -4,6 +4,7 @@ import { parseMenuCompositeId } from '@/lib/menu/compositeId';
 import {
   upsertProducts,
   deleteProducts,
+  getBareProductIds,
   reconcileMenuProducts,
 } from '@/lib/db/repositories/productRepository';
 import {
@@ -712,6 +713,35 @@ export class PullProductsError extends Error {
  *     for a transient retry; the alternative (delete-on-each-page)
  *     would risk losing tombstones if the server's `deleted_ids` list
  *     is split across pages.
+ *
+ * DEV-QA-111 — full-pull RECONCILIATION (absence = deletion, but only
+ * on a cursor-less pull).
+ *
+ * The server emits `deleted_ids` ONLY when the device sent
+ * `updated_since` (`ProductController.php:186-203`). Migrations v57 and
+ * v58 (`apps/pos/src/lib/db/migrations.ts:1788, 1827`) each run
+ * `DELETE FROM sync_metadata WHERE key = 'products_last_sync'`, so the
+ * first pull after an app update is cursor-less and carries NO
+ * tombstones — while a product soft-deleted on the web
+ * (`ProductController.php:1014`) is also absent from every `data` page.
+ * Upsert-only therefore meant the row lived on the device forever,
+ * rendering as a greyed « Rupture » tile (no `location_stock` slice →
+ * `gridStock.ts` ZERO_SLICE). Same hole for a clock-skewed device and
+ * for a delete committed mid-pull.
+ *
+ * So on a cursor-less pull the returned id set is authoritative for
+ * ABSENCE as well as presence: cached bare rows not in it are fed
+ * through the SAME cascade `deleted_ids` uses. Two guards, both
+ * load-bearing:
+ *   - `updated_since` was NOT sent — on a delta pull an unreturned id
+ *     merely means "unchanged", never "deleted";
+ *   - the loop COMPLETED and returned at least one product — a mid-loop
+ *     throw never reaches this code, and a successful-but-empty
+ *     catalogue is a defensive no-op (same reasoning as
+ *     `pruneStaleCompositeRows`, `productRepository.ts:308-310`): a
+ *     server blip must not wipe a live device catalogue.
+ * Blast radius is device-local and self-repairing: anything wrongly
+ * dropped comes back on the next pull.
  */
 export async function pullProductsCore(
   db: Database,
@@ -722,11 +752,16 @@ export async function pullProductsCore(
   if (lastSync) {
     params['updated_since'] = lastSync;
   }
+  // DEV-QA-111 — a pull with no cursor is a FULL pull: the server returns the
+  // whole catalogue, so its id set is authoritative for absence too.
+  const isFullPull = !lastSync;
 
   let totalPulled = 0;
   let page = 1;
   let hasMore = true;
   const deletedIdsAccumulator: string[] = [];
+  /** Populated only on a full pull — the reconcile's "what should exist" set. */
+  const serverProductIds = new Set<string>();
 
   while (hasMore) {
     let result: POSProduct[] | { data: POSProduct[]; deleted_ids?: string[] };
@@ -766,6 +801,12 @@ export async function pullProductsCore(
       totalPulled += products.length;
     }
 
+    if (isFullPull) {
+      for (const p of products) {
+        serverProductIds.add(p.id);
+      }
+    }
+
     if (deletedIds.length > 0) {
       deletedIdsAccumulator.push(...deletedIds);
     }
@@ -774,20 +815,43 @@ export async function pullProductsCore(
     page++;
   }
 
-  if (deletedIdsAccumulator.length > 0) {
-    await deleteProducts(db, deletedIdsAccumulator);
-    // Task 8 — tombstone cascade: remove cached location_stock rows for
-    // products the server has deleted so stale stock data is never surfaced.
-    await deleteLocationStockForProducts(db, deletedIdsAccumulator);
-    // Task F5 — tombstone cascade: evict cross-location distribution cache for
-    // deleted products so the drawer never shows stale data.
-    await deleteDistributionForProducts(db, deletedIdsAccumulator);
-    // FV2 — tombstone cascade: evict product_variants for deleted products so
-    // stale variant data is never surfaced in the picker or barcode scan.
-    await deleteVariantsForProducts(db, deletedIdsAccumulator);
+  // DEV-QA-111 — reconcile absence on a COMPLETED, non-empty full pull. The
+  // loop is past every `throw` site, so reaching here means the whole
+  // catalogue was fetched. `serverProductIds` is empty on a delta pull (never
+  // populated) and on an empty full pull (defensive no-op), and both cases
+  // skip the cache read entirely.
+  const reconciledIds: string[] = [];
+  if (isFullPull && serverProductIds.size > 0) {
+    const cachedIds = await getBareProductIds(db);
+    for (const id of cachedIds) {
+      if (!serverProductIds.has(id)) {
+        reconciledIds.push(id);
+      }
+    }
   }
 
-  if (totalPulled > 0 || deletedIdsAccumulator.length > 0) {
+  // One tombstone set, one delete path — `deleted_ids` and reconciled ids are
+  // the same kind of fact ("the server says this product is gone") and share
+  // the cascade below. De-duplicated: an id can legitimately be in both.
+  const tombstonedIds =
+    reconciledIds.length > 0
+      ? [...new Set([...deletedIdsAccumulator, ...reconciledIds])]
+      : deletedIdsAccumulator;
+
+  if (tombstonedIds.length > 0) {
+    await deleteProducts(db, tombstonedIds);
+    // Task 8 — tombstone cascade: remove cached location_stock rows for
+    // products the server has deleted so stale stock data is never surfaced.
+    await deleteLocationStockForProducts(db, tombstonedIds);
+    // Task F5 — tombstone cascade: evict cross-location distribution cache for
+    // deleted products so the drawer never shows stale data.
+    await deleteDistributionForProducts(db, tombstonedIds);
+    // FV2 — tombstone cascade: evict product_variants for deleted products so
+    // stale variant data is never surfaced in the picker or barcode scan.
+    await deleteVariantsForProducts(db, tombstonedIds);
+  }
+
+  if (totalPulled > 0 || tombstonedIds.length > 0) {
     await setSyncMetadata(db, 'products_last_sync', new Date().toISOString());
     await logSyncOperation(
       db,
@@ -795,7 +859,7 @@ export async function pullProductsCore(
       'products',
       null,
       'success',
-      `${totalPulled} upserted, ${deletedIdsAccumulator.length} tombstoned`,
+      `${totalPulled} upserted, ${deletedIdsAccumulator.length} tombstoned, ${reconciledIds.length} reconciled`,
     );
   }
 

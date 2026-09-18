@@ -18,6 +18,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('@/lib/db/repositories/productRepository', () => ({
   upsertProducts: vi.fn(),
   deleteProducts: vi.fn(),
+  // DEV-QA-111 — full-pull reconciliation cache read.
+  getBareProductIds: vi.fn().mockResolvedValue([]),
   deleteStaleBareSellableRows: vi.fn(),
   pruneStaleCompositeRows: vi.fn(),
 }));
