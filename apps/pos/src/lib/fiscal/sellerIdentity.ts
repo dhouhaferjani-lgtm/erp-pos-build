@@ -16,6 +16,8 @@
  * incoherent even when it passes `FiscalPayloadConstraintValidator`.
  */
 
+import { normalizeTaxIdentifier } from '@/lib/receiptTaxIdentity';
+
 export interface SellerIdentity {
   name: string | null;
   taxNumber: string | null;
@@ -156,22 +158,58 @@ export function resolveSellerIdentity(
   return resolveSellerIdentityWithSource(company, location).identity;
 }
 
+/** Options for {@link formatLegalIdentifierLines}. */
+export interface LegalIdentifierLineOptions {
+  /**
+   * The tax number the ticket ALREADY prints (`MF : …`). Any identifier whose
+   * normalised value equals it is dropped — device recette 2026-09-18: the
+   * printed ticket carried `MF : 1234567AM002` AND
+   * `MATRICULE FISCAL: 1234567AM002`, because DEV-QA-092 deduped only
+   * `vat_number` and `legal_identifiers` is a THIRD surface for that number.
+   * Normalisation is `normalizeTaxIdentifier` — the same comparison
+   * `dedupeVatNumber` uses.
+   */
+  taxNumber?: string | null;
+  /**
+   * Translate one identifier key (`establishment_code`) into its printed
+   * label, colon included (« Code établissement : »). Returning a nullish
+   * value falls back to the legacy `KEY:` shape, so an identifier type with
+   * no translation still prints. Injected rather than imported so this module
+   * keeps no i18n dependency on the signed-payload path.
+   */
+  labelFor?: (key: string) => string | null | undefined;
+}
+
 /**
  * Display-only helper: flatten a location's `legal_identifiers` JSON object
  * ({ siret: '552…', rcs_paris: '…' }) into printable header lines
- * ("SIRET: 552…"). Keys are legal identifier codes (SIRET, RCS, …), not UI
- * copy — they print uppercased verbatim. Never part of the signed payload
- * (display may exceed the signed shape per spec §4.6).
+ * ("SIRET: 552…"), with the label translated per identifier type when
+ * `labelFor` supplies one and any line repeating the ticket's tax number
+ * dropped. Never part of the signed payload (display may exceed the signed
+ * shape per spec §4.6).
  */
 export function formatLegalIdentifierLines(
   identifiers: Record<string, unknown> | null | undefined,
+  options: LegalIdentifierLineOptions = {},
 ): string[] | null {
   if (!identifiers) return null;
+  const printedTaxNumber = normalizeTaxIdentifier(options.taxNumber);
   const lines = Object.entries(identifiers)
     .filter((entry): entry is [string, string | number] => {
       const value = entry[1];
       return (typeof value === 'string' && value.trim() !== '') || typeof value === 'number';
     })
-    .map(([key, value]) => `${key.replace(/_/g, ' ').toUpperCase()}: ${String(value)}`);
+    .filter(
+      ([, value]) =>
+        printedTaxNumber === '' || normalizeTaxIdentifier(String(value)) !== printedTaxNumber,
+    )
+    .map(([key, value]) => {
+      const label = options.labelFor?.(key);
+      const printedLabel =
+        typeof label === 'string' && label.trim() !== ''
+          ? label
+          : `${key.replace(/_/g, ' ').toUpperCase()}:`;
+      return `${printedLabel} ${String(value)}`;
+    });
   return lines.length > 0 ? lines : null;
 }

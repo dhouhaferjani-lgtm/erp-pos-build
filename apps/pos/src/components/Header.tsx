@@ -28,7 +28,7 @@ import type { CashCountCommitPayload } from '@/components/pos/EndOfDayPreviewMod
 import type { EndOfDayPreview } from '@/lib/offline/endOfDayPreview';
 import { printReceipt, getPrintSettingsFromStore, isTauriEnvironment, buildZReceiptData } from '@/lib/printing';
 import type { ZReceiptCashCountRow } from '@/lib/printing';
-import { buildReceiptLabels } from '@/lib/buildReceiptData';
+import { buildReceiptLabels, legalIdentifierLabel } from '@/lib/buildReceiptData';
 import { dedupeVatNumber } from '@/lib/receiptTaxIdentity';
 import {
   formatLegalIdentifierLines,
@@ -643,8 +643,13 @@ export function Header() {
         zIdentity.taxNumber,
         zLocationComplete ? zLocation?.vat_number ?? null : null,
       ),
+      // r2 device recette 2026-09-18: same three-surface dedup + i18n labels
+      // as the sale ticket (`buildReceiptData.ts:208-217`).
       legalIdentifierLines: zLocationComplete
-        ? formatLegalIdentifierLines(zLocation?.legal_identifiers)
+        ? formatLegalIdentifierLines(zLocation?.legal_identifiers, {
+            taxNumber: zIdentity.taxNumber,
+            labelFor: legalIdentifierLabel,
+          })
         : null,
       formattedZNumber: result.formattedZNumber,
       dateTime: new Date().toISOString(),

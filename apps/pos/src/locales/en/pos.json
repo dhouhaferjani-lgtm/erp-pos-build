@@ -892,6 +892,13 @@
     "originalTicket": "Original ticket:",
     "originalQrLabel": "Scan original ticket:",
     "qrScanLabel": "Scan for return / exchange",
+    "legalIdentifier": {
+      "matricule_fiscal": "Tax registration number:",
+      "establishment_code": "Establishment code:",
+      "siret": "SIRET:",
+      "rcs": "RCS:",
+      "rcs_paris": "RCS Paris:"
+    },
     "accountPaymentHeader": "ACCOUNT PAYMENT RECEIPT",
     "balanceBefore": "Balance before:",
     "balanceAfter": "Balance after:",

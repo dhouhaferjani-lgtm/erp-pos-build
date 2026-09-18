@@ -300,6 +300,67 @@ describe('buildEscPosReceiptData — vat_number dedup (DEV-QA-092)', () => {
   });
 });
 
+// ── r2 device recette 2026-09-18 — legal identifier lines ───────────────────
+//
+// The photo of the printed ticket showed the matricule TWICE — `MF : …` from
+// `company.tax_id` AND `MATRICULE FISCAL: …` from
+// `location.legal_identifiers` — plus `ESTABLISHMENT CODE: 002` in English on
+// a French ticket. DEV-QA-092 deduped `vat_number` only; the legal lines are
+// a THIRD surface for the same number.
+//
+// Fixture shape is the PharmaBio one (`DemoPharmacySeeder.php:315-318`):
+// `legal_identifiers = { matricule_fiscal: <tax_id>, establishment_code: '002' }`.
+
+describe('buildEscPosReceiptData — legal identifier lines (r2)', () => {
+  const pharmaBio = (identifiers: Record<string, unknown>) => ({
+    ...makeLocation(TN_MATRICULE),
+    legal_identifiers: identifiers,
+  });
+
+  it('prints the matricule exactly ONCE across all three header surfaces', () => {
+    const result = buildEscPosReceiptData(makeReceipt(), {
+      sellerLocation: pharmaBio({
+        matricule_fiscal: TN_MATRICULE,
+        establishment_code: '002',
+      }),
+    });
+
+    expect(result.company.tax_id).toBe(TN_MATRICULE);
+    expect(result.company.vat_number).toBeNull();
+
+    const lines = result.company.legal_identifier_lines ?? [];
+    expect(lines.filter((line) => line.includes(TN_MATRICULE))).toEqual([]);
+    expect(lines).toEqual(['Code établissement : 002']);
+  });
+
+  it('drops a legal line repeating the matricule under case/whitespace noise', () => {
+    const result = buildEscPosReceiptData(makeReceipt(), {
+      sellerLocation: pharmaBio({ matricule_fiscal: '  1234567/a/m/000  ' }),
+    });
+
+    expect(result.company.legal_identifier_lines).toBeNull();
+  });
+
+  it('keeps a legal identifier that is a genuinely different number', () => {
+    const result = buildEscPosReceiptData(makeReceipt(), {
+      sellerLocation: pharmaBio({ siret: '55210055400014' }),
+    });
+
+    // French typography for the translated label (space before the colon).
+    expect(result.company.legal_identifier_lines).toEqual(['SIRET : 55210055400014']);
+  });
+
+  it('labels the establishment code in French, never in English', () => {
+    const result = buildEscPosReceiptData(makeReceipt(), {
+      sellerLocation: pharmaBio({ establishment_code: '002' }),
+    });
+
+    const printed = (result.company.legal_identifier_lines ?? []).join('\n');
+    expect(printed).toContain('Code établissement');
+    expect(printed).not.toContain('ESTABLISHMENT CODE');
+  });
+});
+
 describe('buildZReceiptData — vat_number dedup (DEV-QA-092, Z header)', () => {
   const base = {
     companyName: 'Café Nour',

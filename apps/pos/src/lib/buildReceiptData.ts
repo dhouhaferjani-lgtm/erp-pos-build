@@ -203,8 +203,16 @@ export function buildEscPosReceiptData(
         identity.taxNumber,
         locationComplete ? sellerLocation?.vat_number ?? null : null,
       ),
+      // r2 device recette 2026-09-18: `legal_identifiers` is a THIRD surface
+      // for the matricule (the ticket printed `MF : …` AND
+      // `MATRICULE FISCAL: …`), and its keys printed as raw uppercase English
+      // on a French ticket. Dedup against the printed tax number, label
+      // through i18n.
       legal_identifier_lines: locationComplete
-        ? formatLegalIdentifierLines(sellerLocation?.legal_identifiers)
+        ? formatLegalIdentifierLines(sellerLocation?.legal_identifiers, {
+            taxNumber: identity.taxNumber,
+            labelFor: legalIdentifierLabel,
+          })
         : null,
     },
     receipt_number: receipt.receipt_number,
@@ -559,6 +567,25 @@ export function buildEscPosAccountChargeReceiptData(
     customer_account_id: p.accountIdentifier,
     customer_phone: p.customerPhone,
   };
+}
+
+/**
+ * Printed label for one `legal_identifiers` key, colon included
+ * (« Code établissement : »). Rule 11 — no hardcoded French in the builders:
+ * the copy lives in `locales/{fr,en}/pos.json` under
+ * `receiptLabel.legalIdentifier.*`. An untranslated key returns `undefined`
+ * so `formatLegalIdentifierLines` keeps its legacy `KEY:` shape.
+ */
+export function legalIdentifierLabel(key: string): string | undefined {
+  const i18nKey = `pos:receiptLabel.legalIdentifier.${key}`;
+  const translated = i18next.t(i18nKey, { defaultValue: '' });
+  if (typeof translated !== 'string') return undefined;
+  const label = translated.trim();
+  // A blank resolution (the `defaultValue`) and a key echoed back both mean
+  // "this identifier type has no translated label" — the caller then keeps the
+  // legacy `KEY:` shape rather than printing an i18n path onto the ticket.
+  if (label === '' || label === i18nKey || i18nKey.endsWith(label)) return undefined;
+  return label;
 }
 
 /** Build localized receipt labels from i18n. */

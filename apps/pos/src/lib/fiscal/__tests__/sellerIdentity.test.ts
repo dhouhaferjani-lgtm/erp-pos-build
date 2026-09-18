@@ -237,4 +237,44 @@ describe('formatLegalIdentifierLines', () => {
     expect(formatLegalIdentifierLines({})).toBeNull();
     expect(formatLegalIdentifierLines({ siret: '   ' })).toBeNull();
   });
+
+  // r2 device recette 2026-09-18 — the options added for the printed ticket.
+  it('drops an identifier that repeats the ticket tax number (any case/spacing)', () => {
+    expect(
+      formatLegalIdentifierLines(
+        { matricule_fiscal: ' 1234567/a/m/000 ', establishment_code: '002' },
+        { taxNumber: '1234567/A/M/000' },
+      ),
+    ).toEqual(['ESTABLISHMENT CODE: 002']);
+  });
+
+  it('returns null when every identifier repeats the ticket tax number', () => {
+    expect(
+      formatLegalIdentifierLines({ matricule_fiscal: 'X-1' }, { taxNumber: 'x-1' }),
+    ).toBeNull();
+  });
+
+  it('keeps every identifier when no tax number is supplied (unchanged default)', () => {
+    expect(formatLegalIdentifierLines({ matricule_fiscal: 'X-1' })).toEqual([
+      'MATRICULE FISCAL: X-1',
+    ]);
+  });
+
+  it('uses the injected label per identifier type, colon included', () => {
+    expect(
+      formatLegalIdentifierLines(
+        { establishment_code: '002' },
+        { labelFor: (key) => (key === 'establishment_code' ? 'Code établissement :' : undefined) },
+      ),
+    ).toEqual(['Code établissement : 002']);
+  });
+
+  it('falls back to the legacy KEY: shape when the label is missing or blank', () => {
+    expect(formatLegalIdentifierLines({ rcs_paris: 'B 552' }, { labelFor: () => undefined })).toEqual(
+      ['RCS PARIS: B 552'],
+    );
+    expect(formatLegalIdentifierLines({ rcs_paris: 'B 552' }, { labelFor: () => '  ' })).toEqual([
+      'RCS PARIS: B 552',
+    ]);
+  });
 });
